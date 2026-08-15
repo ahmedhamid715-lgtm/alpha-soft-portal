@@ -100,6 +100,14 @@ even without a configured database.
   `prisma.config.ts`). This is the supported reset path — don't hand-roll
   a "delete everything" script.
 
+**Prisma Migrate is the schema source of truth, not the Supabase CLI.**
+The `supabase` CLI (installed as a dev dependency, `supabase/config.toml`
+from `npx supabase init`) is present for local dev stack / project
+linking / Studio access — deliberately **not** for `supabase migration
+new` or `supabase db push`. Running schema changes through both tools
+would produce two competing migration histories for the same database.
+If that division ever needs to change, update this section first.
+
 ## Seeding
 
 `prisma/seed.ts` is development-only (refuses to run when
