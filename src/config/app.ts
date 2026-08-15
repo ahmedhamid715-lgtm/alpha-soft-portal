@@ -1,4 +1,3 @@
-import { serverEnv } from "./environment";
 import { publicEnv } from "./environment.public";
 
 /**
@@ -6,15 +5,23 @@ import { publicEnv } from "./environment.public";
  *
  * This is the single source of truth for values that would otherwise be
  * scattered as magic strings throughout the codebase ("Alpha OS",
- * "production", "USD", ...). Anything here is safe to import from both
- * server and client code — secrets live in `config/environment.ts` only.
+ * "production", "USD", ...). Anything here is genuinely safe to import
+ * from both server and client code — secrets live in `config/environment.ts`
+ * only, and this file must never import that module. It did, briefly, in
+ * Module 01 (for `environment`, below) — harmless until Module 02's first
+ * client component (`AppSidebar`) imported `appConfig` and Next.js's
+ * server-only enforcement correctly failed the build. `NODE_ENV` doesn't
+ * need `serverEnv` at all: Next.js inlines `process.env.NODE_ENV`
+ * identically into both server and client bundles, unlike every other
+ * environment variable, so reading it directly here carries no server-only
+ * dependency.
  */
 export const appConfig = {
   name: "Alpha OS",
   legalName: "Alpha Page Rankers",
   description: "The Alpha Page Rankers operating platform.",
   url: publicEnv.NEXT_PUBLIC_APP_URL,
-  environment: serverEnv.NODE_ENV,
+  environment: (process.env.NODE_ENV ?? "development") as "development" | "test" | "production",
 
   /** Default locale/timezone/currency. Becomes per-organization in Module 06. */
   defaults: {

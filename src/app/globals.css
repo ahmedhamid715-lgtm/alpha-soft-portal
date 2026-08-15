@@ -5,24 +5,28 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ==========================================================================
-   Alpha OS design tokens — three-layer architecture (Module 02 groundwork)
+   Alpha OS Design System — token architecture
    ==========================================================================
-   1. Primitive  — raw values extracted from alphapagerankers.com's live
-      Elementor CSS (see docs/architecture/platform-core.md for the source).
-   2. Semantic   — shadcn/ui's expected variable contract, pointed at the
-      primitives. Every component in src/components/ui reads from this
-      layer, never from a primitive or a raw hex directly.
-   3. Component  — component-specific overrides live in each component file
-      when a primitive/semantic token isn't the right fit; none needed yet.
+   Full rules, rationale, and usage conventions: docs/architecture/design-system.md
 
-   The brand is dark-mode-first, so :root itself carries the dark palette
-   instead of a `.dark` class override. A real light theme is Module 02's
-   job (Design System) — `.dark` currently mirrors :root so nothing breaks
-   if a future component toggles the class before that work lands.
+   Three layers:
+   1. Primitive — raw values. Brand hues extracted from alphapagerankers.com's
+      live Elementor CSS; light-theme and status hues are new in Module 02,
+      chosen to sit alongside the brand without diluting it (see docs).
+   2. Semantic  — the token contract every component reads from. Never
+      reference a primitive or a raw hex directly from a component.
+   3. Component — component-local overrides, used sparingly (see button.tsx
+      for the one example so far — its brand-tinted focus ring).
+
+   Both themes are real, independent palettes — :root is light (the
+   conventional default so shadcn's own generated components keep working
+   unmodified), .dark is the brand-dark palette. next-themes (see
+   src/components/theme-provider.tsx) toggles the class server-side before
+   paint, so there's no flash of the wrong theme.
    ========================================================================== */
 
 :root {
-  /* --- 1. Primitive tokens (raw brand palette) --- */
+  /* --- 1. Primitives: brand (both themes) --- */
   --brand-dark: #140921;
   --brand-dark-2: #1c1e29;
   --brand-dark-3: #26003a;
@@ -32,9 +36,47 @@
   --brand-white: #ffffff;
   --brand-black: #000000;
   --brand-border-neutral: #e4e4e4;
-  /* Not brand-extracted — standard destructive-action red, kept separate
-     from the brand palette so it reads unambiguously as a status color. */
-  --status-destructive: #ef4444;
+
+  /* --- 1. Primitives: light theme --- */
+  /* A soft, faintly violet-tinted white rather than flat #FFF — reads as
+     considered, not default. Cards sit on it in pure white, which is what
+     actually creates the elevation cue in a light UI. */
+  --light-bg: #faf9fc;
+  --light-surface: #ffffff;
+  --light-surface-2: #f1eef6;
+  --light-border: var(--brand-border-neutral);
+  --light-text-primary: var(--brand-dark);
+  --light-text-secondary: #4b4358;
+  --light-text-muted: #8a8394;
+
+  /* --- 1. Primitives: dark theme surfaces beyond the base four --- */
+  --dark-surface-2: #241530;
+
+  /* --- 1. Primitives: status hues — desaturated enough to read as
+     "sophisticated," not a stock traffic-light palette. Light and dark
+     variants are separately tuned for contrast on their respective
+     backgrounds, not just brightness-inverted. --- */
+  --status-success-light: #157347;
+  --status-success-dark: #3ddc84;
+  --status-warning-light: #a15c07;
+  --status-warning-dark: #f0a83c;
+  --status-info-light: #1d4ed8;
+  --status-info-dark: #6ea8fe;
+  --status-destructive-light: #c02b2b;
+  --status-destructive-dark: #f07575;
+
+  /* --- 1. Primitives: categorical chart palette ---
+     Fixed order, identical in both themes — validated with the dataviz
+     skill's colorblind/contrast checker (scripts/validate_palette.js)
+     against both the light and dark surfaces; all six checks pass. Never
+     append a 6th color by generating a new hue — fold an extra series
+     into "Other" or facet instead. See docs/architecture/design-system.md
+     "Data visualization." */
+  --chart-purple: #8730b4;
+  --chart-magenta: #bf43ff;
+  --chart-teal: #0d9488;
+  --chart-amber: #d97706;
+  --chart-rose: #e11d48;
 }
 
 @theme inline {
@@ -59,6 +101,7 @@
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-destructive: var(--destructive);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
@@ -68,19 +111,39 @@
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
+  --color-link: var(--link);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  /* Brand primitives exposed as utilities too (bg-brand-primary, etc.) for
-     the rare case a component needs the raw brand color, not a semantic
-     role — e.g. the login page's hero gradient. */
+
+  /* 2. Semantic — surface hierarchy beyond shadcn's base contract */
+  --color-surface: var(--card);
+  --color-surface-2: var(--surface-2);
+  --color-surface-2-foreground: var(--surface-2-foreground);
+
+  /* 2. Semantic — three-tier text hierarchy (spec: primary/secondary/muted) */
+  --color-text-primary: var(--foreground);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--muted-foreground);
+
+  /* 2. Semantic — status colors beyond destructive (already in shadcn's set) */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+
+  /* Brand primitives as utilities (bg-brand-primary etc.) for the rare
+     case a component needs the raw brand color, not a semantic role. */
   --color-brand-dark: var(--brand-dark);
   --color-brand-dark-2: var(--brand-dark-2);
   --color-brand-dark-3: var(--brand-dark-3);
   --color-brand-dark-4: var(--brand-dark-4);
   --color-brand-primary: var(--brand-primary);
   --color-brand-accent: var(--brand-accent);
+
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -88,75 +151,115 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Restrained shadow scale — deliberately subtle. Cards mostly rely on a
+     border for elevation, not shadow; shadow is reserved for genuinely
+     floating layers (popover, dropdown, dialog, drawer). Same values in
+     both themes: at these low opacities a black-based shadow reads fine
+     on both a light and a dark surface, and inventing a second scale
+     would be complexity the "restrained, premium" brief argues against. */
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.08), 0 1px 2px -1px rgb(0 0 0 / 0.06);
+  --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.10), 0 2px 4px -2px rgb(0 0 0 / 0.06);
+  --shadow-lg: 0 12px 24px -4px rgb(0 0 0 / 0.16), 0 4px 8px -4px rgb(0 0 0 / 0.08);
 }
 
 :root {
-  /* --- 2. Semantic tokens (shadcn/ui contract, dark-mode-first) --- */
-  --background: var(--brand-dark);
-  --foreground: var(--brand-white);
-  --card: var(--brand-dark-2);
-  --card-foreground: var(--brand-white);
-  --popover: var(--brand-dark-2);
-  --popover-foreground: var(--brand-white);
+  /* --- 2. Semantic tokens: LIGHT theme (default) --- */
+  --background: var(--light-bg);
+  --foreground: var(--light-text-primary);
+  --text-secondary: var(--light-text-secondary);
+  --card: var(--light-surface);
+  --card-foreground: var(--light-text-primary);
+  --surface-2: var(--light-surface-2);
+  --surface-2-foreground: var(--light-text-primary);
+  --popover: var(--light-surface);
+  --popover-foreground: var(--light-text-primary);
   --primary: var(--brand-primary);
   --primary-foreground: var(--brand-white);
-  --secondary: var(--brand-dark-3);
-  --secondary-foreground: var(--brand-white);
-  /* Derived (not extracted): a lavender-gray mid-tone mixed from the
-     primitives themselves, rather than an invented arbitrary hex. */
-  --muted: var(--brand-dark-3);
-  --muted-foreground: color-mix(in srgb, var(--brand-white) 62%, var(--brand-dark));
+  /* Brand-primary at 6.7:1 reads fine as inline text on the light surface —
+     see the dark-theme override below for why this token exists at all. */
+  --link: var(--brand-primary);
+  --secondary: var(--light-surface-2);
+  --secondary-foreground: var(--light-text-primary);
+  --muted: var(--light-surface-2);
+  --muted-foreground: var(--light-text-muted);
   --accent: var(--brand-accent);
-  --accent-foreground: var(--brand-black);
-  --destructive: var(--status-destructive);
+  --accent-foreground: var(--brand-white);
+  --success: var(--status-success-light);
+  --success-foreground: var(--brand-white);
+  --warning: var(--status-warning-light);
+  --warning-foreground: var(--brand-white);
+  --info: var(--status-info-light);
+  --info-foreground: var(--brand-white);
+  --destructive: var(--status-destructive-light);
   --destructive-foreground: var(--brand-white);
-  /* Translucent borders read correctly on a dark background; full-opacity
-     #E4E4E4 would look like a harsh light-mode border pasted onto dark UI. */
-  --border: color-mix(in srgb, var(--brand-border-neutral) 16%, transparent);
-  --input: color-mix(in srgb, var(--brand-border-neutral) 22%, transparent);
-  --ring: var(--brand-accent);
-  --chart-1: var(--brand-primary);
-  --chart-2: var(--brand-accent);
-  --chart-3: var(--brand-dark-4);
-  --chart-4: color-mix(in srgb, var(--brand-primary) 60%, var(--brand-accent));
-  --chart-5: color-mix(in srgb, var(--brand-white) 70%, var(--brand-primary));
+  --border: var(--light-border);
+  --border-strong: color-mix(in srgb, var(--light-text-primary) 24%, transparent);
+  --input: var(--light-border);
+  --ring: var(--brand-primary);
+  --chart-1: var(--chart-purple);
+  --chart-2: var(--chart-magenta);
+  --chart-3: var(--chart-teal);
+  --chart-4: var(--chart-amber);
+  --chart-5: var(--chart-rose);
   --radius: 0.625rem;
-  --sidebar: var(--brand-dark-2);
-  --sidebar-foreground: var(--brand-white);
+  --sidebar: var(--light-surface);
+  --sidebar-foreground: var(--light-text-primary);
   --sidebar-primary: var(--brand-primary);
   --sidebar-primary-foreground: var(--brand-white);
-  --sidebar-accent: var(--brand-dark-3);
-  --sidebar-accent-foreground: var(--brand-white);
-  --sidebar-border: color-mix(in srgb, var(--brand-border-neutral) 12%, transparent);
-  --sidebar-ring: var(--brand-accent);
+  --sidebar-accent: var(--light-surface-2);
+  --sidebar-accent-foreground: var(--light-text-primary);
+  --sidebar-border: var(--light-border);
+  --sidebar-ring: var(--brand-primary);
 }
 
-/* Mirrors :root until Module 02 builds a real light theme. */
 .dark {
+  /* --- 2. Semantic tokens: DARK theme --- */
   --background: var(--brand-dark);
   --foreground: var(--brand-white);
+  --text-secondary: color-mix(in srgb, var(--brand-white) 78%, var(--brand-dark));
   --card: var(--brand-dark-2);
   --card-foreground: var(--brand-white);
-  --popover: var(--brand-dark-2);
+  --surface-2: var(--dark-surface-2);
+  --surface-2-foreground: var(--brand-white);
+  --popover: var(--dark-surface-2);
   --popover-foreground: var(--brand-white);
   --primary: var(--brand-primary);
   --primary-foreground: var(--brand-white);
+  /* `--primary` (#8730b4) is only 2.85:1 against this theme's dark surface —
+     fine as a filled button background (paired with white
+     `--primary-foreground` text on top, 6.7:1), but fails WCAG AA as the
+     text color itself (needs 4.5:1). `--link` is the token for brand-purple
+     INLINE TEXT — link-styled buttons, "click to upload" affordances, a
+     tinted badge's own label — and resolves to the lighter brand accent in
+     this theme (5.0:1 against the dark surface) instead of reusing
+     `--primary` unmodified. Never point a text color at `--primary` in a
+     dark surface; use `--link`. */
+  --link: var(--brand-accent);
   --secondary: var(--brand-dark-3);
   --secondary-foreground: var(--brand-white);
   --muted: var(--brand-dark-3);
   --muted-foreground: color-mix(in srgb, var(--brand-white) 62%, var(--brand-dark));
   --accent: var(--brand-accent);
   --accent-foreground: var(--brand-black);
-  --destructive: var(--status-destructive);
-  --destructive-foreground: var(--brand-white);
+  --success: var(--status-success-dark);
+  --success-foreground: var(--brand-black);
+  --warning: var(--status-warning-dark);
+  --warning-foreground: var(--brand-black);
+  --info: var(--status-info-dark);
+  --info-foreground: var(--brand-black);
+  --destructive: var(--status-destructive-dark);
+  --destructive-foreground: var(--brand-black);
   --border: color-mix(in srgb, var(--brand-border-neutral) 16%, transparent);
+  --border-strong: color-mix(in srgb, var(--brand-border-neutral) 32%, transparent);
   --input: color-mix(in srgb, var(--brand-border-neutral) 22%, transparent);
   --ring: var(--brand-accent);
-  --chart-1: var(--brand-primary);
-  --chart-2: var(--brand-accent);
-  --chart-3: var(--brand-dark-4);
-  --chart-4: color-mix(in srgb, var(--brand-primary) 60%, var(--brand-accent));
-  --chart-5: color-mix(in srgb, var(--brand-white) 70%, var(--brand-primary));
+  --chart-1: var(--chart-purple);
+  --chart-2: var(--chart-magenta);
+  --chart-3: var(--chart-teal);
+  --chart-4: var(--chart-amber);
+  --chart-5: var(--chart-rose);
   --sidebar: var(--brand-dark-2);
   --sidebar-foreground: var(--brand-white);
   --sidebar-primary: var(--brand-primary);
@@ -176,5 +279,23 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+/* ==========================================================================
+   Motion — see docs/architecture/design-system.md "Motion" for the rules
+   this encodes. Two things happen here: a project-wide reduced-motion
+   override (accessibility requirement, not optional), and nothing else —
+   everyday transitions use Tailwind's own duration and ease utilities
+   directly in components rather than a parallel custom-named scale.
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

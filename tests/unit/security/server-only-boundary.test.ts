@@ -46,4 +46,20 @@ describe("server/client boundary", () => {
     const contents = readFileSync(path.resolve(process.cwd(), "src/lib/errors/app-error.ts"), "utf-8");
     expect(contents).not.toMatch(/import\s+"server-only"/);
   });
+
+  /**
+   * config/app.ts is imported from client components (e.g. AppSidebar, for
+   * `appConfig.name`) — it must stay import-clean of `./environment`
+   * (server-only) even transitively. This regressed once already: Module
+   * 01 imported `serverEnv` there for `appConfig.environment`, which was
+   * harmless until Module 02's first client component imported `appConfig`
+   * and Next.js's build correctly failed. Fixed by reading
+   * `process.env.NODE_ENV` directly instead (Next.js inlines it
+   * identically into both bundles). Catch it here instead of at build time.
+   */
+  it("config/app.ts does NOT import the server-only environment module", () => {
+    const contents = readFileSync(path.resolve(process.cwd(), "src/config/app.ts"), "utf-8");
+    expect(contents).not.toMatch(/from\s+["']\.\/environment["']/);
+    expect(contents).not.toMatch(/import\s+"server-only"/);
+  });
 });

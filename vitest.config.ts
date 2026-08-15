@@ -16,7 +16,12 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["tests/unit/**/*.test.ts"],
+    // Component tests (`.test.tsx`) opt into jsdom per-file via a
+    // `// @vitest-environment jsdom` docblock — the global default stays
+    // "node" so the existing plain-logic suite (config/lib/security) keeps
+    // its fast, dependency-free environment unchanged.
+    include: ["tests/unit/**/*.test.ts", "tests/unit/**/*.test.tsx"],
+    setupFiles: ["tests/setup/jsdom-matchers.ts"],
   },
   resolve: {
     // Native replacement for the `vite-tsconfig-paths` plugin — resolves
