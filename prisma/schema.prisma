@@ -1,0 +1,20 @@
+// Alpha OS — Prisma schema
+//
+// Module 01 (Platform Core) establishes the generator/datasource wiring
+// only — no business entities live here yet. Module 03 (Database
+// Architecture) introduces the first real models (User, Organization, ...)
+// following the conventions documented in docs/architecture/database.md
+// (UUIDv7 IDs, UTC timestamps, soft-delete policy per entity category).
+//
+// Connection details are NOT set here — Prisma 7 reads them from
+// prisma.config.ts at the project root, not from `env("DATABASE_URL")` in
+// this file. See docs/architecture/database.md for why.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}

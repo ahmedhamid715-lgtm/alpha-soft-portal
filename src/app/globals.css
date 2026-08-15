@@ -1,0 +1,180 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ==========================================================================
+   Alpha OS design tokens — three-layer architecture (Module 02 groundwork)
+   ==========================================================================
+   1. Primitive  — raw values extracted from alphapagerankers.com's live
+      Elementor CSS (see docs/architecture/platform-core.md for the source).
+   2. Semantic   — shadcn/ui's expected variable contract, pointed at the
+      primitives. Every component in src/components/ui reads from this
+      layer, never from a primitive or a raw hex directly.
+   3. Component  — component-specific overrides live in each component file
+      when a primitive/semantic token isn't the right fit; none needed yet.
+
+   The brand is dark-mode-first, so :root itself carries the dark palette
+   instead of a `.dark` class override. A real light theme is Module 02's
+   job (Design System) — `.dark` currently mirrors :root so nothing breaks
+   if a future component toggles the class before that work lands.
+   ========================================================================== */
+
+:root {
+  /* --- 1. Primitive tokens (raw brand palette) --- */
+  --brand-dark: #140921;
+  --brand-dark-2: #1c1e29;
+  --brand-dark-3: #26003a;
+  --brand-dark-4: #39195f;
+  --brand-primary: #8730b4;
+  --brand-accent: #bf43ff;
+  --brand-white: #ffffff;
+  --brand-black: #000000;
+  --brand-border-neutral: #e4e4e4;
+  /* Not brand-extracted — standard destructive-action red, kept separate
+     from the brand palette so it reads unambiguously as a status color. */
+  --status-destructive: #ef4444;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  /* Brand primitives exposed as utilities too (bg-brand-primary, etc.) for
+     the rare case a component needs the raw brand color, not a semantic
+     role — e.g. the login page's hero gradient. */
+  --color-brand-dark: var(--brand-dark);
+  --color-brand-dark-2: var(--brand-dark-2);
+  --color-brand-dark-3: var(--brand-dark-3);
+  --color-brand-dark-4: var(--brand-dark-4);
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-accent: var(--brand-accent);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  /* --- 2. Semantic tokens (shadcn/ui contract, dark-mode-first) --- */
+  --background: var(--brand-dark);
+  --foreground: var(--brand-white);
+  --card: var(--brand-dark-2);
+  --card-foreground: var(--brand-white);
+  --popover: var(--brand-dark-2);
+  --popover-foreground: var(--brand-white);
+  --primary: var(--brand-primary);
+  --primary-foreground: var(--brand-white);
+  --secondary: var(--brand-dark-3);
+  --secondary-foreground: var(--brand-white);
+  /* Derived (not extracted): a lavender-gray mid-tone mixed from the
+     primitives themselves, rather than an invented arbitrary hex. */
+  --muted: var(--brand-dark-3);
+  --muted-foreground: color-mix(in srgb, var(--brand-white) 62%, var(--brand-dark));
+  --accent: var(--brand-accent);
+  --accent-foreground: var(--brand-black);
+  --destructive: var(--status-destructive);
+  --destructive-foreground: var(--brand-white);
+  /* Translucent borders read correctly on a dark background; full-opacity
+     #E4E4E4 would look like a harsh light-mode border pasted onto dark UI. */
+  --border: color-mix(in srgb, var(--brand-border-neutral) 16%, transparent);
+  --input: color-mix(in srgb, var(--brand-border-neutral) 22%, transparent);
+  --ring: var(--brand-accent);
+  --chart-1: var(--brand-primary);
+  --chart-2: var(--brand-accent);
+  --chart-3: var(--brand-dark-4);
+  --chart-4: color-mix(in srgb, var(--brand-primary) 60%, var(--brand-accent));
+  --chart-5: color-mix(in srgb, var(--brand-white) 70%, var(--brand-primary));
+  --radius: 0.625rem;
+  --sidebar: var(--brand-dark-2);
+  --sidebar-foreground: var(--brand-white);
+  --sidebar-primary: var(--brand-primary);
+  --sidebar-primary-foreground: var(--brand-white);
+  --sidebar-accent: var(--brand-dark-3);
+  --sidebar-accent-foreground: var(--brand-white);
+  --sidebar-border: color-mix(in srgb, var(--brand-border-neutral) 12%, transparent);
+  --sidebar-ring: var(--brand-accent);
+}
+
+/* Mirrors :root until Module 02 builds a real light theme. */
+.dark {
+  --background: var(--brand-dark);
+  --foreground: var(--brand-white);
+  --card: var(--brand-dark-2);
+  --card-foreground: var(--brand-white);
+  --popover: var(--brand-dark-2);
+  --popover-foreground: var(--brand-white);
+  --primary: var(--brand-primary);
+  --primary-foreground: var(--brand-white);
+  --secondary: var(--brand-dark-3);
+  --secondary-foreground: var(--brand-white);
+  --muted: var(--brand-dark-3);
+  --muted-foreground: color-mix(in srgb, var(--brand-white) 62%, var(--brand-dark));
+  --accent: var(--brand-accent);
+  --accent-foreground: var(--brand-black);
+  --destructive: var(--status-destructive);
+  --destructive-foreground: var(--brand-white);
+  --border: color-mix(in srgb, var(--brand-border-neutral) 16%, transparent);
+  --input: color-mix(in srgb, var(--brand-border-neutral) 22%, transparent);
+  --ring: var(--brand-accent);
+  --chart-1: var(--brand-primary);
+  --chart-2: var(--brand-accent);
+  --chart-3: var(--brand-dark-4);
+  --chart-4: color-mix(in srgb, var(--brand-primary) 60%, var(--brand-accent));
+  --chart-5: color-mix(in srgb, var(--brand-white) 70%, var(--brand-primary));
+  --sidebar: var(--brand-dark-2);
+  --sidebar-foreground: var(--brand-white);
+  --sidebar-primary: var(--brand-primary);
+  --sidebar-primary-foreground: var(--brand-white);
+  --sidebar-accent: var(--brand-dark-3);
+  --sidebar-accent-foreground: var(--brand-white);
+  --sidebar-border: color-mix(in srgb, var(--brand-border-neutral) 12%, transparent);
+  --sidebar-ring: var(--brand-accent);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
