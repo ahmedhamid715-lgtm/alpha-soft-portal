@@ -25,14 +25,11 @@ completely fresh checkout only if you haven't run `npm install` yet
 ## Database (optional for Module 01, required from Module 03 on)
 
 The app boots and `npm run build` succeeds with no database configured —
-`/api/health/db` will just report `"unavailable"`. To get a real
-database:
-
-1. Easiest: create a free Postgres database at
-   [neon.tech](https://neon.tech) (no local install) and copy its
-   connection string.
-2. Or install PostgreSQL locally.
-3. Or run PostgreSQL via Docker, once Docker is installed.
+`/api/health/db` will just report `"unavailable"`. Alpha OS's database
+runs on [Supabase](https://supabase.com): create a project, then go to
+Project Settings → Database → Connection string → "URI" and copy the
+**direct connection** (port `5432`, not the `6543` pooler — see
+`docs/architecture/database.md` for why that distinction matters).
 
 Put the connection string in **`.env`** (not `.env.local`) as
 `DATABASE_URL` — see `docs/architecture/database.md` for why `.env`

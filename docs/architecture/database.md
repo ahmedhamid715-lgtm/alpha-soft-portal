@@ -108,15 +108,37 @@ schema yet to seed. It deliberately does **not** create Admin/Support/
 Customer accounts — that's Module 04's job, once password hashing and a
 real `User` model exist. Module 03 is where this file gets real content.
 
-## Getting a real database
+## Database host: Supabase
 
-No Docker or local PostgreSQL was available in the environment this
-module was built in. Three options, in order of least friction:
+Alpha OS's Postgres runs on **[Supabase](https://supabase.com)** (decided
+after Module 01's initial build, which shipped with no database
+configured — no Docker or local PostgreSQL was available in that
+environment). Supabase is a standard hosted Postgres instance underneath,
+so nothing about the Prisma/driver-adapter wiring above changes — it's
+just where `DATABASE_URL` points.
 
-1. **[neon.tech](https://neon.tech)** — free tier, no local install,
-   copy the connection string into `.env`'s `DATABASE_URL`.
-2. Install PostgreSQL locally.
-3. Run PostgreSQL via Docker once Docker is installed.
+**Getting the connection string:** Supabase project → Project Settings →
+Database → Connection string → "URI". Two variants matter:
+
+| Variant | Port | Use for |
+|---|---|---|
+| Direct connection | `5432` | Everything — the app at runtime, and `prisma migrate` |
+| Transaction pooler (PgBouncer) | `6543` | Only if deploying somewhere with many short-lived serverless invocations (e.g. Vercel functions) that would otherwise exhaust Postgres's connection limit |
+
+**Use the direct connection unless you have a specific reason not to.**
+PgBouncer's transaction mode doesn't support the prepared statements
+`prisma migrate` needs, so migrations must run against the direct URL
+regardless — and since Prisma 7 removed the separate `directUrl` concept
+(one `url` in `prisma.config.ts`, see above), splitting pooled-for-app /
+direct-for-migrations means either two env vars and a `prisma.config.ts`
+branch, or just using the direct connection everywhere until connection
+volume actually requires pooling. If you do need the pooled URL later,
+append `?pgbouncer=true` to it.
+
+Supabase also bundles Auth, Storage, and Realtime — worth deciding before
+Module 04 (Authentication) and Module 56 (File Storage) whether to use
+those instead of building independent implementations, since it changes
+what those modules actually build. Not decided as of Module 01.
 
 Put the value in **`.env`**, not `.env.local` — the Prisma CLI's dotenv
 loader (used by `prisma.config.ts`) only reads `.env` by default, while

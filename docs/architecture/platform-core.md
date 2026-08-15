@@ -103,9 +103,8 @@ Interfaces and abstractions that those modules will implement against
 
 Prisma's infrastructure (client, schema, migration/seed scripts, error
 translation, health check) is fully built and typechecks/builds without
-a live database. But nobody can spin up PostgreSQL on your behalf without
-credentials — Module 01 was built in an environment with no Docker and
-no local Postgres installed. To make `/api/health/db` report `healthy`
-and start running real migrations, set `DATABASE_URL` (see
-`.env.example` and `database.md`). The easiest path is a free database at
-[neon.tech](https://neon.tech) — no local install required.
+a live database. But nobody can spin up a database on your behalf without
+credentials. To make `/api/health/db` report `healthy` and start running
+real migrations, set `DATABASE_URL` from your Supabase project's
+connection string (see `.env.example` and `database.md` for the direct-
+vs-pooled-connection distinction that matters there).
