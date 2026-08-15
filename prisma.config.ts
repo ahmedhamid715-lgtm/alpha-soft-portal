@@ -22,7 +22,17 @@ export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
-    seed: "tsx prisma/seed.ts",
+    // `--conditions=react-server`: `prisma/seed.ts` imports the shared `db`
+    // singleton (src/lib/db/client.ts), which — like most of lib/db and
+    // config/environment.ts — imports the `server-only` marker package.
+    // That package's `exports` map only resolves to a no-op under the
+    // `react-server` condition; Next.js's bundler sets that condition
+    // automatically inside the app, but a bare `tsx prisma/seed.ts` (run
+    // directly by this CLI hook, or via `npm run db:seed`) does not, and
+    // `server-only` throws immediately on import instead. Discovered by
+    // actually running the seed script against a real database, not by
+    // inspection — see docs/architecture/database.md "Seeding."
+    seed: "tsx --conditions=react-server prisma/seed.ts",
   },
   datasource: {
     url: DATABASE_URL,

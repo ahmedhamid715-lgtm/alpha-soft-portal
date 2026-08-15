@@ -1,9 +1,13 @@
 # Database Architecture (infrastructure)
 
-Module 01 wires Prisma + PostgreSQL end-to-end but adds **no business
-entities** — `prisma/schema.prisma` has only the generator and datasource
-blocks. Real models (`User`, `Organization`, ...) are Module 03's job,
-following the conventions below.
+Module 01 wired Prisma + PostgreSQL end-to-end with no business entities.
+**Module 03 adds the first real models** — `Organization`, `User`,
+`OrganizationMembership` — following the conventions below. See
+`database-schema.md` for the full schema reference and ERD,
+`data-modeling.md` for the naming/ID/timestamp/deletion/JSON/indexing
+conventions those models follow, `migrations.md` for how schema changes
+ship, and `tenancy-foundation.md` for the multi-tenancy model this
+establishes the foundation for.
 
 ## Prisma 7's connection model (this will surprise anyone who's used Prisma 5/6)
 
@@ -58,7 +62,12 @@ singleton `db` from `@/lib/db`, never construct your own `PrismaClient`
 `globalThis`) and guarded so importing it never crashes module evaluation
 even without a configured database.
 
-## Conventions every future model follows
+## Conventions every model follows
+
+Applied by `Organization`/`User`/`OrganizationMembership` today; every
+future model follows the same rules. Full reasoning (naming, JSON
+strategy, indexing, constraints, cascade behavior) is in
+`data-modeling.md` — this is the quick-reference version.
 
 - **IDs: UUIDv7**, generated in application code via `generateId()`
   (`src/lib/utils/id.ts`), not database-generated auto-increment or plain
@@ -111,10 +120,29 @@ If that division ever needs to change, update this section first.
 ## Seeding
 
 `prisma/seed.ts` is development-only (refuses to run when
-`NODE_ENV=production`) and currently seeds nothing, because there's no
-schema yet to seed. It deliberately does **not** create Admin/Support/
-Customer accounts — that's Module 04's job, once password hashing and a
-real `User` model exist. Module 03 is where this file gets real content.
+`NODE_ENV=production`) and creates one development organization with one
+owner membership, via `createOrganizationWithOwner`
+(`server/services/organization-service.ts`) — the same service a real
+"create organization" flow will call — rather than raw `db.organization.create`
+calls, so the seed script doubles as a smoke test that the
+service/repository/transaction layer works end to end. It deliberately
+does **not** create Admin/Support/Customer accounts with real credentials
+— that's Module 04's job, once password hashing exists; the seeded user
+has no password at all.
+
+**Run it with `npm run db:seed`, not `tsx prisma/seed.ts` directly.**
+The seed script imports the shared `db` singleton, which (like most of
+`lib/db` and `config/environment.ts`) imports the `server-only` marker
+package. That package's `exports` map only resolves to a no-op under the
+`react-server` condition — Next.js's bundler sets that condition
+automatically inside the app, but a bare `tsx` invocation does not, and
+`server-only` throws immediately on import instead
+(`This module cannot be imported from a Client Component module`). Both
+`package.json`'s `db:seed` script and `prisma.config.ts`'s
+`migrations.seed` (which `prisma migrate reset` calls automatically) run
+`tsx --conditions=react-server prisma/seed.ts` for this reason — found by
+actually running the seed script against a real database during Module
+03, not by inspection.
 
 ## Database host: Supabase
 
@@ -152,3 +180,36 @@ Put the value in **`.env`**, not `.env.local` — the Prisma CLI's dotenv
 loader (used by `prisma.config.ts`) only reads `.env` by default, while
 Next.js reads both, so `.env` is the one file both tools agree on. Both
 are git-ignored (see `.gitignore`).
+
+## Testing
+
+Three separate tiers, per spec section 28 — never blur them together:
+
+| Tier | Location | Needs a real database? | What it verifies |
+|---|---|---|---|
+| Unit | `tests/unit/**` | No | Pure logic — validation, formatting, error mapping, component behavior |
+| Database integration | `tests/integration/db/**` | Yes | Real Prisma queries against real Postgres — constraints, cascades, transactions |
+| E2E | none yet | Yes (+ a running app) | Full user flows through the actual UI — first candidate is Module 60 |
+
+Database integration tests run through the same `npm test` command as
+everything else, but each file starts with
+`describe.skipIf(!isDatabaseConfigured)` — with no `DATABASE_URL`, they
+report as **skipped**, not passed and not failed, so a green `npm test`
+never implies "the database layer was verified" when it wasn't. Run
+`npm run test:db` to target just this tier once a database is available.
+
+**Getting a real Postgres to test against, without touching Supabase:**
+this module's tests were verified against a local Homebrew Postgres
+(`brew install postgresql@17`, `createdb alpha_os_dev`), not the project's
+actual Supabase instance — a throwaway local database is the right target
+for running migrations/tests repeatedly during development; save the
+Supabase connection for staging/production and for once you actually want
+the app itself to run against real hosted data. Point any command at it
+with `DATABASE_URL="postgresql://$(whoami)@localhost:5432/alpha_os_dev" npm run <script>`.
+
+**`prisma migrate reset` requires human confirmation.** The Prisma CLI
+detects when it's being invoked by an AI agent and refuses to run
+`migrate reset` (and other irreversible commands) without the operator
+explicitly consenting first — it drops and recreates the entire target
+database. Never work around this; if a clean slate is genuinely needed,
+ask first the same way the CLI's own guard does.

@@ -1,10 +1,26 @@
 // Alpha OS — Prisma schema
 //
-// Module 01 (Platform Core) establishes the generator/datasource wiring
-// only — no business entities live here yet. Module 03 (Database
-// Architecture) introduces the first real models (User, Organization, ...)
-// following the conventions documented in docs/architecture/database.md
-// (UUIDv7 IDs, UTC timestamps, soft-delete policy per entity category).
+// Module 01 (Platform Core) established the generator/datasource wiring
+// only. Module 03 (Database Architecture) introduces the first real
+// models — the "Layer A: Platform" foundation every future business
+// module (CRM, Projects, Support, Billing, ...) builds on:
+// Organization, User, OrganizationMembership.
+//
+// Conventions applied throughout (see docs/architecture/database.md and
+// docs/architecture/data-modeling.md for the full reasoning, not repeated
+// per-field here):
+//   - IDs: UUIDv7, generated in application code via generateId()
+//     (src/lib/utils/id.ts), stored as native `Uuid`. Never
+//     `@default(uuid())` — see database.md for why.
+//   - Timestamps: UTC, `@db.Timestamptz(3)`, never bare `timestamp`.
+//   - Naming: Prisma-side stays idiomatic camelCase/PascalCase; the actual
+//     Postgres table/column names are snake_case via `@@map`/`@map` —
+//     see data-modeling.md "Naming conventions."
+//   - Deletion: per-entity policy, not applied uniformly — see
+//     data-modeling.md "Deletion strategy." Organization is Archivable
+//     (never hard/soft-deleted). User is deactivated via `status`, not
+//     deleted. OrganizationMembership is hard-deleted (a join row with no
+//     independent existence or historical value of its own).
 //
 // Connection details are NOT set here — Prisma 7 reads them from
 // prisma.config.ts at the project root, not from `env("DATABASE_URL")` in
@@ -17,4 +33,142 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+// =============================================================================
+// Organization
+// =============================================================================
+
+/// A tenant. Every future business entity (CRM records, projects, tickets,
+/// invoices, ...) is scoped to an Organization, directly or transitively.
+/// See docs/architecture/tenancy-foundation.md for the full tenancy model
+/// this establishes the foundation for (Module 06 implements the rest).
+model Organization {
+  id String @id @db.Uuid
+
+  /// Legal/business name — may differ from `displayName` (a DBA, a shortened brand name).
+  name        String
+  displayName String @map("display_name")
+  /// URL-safe, unique, immutable-in-practice identifier (subdomains, API paths). Lowercase, hyphenated.
+  slug        String @unique
+
+  status OrganizationStatus @default(ACTIVE)
+
+  /// IANA timezone name. Falls back to `config/app.ts`'s `appConfig.defaults.timezone` until Module 06 adds a settings UI.
+  timezone String @default("America/New_York")
+  /// BCP 47 locale tag.
+  locale   String @default("en-US")
+  /// ISO 4217 currency code — see src/lib/utils/money.ts for how amounts are stored/converted.
+  currency String @default("USD")
+
+  /// Deliberately flexible bag for settings that don't yet have (or may never need) a dedicated column — see data-modeling.md "JSON/JSONB strategy" for what belongs here vs. a real column.
+  metadata Json?
+
+  /// Archive lifecycle only (see data-modeling.md) — an Organization is never hard- or soft-deleted, only archived.
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  memberships OrganizationMembership[]
+
+  @@index([status])
+  @@map("organizations")
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+
+  @@map("organization_status")
+}
+
+// =============================================================================
+// User
+// =============================================================================
+
+/// A person's identity in the system. Deliberately minimal — this is the
+/// row Module 04 (Authentication) attaches credentials/sessions to, not
+/// the auth system itself. No password, session, or provider-account
+/// fields here; adding those is Module 04's job once the auth mechanism
+/// (Auth.js vs. custom) is chosen, likely as fields added to this model
+/// or a related Account/Session model alongside it (Auth.js's own
+/// convention) — either extension is compatible with what's here.
+model User {
+  id String @id @db.Uuid
+
+  /// Stored lowercase — normalize at the repository boundary, not via a Postgres `citext` extension (see data-modeling.md).
+  email String @unique
+  name  String
+
+  status UserStatus @default(INVITED)
+
+  emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamptz(3)
+  /// Set by Module 04 on successful sign-in. Not itself an audit trail — see docs/architecture/tenancy-foundation.md "Audit foundation" for where real login history belongs.
+  lastLoginAt     DateTime? @map("last_login_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  memberships OrganizationMembership[]
+
+  @@index([status])
+  @@map("users")
+}
+
+enum UserStatus {
+  /// Account created (e.g. via an org invite) but no successful sign-in yet.
+  INVITED
+  ACTIVE
+  SUSPENDED
+  /// Deliberately not deleted — see data-modeling.md "Deletion strategy."
+  DEACTIVATED
+
+  @@map("user_status")
+}
+
+// =============================================================================
+// OrganizationMembership
+// =============================================================================
+
+/// The join between User and Organization — see docs/architecture/tenancy-foundation.md
+/// for the full reasoning behind this shape (not `User.organizationId`,
+/// which can't represent a user belonging to more than one organization).
+model OrganizationMembership {
+  id String @id @db.Uuid
+
+  organizationId String @map("organization_id") @db.Uuid
+  userId         String @map("user_id") @db.Uuid
+
+  /// A role KEY (e.g. "owner", "admin", "member"), not a Postgres enum and not yet a foreign key to a Role table. See tenancy-foundation.md "Role/permission foundation" for why — this is the deliberate, documented extension point Module 05 (RBAC) builds on, not a placeholder that was forgotten.
+  role   String
+  status MembershipStatus @default(ACTIVE)
+
+  invitedAt DateTime? @map("invited_at") @db.Timestamptz(3)
+  joinedAt  DateTime? @map("joined_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// A user has at most one membership per organization — their role changes in place, they don't get a second row.
+  @@unique([organizationId, userId])
+  /// "Which organizations does this user belong to" — the membership-switcher / org-picker query.
+  @@index([userId])
+  /// "Who are this organization's active members" — the member-list query.
+  @@index([organizationId, status])
+  @@map("organization_memberships")
+}
+
+enum MembershipStatus {
+  /// Invited but hasn't accepted yet.
+  INVITED
+  ACTIVE
+  /// Access revoked without deleting the historical membership record.
+  SUSPENDED
+
+  @@map("membership_status")
 }

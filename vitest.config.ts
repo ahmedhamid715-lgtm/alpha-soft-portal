@@ -20,7 +20,14 @@ export default defineConfig({
     // `// @vitest-environment jsdom` docblock — the global default stays
     // "node" so the existing plain-logic suite (config/lib/security) keeps
     // its fast, dependency-free environment unchanged.
-    include: ["tests/unit/**/*.test.ts", "tests/unit/**/*.test.tsx"],
+    // `tests/integration/db/**` are real-Postgres tests, kept in a
+    // separate top-level directory from `tests/unit/` per spec section 28
+    // ("separate unit tests from database integration tests from E2E
+    // tests") — they still run through this same config (each file
+    // self-skips via `describe.skipIf(!isDatabaseConfigured)` rather than
+    // needing a whole second Vitest config) so `npm test` stays the one
+    // command that runs everything this environment can actually run.
+    include: ["tests/unit/**/*.test.ts", "tests/unit/**/*.test.tsx", "tests/integration/**/*.test.ts"],
     setupFiles: ["tests/setup/jsdom-matchers.ts"],
   },
   resolve: {

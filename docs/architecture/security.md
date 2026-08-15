@@ -73,6 +73,19 @@ No cookie-setting code exists yet — that starts with Module 04
 and `sameSite: "lax"` (at minimum) on any session cookie. Documenting the
 intended default here so Module 04 doesn't have to relitigate it.
 
+## Data sensitivity (Module 03's models)
+
+`User.email` and `User.name` are PII — logged only as IDs
+(`logger.info("...", { organizationId, userId: ... })`, never
+`{ email }`), never included in an error's `toSafeJSON()` output, and
+excluded from `translatePrismaError()`'s constraint-name mapping (a
+unique-email violation returns "A record with this value already
+exists," not the email itself — see `errors.ts`). No field in the current
+schema is a secret (no passwords, no API keys, no financial data yet) —
+when Module 04 adds credential storage, it must never store a plaintext
+password or session token; hash/sign per that module's chosen auth
+library's own guidance, not a hand-rolled scheme.
+
 ## Database error safety
 
 `translatePrismaError()` (see `database.md`) ensures a database failure
