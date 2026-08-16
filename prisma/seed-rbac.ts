@@ -118,51 +118,54 @@ async function ensureMember(
   await membershipRepository.updateRoleAssignment(membership.id, { role: role.key, roleId: role.id });
 }
 
-export async function seedAuthorizationFixtures(): Promise<void> {
-  const existingPlatform = await organizationRepository.findPlatformOrganization();
-  if (existingPlatform) {
-    console.log("[seed-rbac] Platform organization already exists — skipping fixture seeding.");
-    return;
-  }
+/** Find-or-create by slug — granular idempotency (spec section 30) so adding one new fixture later doesn't require re-running (or re-guarding) the whole function. */
+async function ensureOrganization(input: { slug: string; name: string; displayName: string; isPlatform?: boolean }): Promise<string> {
+  const existing = await organizationRepository.findBySlug(input.slug);
+  if (existing) return existing.id;
 
-  // --- Platform organization + one account per PLATFORM-scope role ---
-  const platformOrgId = generateId();
+  const id = generateId();
   await db.organization.create({
-    data: {
-      id: platformOrgId,
-      name: "Alpha Page Rankers — Platform",
-      displayName: "Alpha Page Rankers",
-      slug: "alpha-os-platform",
-      isPlatform: true,
-    },
+    data: { id, name: input.name, displayName: input.displayName, slug: input.slug, isPlatform: input.isPlatform ?? false },
+  });
+  return id;
+}
+
+export async function seedAuthorizationFixtures(): Promise<void> {
+  // --- Platform organization + one account per PLATFORM-scope role ---
+  const platformOrgId = await ensureOrganization({
+    slug: "alpha-os-platform",
+    name: "Alpha Page Rankers — Platform",
+    displayName: "Alpha Page Rankers",
+    isPlatform: true,
   });
   await ensureMember(platformOrgId, "platform-owner@alpha-os.test", "Platform Owner (Dev)", "platform_owner");
   await ensureMember(platformOrgId, "platform-admin@alpha-os.test", "Platform Admin (Dev)", "platform_admin");
   await ensureMember(platformOrgId, "support-admin@alpha-os.test", "Support Admin (Dev)", "support_admin");
   await ensureMember(platformOrgId, "support-agent@alpha-os.test", "Support Agent (Dev)", "support_agent");
-  console.log(`[seed-rbac] Platform organization seeded (${platformOrgId}) with 4 accounts.`);
+  console.log(`[seed-rbac] Platform organization seeded/verified (${platformOrgId}) with 4 accounts.`);
 
   // --- Organization A ("Acme Corp") — one account per ORGANIZATION-scope role ---
-  const orgAId = generateId();
-  await db.organization.create({
-    data: { id: orgAId, name: "Acme Corp", displayName: "Acme Corp", slug: "acme-corp-dev", isPlatform: false },
-  });
+  const orgAId = await ensureOrganization({ slug: "acme-corp-dev", name: "Acme Corp", displayName: "Acme Corp" });
   await ensureMember(orgAId, "owner-a@alpha-os.test", "Owner A (Dev)", "owner");
   await ensureMember(orgAId, "admin-a@alpha-os.test", "Admin A (Dev)", "admin");
   await ensureMember(orgAId, "manager-a@alpha-os.test", "Manager A (Dev)", "manager");
   await ensureMember(orgAId, "member-a@alpha-os.test", "Member A (Dev)", "member");
   await ensureMember(orgAId, "viewer-a@alpha-os.test", "Viewer A (Dev)", "viewer");
   await ensureMember(orgAId, "customer-a@alpha-os.test", "Customer A (Dev)", "customer");
-  console.log(`[seed-rbac] Organization A "Acme Corp" seeded (${orgAId}) with 6 accounts.`);
+  console.log(`[seed-rbac] Organization A "Acme Corp" seeded/verified (${orgAId}) with 6 accounts.`);
 
   // --- Organization B ("Beta Industries") — a second, unrelated tenant for cross-tenant testing (spec section 36) ---
-  const orgBId = generateId();
-  await db.organization.create({
-    data: { id: orgBId, name: "Beta Industries", displayName: "Beta Industries", slug: "beta-industries-dev", isPlatform: false },
-  });
+  const orgBId = await ensureOrganization({ slug: "beta-industries-dev", name: "Beta Industries", displayName: "Beta Industries" });
   await ensureMember(orgBId, "owner-b@alpha-os.test", "Owner B (Dev)", "owner");
   await ensureMember(orgBId, "member-b@alpha-os.test", "Member B (Dev)", "member");
-  console.log(`[seed-rbac] Organization B "Beta Industries" seeded (${orgBId}) with 2 accounts.`);
+  console.log(`[seed-rbac] Organization B "Beta Industries" seeded/verified (${orgBId}) with 2 accounts.`);
+
+  // --- Multi-organization user (spec section 23) — one identity, two
+  // memberships, two different roles. Proves permissions never leak
+  // between them: ADMIN in Org A, VIEWER in Org B.
+  await ensureMember(orgAId, "multiorg@alpha-os.test", "Multi-Org User (Dev)", "admin");
+  await ensureMember(orgBId, "multiorg@alpha-os.test", "Multi-Org User (Dev)", "viewer");
+  console.log("[seed-rbac] Multi-org account seeded: multiorg@alpha-os.test — admin in Acme Corp, viewer in Beta Industries.");
 
   console.log("[seed-rbac] All accounts use password: alpha-os-dev-password");
 }

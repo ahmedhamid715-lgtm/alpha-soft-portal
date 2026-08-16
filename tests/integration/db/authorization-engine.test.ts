@@ -86,6 +86,45 @@ describe.skipIf(!isDatabaseConfigured)("Authorization engine (database integrati
     expect(context.isPlatformStaff).toBe(false);
   });
 
+  it("a SUSPENDED organization resolves zero permissions for its members, even with an ACTIVE membership and a valid role — regression test for a real bug this module's own E2E suite found", async () => {
+    const orgId = await makeOrgWithOwnerRole(false);
+    const userId = generateId();
+    await userRepository.create({ id: userId, email: `suspended-org-${userId}@example.com`, name: "Suspended Org Test" });
+    userIds.push(userId);
+
+    const ownerRole = await roleRepository.findSystemRoleByKey("owner");
+    const membership = await membershipRepository.create({ id: generateId(), organizationId: orgId, userId, role: "owner" });
+    await membershipRepository.updateRoleAssignment(membership.id, { role: "owner", roleId: ownerRole!.id });
+    await db.organization.update({ where: { id: orgId }, data: { status: "SUSPENDED" } });
+
+    mockUser = { id: userId };
+    mockMembership = { organizationId: orgId, userId, roleId: ownerRole!.id, status: "ACTIVE" };
+
+    const { resolveOrganizationContext } = await import("@/lib/authorization/context");
+    const context = await resolveOrganizationContext(orgId);
+    expect(context.permissions.size).toBe(0);
+    expect(context.membership).toBeNull();
+  });
+
+  it("an ARCHIVED organization resolves zero permissions for its members", async () => {
+    const orgId = await makeOrgWithOwnerRole(false);
+    const userId = generateId();
+    await userRepository.create({ id: userId, email: `archived-org-${userId}@example.com`, name: "Archived Org Test" });
+    userIds.push(userId);
+
+    const memberRole = await roleRepository.findSystemRoleByKey("member");
+    const membership = await membershipRepository.create({ id: generateId(), organizationId: orgId, userId, role: "member" });
+    await membershipRepository.updateRoleAssignment(membership.id, { role: "member", roleId: memberRole!.id });
+    await db.organization.update({ where: { id: orgId }, data: { status: "ARCHIVED", archivedAt: new Date() } });
+
+    mockUser = { id: userId };
+    mockMembership = { organizationId: orgId, userId, roleId: memberRole!.id, status: "ACTIVE" };
+
+    const { resolveOrganizationContext } = await import("@/lib/authorization/context");
+    const context = await resolveOrganizationContext(orgId);
+    expect(context.permissions.size).toBe(0);
+  });
+
   it("a SUSPENDED membership resolves zero permissions even with a valid roleId", async () => {
     const orgId = await makeOrgWithOwnerRole(false);
     const userId = generateId();

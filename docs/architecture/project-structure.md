@@ -9,7 +9,8 @@ src/
 │   ├── (protected)/        #   Authenticated placeholder pages: admin, support, dashboard (Module 04) —
 │   │                            NOT real Admin/Support/Customer UI, see authentication.md "Protected routes".
 │   │                            admin/roles/ (Module 05) is the one real, permission-gated page here —
-│   │                            see authorization.md "UI"
+│   │                            see authorization.md "UI". organizations/ (Module 06) is the
+│   │                            other — organization listing/switching, see multi-tenancy.md
 │   ├── layout.tsx          #   Root layout — fonts, TooltipProvider, Toaster
 │   └── globals.css         #   Design tokens (primitive → semantic → component)
 │
@@ -38,8 +39,20 @@ src/
 │   ├── authorization/            # Permission/role catalogs, context resolution, the can/
 │   │                                requirePermission/authorize engine, resource policies
 │   │                                (Module 05) — see authorization.md and rbac.md
+│   ├── tenancy/                    # withTenantContext() (RLS transaction/context setter),
+│   │                                  the restricted-role Prisma client, organization
+│   │                                  selection/switching (Module 06) — see multi-tenancy.md
+│   │                                  and rls.md. Import `withTenantContext` from
+│   │                                  `lib/tenancy/context` directly (not the `lib/tenancy`
+│   │                                  barrel) from anywhere that must stay runnable outside
+│   │                                  Next's bundler (tests) — the barrel also re-exports
+│   │                                  `organization-selection.ts`, which needs `next/headers`.
 │   ├── mail/                    # Mail provider abstraction (Module 04) — see authentication.md "Email"
-│   ├── db/                   # Prisma singleton, error translation, transactions, health check
+│   ├── db/                   # Prisma singleton (the migration/owner role), error translation,
+│   │                              transactions, health check. Module 06 added a SECOND,
+│   │                              separate Prisma client (`lib/tenancy/client.ts`, the
+│   │                              restricted role RLS applies to) — not here, deliberately;
+│   │                              see rls.md "The restricted role."
 │   ├── errors/                # AppError taxonomy + API response contract — see errors.md
 │   ├── logging/                # Structured logger — see logging.md
 │   ├── validation/              # Zod boundary-validation helpers — see conventions.md

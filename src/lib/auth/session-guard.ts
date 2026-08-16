@@ -83,15 +83,27 @@ export async function requireAuthenticatedPage(): Promise<CurrentIdentity> {
  * (a cookie, a URL segment, a picker UI); this is the minimal, honest
  * foundation that doesn't paint that module into a corner.
  */
-export async function getCurrentMembership(organizationId?: string): Promise<OrganizationMembership | null> {
+/**
+ * `tx` (added by Module 05/06, optional, backward-compatible — every
+ * existing caller that omits it behaves exactly as before) lets a caller
+ * that has already opened an RLS-scoped transaction
+ * (`lib/tenancy/context.ts`'s `withTenantContext()`) run this lookup
+ * inside it, instead of a second, separate query against the plain `db`
+ * singleton. See `lib/authorization/context.ts` for the only current
+ * caller that does this.
+ */
+export async function getCurrentMembership(
+  organizationId?: string,
+  tx?: Parameters<typeof membershipRepository.findByOrganizationAndUser>[2],
+): Promise<OrganizationMembership | null> {
   const identity = await getCurrentUser();
   if (!identity) return null;
 
   if (organizationId) {
-    return membershipRepository.findByOrganizationAndUser(organizationId, identity.user.id);
+    return membershipRepository.findByOrganizationAndUser(organizationId, identity.user.id, tx);
   }
 
-  const memberships = await membershipRepository.listForUser(identity.user.id);
+  const memberships = await membershipRepository.listForUser(identity.user.id, tx);
   return memberships.length === 1 ? memberships[0] : null;
 }
 

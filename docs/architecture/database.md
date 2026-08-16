@@ -144,6 +144,21 @@ automatically inside the app, but a bare `tsx` invocation does not, and
 actually running the seed script against a real database during Module
 03, not by inspection.
 
+## Two connections, two roles (Module 06)
+
+As of Module 06, this app opens Postgres connections as **two distinct
+roles**, not one:
+
+- `DATABASE_URL` — the migration/owner role (`db`, `src/lib/db/client.ts`).
+  Everything Modules 01–05 built keeps using this, unchanged.
+- `APP_DATABASE_URL` — a separate, restricted, non-superuser role
+  (`tenantDb`, `src/lib/tenancy/client.ts`) that Row-Level Security
+  actually applies to. See `docs/architecture/rls.md` "The restricted
+  role" for why this must be a genuinely different role (a Postgres
+  superuser — which `DATABASE_URL`'s role typically is, locally and on
+  Supabase's default connection — bypasses RLS unconditionally,
+  `FORCE ROW LEVEL SECURITY` or not) and the exact provisioning commands.
+
 ## Database host: Supabase
 
 Alpha OS's Postgres runs on **[Supabase](https://supabase.com)** (decided

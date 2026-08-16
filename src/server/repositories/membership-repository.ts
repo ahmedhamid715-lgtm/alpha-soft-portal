@@ -72,12 +72,13 @@ export const membershipRepository = {
     );
   },
 
-  /** Every organization a user belongs to — the org-switcher query. Small result set (a person belongs to a handful of orgs at most), so unpaginated is fine. */
+  /** Every organization a user belongs to — the org-switcher query. Small result set (a person belongs to a handful of orgs at most), so unpaginated is fine. `tx` (Module 06) — see `findByOrganizationAndUser`'s comment. */
   async listForUser(
     userId: string,
+    tx: TransactionClient | typeof db = db,
   ): Promise<Prisma.OrganizationMembershipGetPayload<{ include: { organization: true } }>[]> {
     return withDbErrorTranslation(() =>
-      db.organizationMembership.findMany({
+      tx.organizationMembership.findMany({
         where: { userId },
         include: { organization: true },
         orderBy: { createdAt: "asc" },
@@ -89,9 +90,10 @@ export const membershipRepository = {
   async listForOrganization(
     organizationId: string,
     params: OffsetPaginationParams,
+    tx: TransactionClient | typeof db = db,
   ): Promise<OffsetPaginatedResult<Prisma.OrganizationMembershipGetPayload<{ include: { user: true } }>>> {
     const items = await withDbErrorTranslation(() =>
-      db.organizationMembership.findMany({
+      tx.organizationMembership.findMany({
         where: { organizationId },
         include: { user: true },
         orderBy: { createdAt: "asc" },
@@ -102,8 +104,8 @@ export const membershipRepository = {
     return toOffsetPaginatedResult(items, params);
   },
 
-  async updateRole(id: string, role: string): Promise<OrganizationMembership> {
-    return withDbErrorTranslation(() => db.organizationMembership.update({ where: { id }, data: { role } }));
+  async updateRole(id: string, role: string, tx: TransactionClient | typeof db = db): Promise<OrganizationMembership> {
+    return withDbErrorTranslation(() => tx.organizationMembership.update({ where: { id }, data: { role } }));
   },
 
   /**
@@ -116,9 +118,10 @@ export const membershipRepository = {
   async updateRoleAssignment(
     id: string,
     input: { role: string; roleId: string },
+    tx: TransactionClient | typeof db = db,
   ): Promise<OrganizationMembership> {
     return withDbErrorTranslation(() =>
-      db.organizationMembership.update({ where: { id }, data: { role: input.role, roleId: input.roleId } }),
+      tx.organizationMembership.update({ where: { id }, data: { role: input.role, roleId: input.roleId } }),
     );
   },
 
@@ -127,17 +130,18 @@ export const membershipRepository = {
   },
 
   /** How many ACTIVE memberships in this organization currently hold `role` — the last-owner-protection check (spec section 27). */
-  async countActiveByRole(organizationId: string, role: string): Promise<number> {
+  async countActiveByRole(organizationId: string, role: string, tx: TransactionClient | typeof db = db): Promise<number> {
     return withDbErrorTranslation(() =>
-      db.organizationMembership.count({ where: { organizationId, role, status: "ACTIVE" } }),
+      tx.organizationMembership.count({ where: { organizationId, role, status: "ACTIVE" } }),
     );
   },
 
   async updateStatus(
     id: string,
     status: "ACTIVE" | "SUSPENDED",
+    tx: TransactionClient | typeof db = db,
   ): Promise<OrganizationMembership> {
-    return withDbErrorTranslation(() => db.organizationMembership.update({ where: { id }, data: { status } }));
+    return withDbErrorTranslation(() => tx.organizationMembership.update({ where: { id }, data: { status } }));
   },
 
   /**
@@ -147,7 +151,7 @@ export const membershipRepository = {
    * from Org Z on this date") is an audit concern, not a reason to keep
    * the membership row itself around in a deleted state.
    */
-  async remove(id: string): Promise<void> {
-    await withDbErrorTranslation(() => db.organizationMembership.delete({ where: { id } }));
+  async remove(id: string, tx: TransactionClient | typeof db = db): Promise<void> {
+    await withDbErrorTranslation(() => tx.organizationMembership.delete({ where: { id } }));
   },
 };

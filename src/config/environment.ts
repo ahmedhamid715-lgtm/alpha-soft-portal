@@ -30,6 +30,13 @@ const serverEnvSchema = z.object({
   // migrations concept — driver adapters handle migrations over the same
   // connection automatically, so only one URL is needed.
   DATABASE_URL: z.string().url().optional(),
+  // --- Multi-tenancy / RLS (Module 06) ---
+  // A separate, restricted, non-superuser Postgres role RLS actually
+  // applies to — see docs/architecture/rls.md "The restricted role."
+  // Falls back to DATABASE_URL (with a logged warning) if unset, so a
+  // fresh checkout that hasn't provisioned the role yet still runs —
+  // just without real RLS enforcement.
+  APP_DATABASE_URL: z.string().url().optional(),
 
   // --- Authentication (Module 04) ---
   // Secret used to sign session tokens. Required once Module 04 lands;

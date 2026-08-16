@@ -2,7 +2,6 @@ import "server-only";
 import { z } from "zod";
 import type { Role } from "@/generated/prisma/client";
 import { generateId } from "@/lib/utils/id";
-import { withTransaction } from "@/lib/db/transaction";
 import { parseOrThrow } from "@/lib/validation/parse";
 import { ConflictError, ValidationError, NotFoundError } from "@/lib/errors/app-error";
 import { logger } from "@/lib/logging";
@@ -13,6 +12,24 @@ import { membershipRepository } from "@/server/repositories/membership-repositor
 import { organizationRepository } from "@/server/repositories/organization-repository";
 import { requirePermission } from "@/lib/authorization/authorize";
 import { isPermissionKey, type PermissionKey } from "@/lib/authorization/permissions";
+import { withTenantContext } from "@/lib/tenancy/context";
+import type { AuthorizationContext } from "@/lib/authorization/context";
+
+/**
+ * Module 06 (Multi-Tenancy/RLS) — every mutation below runs inside
+ * `withTenantContext()`, using the `AuthorizationContext` that
+ * `requirePermission()` already independently verified (never a
+ * client-supplied `organizationId`). This is what makes the actual
+ * writes to `Role`/`RolePermission`/`OrganizationMembership.roleId`
+ * RLS-protected, not just the read that decided whether to allow them —
+ * see `docs/architecture/rls.md` "Application-level isolation" for why
+ * wrapping the mutation (not just re-deriving a second, independent
+ * organization value) is what makes this a real second line of defense
+ * rather than a restatement of the same trust decision.
+ */
+function tenantInputFor(context: AuthorizationContext) {
+  return { userId: context.user!.id, organizationId: context.organizationId, isPlatformStaff: context.isPlatformStaff };
+}
 
 /**
  * Role management business logic (spec section 23) — every mutating
@@ -54,7 +71,7 @@ const createCustomRoleSchema = z.object({
  */
 export async function createCustomRole(rawInput: unknown): Promise<Role> {
   const input = parseOrThrow(createCustomRoleSchema, rawInput);
-  await requirePermission("roles.create", input.organizationId);
+  const context = await requirePermission("roles.create", input.organizationId);
 
   const existing = await roleRepository.findByOrganizationAndKey(input.organizationId, input.key);
   if (existing) {
@@ -65,7 +82,7 @@ export async function createCustomRole(rawInput: unknown): Promise<Role> {
 
   const permissionKeys = validatePermissionKeys(input.permissions);
 
-  const role = await withTransaction(async (tx) => {
+  const role = await withTenantContext(tenantInputFor(context), async (tx) => {
     const created = await roleRepository.create(
       {
         id: generateId(),
@@ -116,7 +133,7 @@ const updateRoleSchema = z.object({
  */
 export async function updateRole(rawInput: unknown): Promise<Role> {
   const input = parseOrThrow(updateRoleSchema, rawInput);
-  await requirePermission("roles.update", input.organizationId);
+  const context = await requirePermission("roles.update", input.organizationId);
 
   const role = await roleRepository.findById(input.roleId);
   if (!role || role.organizationId !== input.organizationId) {
@@ -126,7 +143,7 @@ export async function updateRole(rawInput: unknown): Promise<Role> {
 
   const permissionKeys = input.permissions ? validatePermissionKeys(input.permissions) : null;
 
-  const updated = await withTransaction(async (tx) => {
+  const updated = await withTenantContext(tenantInputFor(context), async (tx) => {
     const result = await roleRepository.update(
       role.id,
       { ...(input.name ? { name: input.name } : {}), ...(input.description !== undefined ? { description: input.description } : {}) },
@@ -164,7 +181,7 @@ const deleteRoleSchema = z.object({ roleId: z.string().uuid(), organizationId: z
  */
 export async function deleteRole(rawInput: unknown): Promise<void> {
   const input = parseOrThrow(deleteRoleSchema, rawInput);
-  await requirePermission("roles.delete", input.organizationId);
+  const context = await requirePermission("roles.delete", input.organizationId);
 
   const role = await roleRepository.findById(input.roleId);
   if (!role || role.organizationId !== input.organizationId) {
@@ -180,7 +197,7 @@ export async function deleteRole(rawInput: unknown): Promise<void> {
     );
   }
 
-  await roleRepository.remove(role.id);
+  await withTenantContext(tenantInputFor(context), async (tx) => roleRepository.remove(role.id, tx));
 
   logger.info("Role deleted.", { operation: "role.delete", organizationId: input.organizationId, roleId: role.id });
   await events.emit("RoleDeleted", { roleId: role.id, organizationId: input.organizationId, key: role.key });
@@ -224,7 +241,15 @@ export async function assignRole(rawInput: unknown): Promise<void> {
   const membership = await membershipRepository.findById(input.membershipId);
   if (!membership) throw new NotFoundError("Membership");
 
-  await requirePermission("members.update", membership.organizationId);
+  // This initial lookup runs on the plain, non-RLS-protected `db` — it
+  // only discovers WHICH organization to check permission against; it
+  // grants nothing by itself. `requirePermission()` below independently
+  // re-verifies (via a real, RLS-protected membership read) that the
+  // caller genuinely belongs to `membership.organizationId` — an
+  // attacker supplying a `membershipId` from a foreign organization
+  // fails here, at the real authorization gate, not at this discovery
+  // step. See docs/architecture/rls.md "Application-level isolation."
+  const context = await requirePermission("members.update", membership.organizationId);
 
   const role = await roleRepository.findById(input.roleId);
   if (!role) throw new NotFoundError("Role");
@@ -249,7 +274,9 @@ export async function assignRole(rawInput: unknown): Promise<void> {
     );
   }
 
-  await membershipRepository.updateRoleAssignment(membership.id, { role: role.key, roleId: role.id });
+  await withTenantContext(tenantInputFor(context), async (tx) =>
+    membershipRepository.updateRoleAssignment(membership.id, { role: role.key, roleId: role.id }, tx),
+  );
 
   logger.info("Role assigned.", {
     operation: "role.assign",

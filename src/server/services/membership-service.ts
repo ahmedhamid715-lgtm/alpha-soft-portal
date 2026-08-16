@@ -6,7 +6,14 @@ import { logger } from "@/lib/logging";
 import { events } from "@/lib/platform/events";
 import { membershipRepository } from "@/server/repositories/membership-repository";
 import { requirePermission } from "@/lib/authorization/authorize";
+import { withTenantContext } from "@/lib/tenancy/context";
+import type { AuthorizationContext } from "@/lib/authorization/context";
 import { wouldRemoveLastOwner } from "./role-service";
+
+/** Module 06 — see role-service.ts's identical helper for why the mutation runs inside the already-verified context, not a re-derived one. */
+function tenantInputFor(context: AuthorizationContext) {
+  return { userId: context.user!.id, organizationId: context.organizationId, isPlatformStaff: context.isPlatformStaff };
+}
 
 /**
  * Membership lifecycle mutations that need the same last-owner guard as
@@ -27,7 +34,7 @@ export async function removeMember(rawInput: unknown): Promise<void> {
   const membership = await membershipRepository.findById(input.membershipId);
   if (!membership) throw new NotFoundError("Membership");
 
-  await requirePermission("members.remove", membership.organizationId);
+  const context = await requirePermission("members.remove", membership.organizationId);
 
   if (await wouldRemoveLastOwner(membership.organizationId, membership.id, "__removed__")) {
     throw new ConflictError("This organization would have no owner left. Assign another owner first.", {
@@ -35,7 +42,7 @@ export async function removeMember(rawInput: unknown): Promise<void> {
     });
   }
 
-  await membershipRepository.remove(membership.id);
+  await withTenantContext(tenantInputFor(context), async (tx) => membershipRepository.remove(membership.id, tx));
 
   logger.info("Member removed.", {
     operation: "membership.remove",
@@ -53,7 +60,7 @@ export async function updateMemberStatus(rawInput: unknown): Promise<void> {
   const membership = await membershipRepository.findById(input.membershipId);
   if (!membership) throw new NotFoundError("Membership");
 
-  await requirePermission("members.update", membership.organizationId);
+  const context = await requirePermission("members.update", membership.organizationId);
 
   if (input.status === "SUSPENDED" && (await wouldRemoveLastOwner(membership.organizationId, membership.id, "__suspended__"))) {
     throw new ConflictError("This organization would have no active owner left. Assign another owner first.", {
@@ -61,7 +68,9 @@ export async function updateMemberStatus(rawInput: unknown): Promise<void> {
     });
   }
 
-  await membershipRepository.updateStatus(membership.id, input.status);
+  await withTenantContext(tenantInputFor(context), async (tx) =>
+    membershipRepository.updateStatus(membership.id, input.status, tx),
+  );
 
   logger.info("Member status changed.", {
     operation: "membership.updateStatus",

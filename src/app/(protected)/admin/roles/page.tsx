@@ -5,6 +5,7 @@ import { SectionHeader } from "@/components/layout/section-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { resolvePlatformContext, resolveOrganizationContext } from "@/lib/authorization/context";
+import { getSelectedOrganizationId } from "@/lib/tenancy";
 import { roleRepository } from "@/server/repositories/role-repository";
 import { membershipRepository } from "@/server/repositories/membership-repository";
 import { RoleAssignmentForm } from "./role-assignment-form";
@@ -32,12 +33,23 @@ export const metadata: Metadata = { title: "Roles & Permissions" };
  * auto-routing (`roles.read` is catalogued ORGANIZATION-primary; a
  * platform-only user has no organization membership for that resolver to
  * find at all).
+ *
+ * Module 06: the organization scope honors the caller's selected
+ * organization (`getSelectedOrganizationId()` —
+ * `/organizations`, spec section 8) when one is set, falling back to
+ * `resolveOrganizationContext()`'s own sole-membership resolution
+ * otherwise — this is what makes switching organizations actually
+ * change what this page shows for a multi-org user, not just a cosmetic
+ * picker. The selected id is re-validated independently by
+ * `resolveOrganizationContext()` itself (a real membership lookup) — a
+ * stale/forged cookie naming an organization the caller isn't a member
+ * of resolves to no context, exactly as if unset.
  */
 export default async function RolesPage() {
   const platformContext = await resolvePlatformContext();
   const orgContext = platformContext.permissions.has("roles.read")
     ? null
-    : await resolveOrganizationContext();
+    : await resolveOrganizationContext((await getSelectedOrganizationId()) ?? undefined);
 
   const context = platformContext.permissions.has("roles.read") ? platformContext : orgContext;
 

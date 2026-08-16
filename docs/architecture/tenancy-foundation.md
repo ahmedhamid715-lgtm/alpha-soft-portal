@@ -156,6 +156,17 @@ Foreign keys from `AuditEvent` to `Organization`/`User` must use
 thing it's auditing is deleted has failed at the one job it exists to
 do.
 
+## Row-level security — resolved by Module 06
+
+**Resolved**: enabled for real, on the tables that were actually
+tenant-owned by the time Module 06 landed (`OrganizationMembership`,
+`Role`, `RolePermission` — see `rls.md` for the full design, including
+why `Organization` and `User` deliberately still don't have it). The
+"not enabled, deliberately" reasoning above was correct for Module 03's
+own scope (no auth model existed yet to write policies against) — it's
+kept here as the historical record of why RLS waited this long, not
+because it's still true.
+
 ## System metadata / settings
 
 No generic key-value settings table exists. `Organization.metadata`

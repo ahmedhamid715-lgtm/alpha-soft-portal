@@ -25,6 +25,26 @@ system role's definition must never be mutable at runtime regardless of
 the caller's permission level (see `rbac.md` "System roles vs. custom
 roles").
 
+## Multi-tenancy & Row-Level Security (Module 06)
+
+Tenant isolation is enforced twice, independently: Module 05's
+application-layer authorization (the primary business-logic gate) and
+PostgreSQL Row-Level Security underneath it (the database-level backstop
+for when application code has a bug — a forgotten `WHERE` clause, a raw
+query from a future internal tool). See `multi-tenancy.md` and `rls.md`
+for the full design. The short version: `DATABASE_URL`'s role (a
+superuser locally and on Supabase's default connection) unconditionally
+bypasses RLS regardless of policy, so a **second, restricted,
+non-superuser role** (`APP_DATABASE_URL`) is what RLS actually protects
+against. Every tenant-scoped mutation goes through `withTenantContext()`
+(`lib/tenancy/context.ts`), which trusts only an already-verified
+`AuthorizationContext` from Module 05 — never a client-supplied
+organization id, and never a value RLS itself decided. A real
+vulnerability this module's own testing found and fixed: `Organization`
+lifecycle status (`SUSPENDED`/`ARCHIVED`) was never checked by
+`resolveOrganizationContext()`, only membership status — see
+`multi-tenancy.md`'s "Organization context" section.
+
 ## Server/client boundary enforcement
 
 `server-only` and `client-only` (tiny, zero-dependency packages) mark
