@@ -47,7 +47,15 @@
   --light-border: var(--brand-border-neutral);
   --light-text-primary: var(--brand-dark);
   --light-text-secondary: #4b4358;
-  --light-text-muted: #8a8394;
+  /* Was #8a8394 (Module 02) — only 3.64:1 against the light theme's
+     white card surface, failing WCAG AA's 4.5:1 for normal-size text
+     (muted-foreground is routinely used at text-sm, e.g. CardDescription
+     — not exempt as "large text"). Found running axe-core against a real
+     page in light mode during Module 04, not by inspection — Module 02's
+     own light-theme scans apparently never hit this exact text/surface
+     pairing. #77717f is the same hue, darkened until it clears 4.5:1
+     (4.72:1) with a real margin, not just barely passing. */
+  --light-text-muted: #77717f;
 
   /* --- 1. Primitives: dark theme surfaces beyond the base four --- */
   --dark-surface-2: #241530;
@@ -232,11 +240,17 @@
      `--primary-foreground` text on top, 6.7:1), but fails WCAG AA as the
      text color itself (needs 4.5:1). `--link` is the token for brand-purple
      INLINE TEXT — link-styled buttons, "click to upload" affordances, a
-     tinted badge's own label — and resolves to the lighter brand accent in
-     this theme (5.0:1 against the dark surface) instead of reusing
-     `--primary` unmodified. Never point a text color at `--primary` in a
-     dark surface; use `--link`. */
-  --link: var(--brand-accent);
+     tinted badge's own label. Not the raw `--brand-accent` (#bf43ff) either
+     — that clears 4.5:1 against the page background (#140921, 5.0:1) but
+     falls short against the lighter `--card` surface (#1c1e29, 4.31:1) that
+     most inline links actually render on (a card's "forgot password?" link,
+     for instance) — found by running axe-core against a real page during
+     Module 04, not by inspection. #c34eff is a ~4% lighten of the same
+     accent hue (visually indistinguishable) that clears 4.5:1 against both
+     the page background (5.37:1) and the card surface (4.62:1). Never
+     point a text color at `--primary` OR raw `--brand-accent` on a dark
+     surface; use `--link`. */
+  --link: #c34eff;
   --secondary: var(--brand-dark-3);
   --secondary-foreground: var(--brand-white);
   --muted: var(--brand-dark-3);

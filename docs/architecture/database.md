@@ -189,7 +189,7 @@ Three separate tiers, per spec section 28 — never blur them together:
 |---|---|---|---|
 | Unit | `tests/unit/**` | No | Pure logic — validation, formatting, error mapping, component behavior |
 | Database integration | `tests/integration/db/**` | Yes | Real Prisma queries against real Postgres — constraints, cascades, transactions |
-| E2E | none yet | Yes (+ a running app) | Full user flows through the actual UI — first candidate is Module 60 |
+| E2E | `tests/e2e/**` (Playwright, Module 04) | Yes (+ a running app) | Full user flows through the actual UI — see `authentication.md` "Testing" |
 
 Database integration tests run through the same `npm test` command as
 everything else, but each file starts with
@@ -197,6 +197,11 @@ everything else, but each file starts with
 report as **skipped**, not passed and not failed, so a green `npm test`
 never implies "the database layer was verified" when it wasn't. Run
 `npm run test:db` to target just this tier once a database is available.
+
+E2E tests (`npm run test:e2e`) are separate from `npm test` entirely
+(a different runner, Playwright, not Vitest) and need the app actually
+built and running first — each spec checks the app is reachable and
+skips otherwise, the same "explicit skip, never fake a pass" principle.
 
 **Getting a real Postgres to test against, without touching Supabase:**
 this module's tests were verified against a local Homebrew Postgres

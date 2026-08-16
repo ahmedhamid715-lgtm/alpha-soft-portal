@@ -13,7 +13,7 @@ export type { EventBus, EventHandler, DomainEvent } from "./events";
 export { cache } from "./cache";
 export type { Cache } from "./cache";
 
-export { rateLimiter, NoopRateLimiter } from "./rate-limit";
+export { rateLimiter, authRateLimiter, NoopRateLimiter, InMemoryRateLimiter } from "./rate-limit";
 export type { RateLimiter, RateLimitResult } from "./rate-limit";
 
 export { search, SearchNotConfiguredError } from "./search";

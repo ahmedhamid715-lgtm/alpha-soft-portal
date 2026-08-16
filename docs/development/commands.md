@@ -7,12 +7,14 @@
 | `npm run start` | Run the production build (`npm run build` first) |
 | `npm run lint` | ESLint |
 | `npm run typecheck` | `next typegen` (generates route-based global types) then `tsc --noEmit` — see `docs/architecture/platform-core.md` for why both are needed |
-| `npm test` | Run the Vitest suite once |
+| `npm test` | Run the Vitest suite once — unit + database integration (the latter self-skip without `DATABASE_URL`, see `database.md` "Testing") |
 | `npm run test:watch` | Vitest in watch mode |
+| `npm run test:db` | Just the database integration tier (`tests/integration/db`) |
+| `npm run test:e2e` | Playwright E2E suite — needs a real running app first, see `playwright.config.ts` and `authentication.md` "Testing" |
 | `npm run db:generate` | Regenerate the Prisma client (`src/generated/prisma`) — also runs automatically via `postinstall` |
 | `npm run db:migrate` | `prisma migrate dev` — create/apply a migration locally |
 | `npm run db:deploy` | `prisma migrate deploy` — apply pending migrations in CI/production, no prompts |
-| `npm run db:seed` | Run `prisma/seed.ts` (dev-only; no-op until Module 03 adds real entities) |
+| `npm run db:seed` | Run `prisma/seed.ts` — creates three dev accounts (owner/support/customer roles), see `authentication.md` |
 | `npm run db:studio` | Open Prisma Studio |
 
 ## Adding a shadcn/ui component

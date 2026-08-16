@@ -112,6 +112,9 @@ model User {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   memberships OrganizationMembership[]
+  credential  UserCredential?
+  sessions    UserSession[]
+  authTokens  AuthToken[]
 
   @@index([status])
   @@map("users")
@@ -171,4 +174,106 @@ enum MembershipStatus {
   SUSPENDED
 
   @@map("membership_status")
+}
+
+// =============================================================================
+// UserCredential — Module 04 (Authentication)
+// =============================================================================
+
+/// A user's password credential, kept in its own 1:1 table rather than
+/// columns on `User` — see docs/architecture/authentication.md "Database
+/// changes" for why: it keeps the sensitive hash out of the same table as
+/// frequently-selected profile data, and leaves room for a user to
+/// eventually have other credential types (a future OAuth `Account`
+/// table, alongside or instead of this) without `User` accumulating
+/// nullable auth-method-specific columns.
+model UserCredential {
+  id     String @id @db.Uuid
+  userId String @unique @map("user_id") @db.Uuid
+
+  /// An Argon2id PHC-formatted hash string (includes algorithm + parameters + salt) — never a raw password, never a bare digest. See authentication.md "Password storage."
+  passwordHash String @map("password_hash")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_credentials")
+}
+
+// =============================================================================
+// UserSession — Module 04 (Authentication)
+// =============================================================================
+
+/// This module's OWN session-tracking table — not Auth.js's adapter-managed
+/// `Session` model. Auth.js's Credentials provider requires the JWT session
+/// strategy (its database strategy throws `UnsupportedStrategy` when
+/// combined with Credentials), which by itself provides no server-side
+/// revocation. This table is what makes "logout everywhere," "revoke a
+/// compromised session," and "invalidate sessions after a password reset"
+/// possible anyway — see authentication.md "Session strategy" for the full
+/// tradeoff writeup. The JWT carries this row's `id`; every authenticated
+/// server-side check looks the row up and honors `revokedAt`/`expiresAt`
+/// before trusting the JWT's claims.
+model UserSession {
+  id     String @id @db.Uuid
+  userId String @map("user_id") @db.Uuid
+
+  /// Truncated on write, informational only — not a fingerprinting mechanism. See authentication.md "Session/device foundation."
+  userAgent String? @map("user_agent")
+
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// Updated at most once per `updateAge` window (see auth.ts) — not on every single request, to avoid a write on every page load.
+  lastActiveAt DateTime  @default(now()) @map("last_active_at") @db.Timestamptz(3)
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz(3)
+  /// e.g. "user_logout", "password_reset", "admin_revoked" — for the future session-management UI (not built in this module), not machine logic.
+  revokedReason String?  @map("revoked_reason")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// "This user's sessions" — the future session-management list, and the "revoke everywhere" bulk update.
+  @@index([userId])
+  /// A future cleanup job's query ("delete sessions past expiry") — not built in this module.
+  @@index([expiresAt])
+  @@map("user_sessions")
+}
+
+// =============================================================================
+// AuthToken — Module 04 (Authentication)
+// =============================================================================
+
+/// One shape, two purposes — email verification and password reset are
+/// both "a single-use, expiring, securely-random token tied to a user."
+/// Not Auth.js's adapter-managed `VerificationToken` model (which stores
+/// the raw token value); this table stores only a SHA-256 hash of the
+/// token, so a database read alone (a backup, a compromised replica)
+/// never yields a usable token — see authentication.md "Token storage."
+enum AuthTokenPurpose {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+
+  @@map("auth_token_purpose")
+}
+
+model AuthToken {
+  id      String           @id @db.Uuid
+  userId  String           @map("user_id") @db.Uuid
+  purpose AuthTokenPurpose
+
+  /// SHA-256 hex digest of the raw token. The raw token is sent to the user's email and never persisted.
+  tokenHash String @unique @map("token_hash")
+
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(3)
+  /// Set the moment the token is used — a non-null value means "already consumed," enforced in application code before any state-changing effect (verifying the email, resetting the password) happens.
+  consumedAt DateTime? @map("consumed_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// "Does this user already have a live verification/reset token" — checked before issuing a new one.
+  @@index([userId, purpose])
+  @@map("auth_tokens")
 }

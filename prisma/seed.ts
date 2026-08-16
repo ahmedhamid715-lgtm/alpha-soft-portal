@@ -2,15 +2,19 @@
  * Development seed script (spec section 27).
  *
  * DEVELOPMENT-ONLY. Refuses to run when NODE_ENV=production. Contains no
- * real credentials — there's nothing to hash yet (Module 04 owns
- * authentication), and every identity here is an obviously-fake
- * `*.test`/`*.example` address, never a real Alpha Page Rankers account.
+ * real credentials — every identity here is an obviously-fake `*.test`
+ * address with a hardcoded dev-only password (never a real Alpha Page
+ * Rankers account, never reused anywhere real), created so the auth flows
+ * (login, role-aware routing) can actually be exercised end to end
+ * without a public signup flow, which this module deliberately doesn't
+ * build (see docs/architecture/authentication.md "No business logic").
  *
- * Creates one development organization with one owner membership, via
- * `createOrganizationWithOwner` (the same service a real "create org"
- * flow will call later) rather than raw `db.organization.create` calls —
- * so the seed script doubles as a smoke test that the service/repository/
- * transaction layer actually works end to end.
+ * Creates one development organization with three memberships — one per
+ * destination-routing role (spec section 33) — via
+ * `createOrganizationWithOwner` for the first (the same service a real
+ * "create org" flow calls) and the repository layer directly for the
+ * other two, so the seed script doubles as a smoke test that the
+ * service/repository/transaction layer actually works end to end.
  *
  * Reset strategy: `npx prisma migrate reset` drops and re-migrates the
  * dev database, then re-runs this script automatically (Prisma's
@@ -19,7 +23,20 @@
  * state, not a hand-rolled "delete everything" script here.
  */
 import { db } from "../src/lib/db/client";
+import { generateId } from "../src/lib/utils/id";
+import { hashPassword } from "../src/lib/auth/password";
 import { createOrganizationWithOwner } from "../src/server/services/organization-service";
+import { userRepository } from "../src/server/repositories/user-repository";
+import { credentialRepository } from "../src/server/repositories/credential-repository";
+import { membershipRepository } from "../src/server/repositories/membership-repository";
+
+/** Obviously a dev fixture, not a real password — satisfies the length-based policy (12+ chars). Never used outside this script. */
+const DEV_PASSWORD = "alpha-os-dev-password";
+
+async function activateWithPassword(userId: string): Promise<void> {
+  await db.user.update({ where: { id: userId }, data: { status: "ACTIVE", emailVerifiedAt: new Date() } });
+  await credentialRepository.create({ id: generateId(), userId, passwordHash: await hashPassword(DEV_PASSWORD) });
+}
 
 async function main() {
   if (process.env.NODE_ENV === "production") {
@@ -32,7 +49,7 @@ async function main() {
     return;
   }
 
-  const { organization, membership } = await createOrganizationWithOwner({
+  const { organization, membership: ownerMembership } = await createOrganizationWithOwner({
     organization: {
       name: "Alpha Page Rankers (Dev)",
       displayName: "Alpha Page Rankers",
@@ -41,15 +58,23 @@ async function main() {
       locale: "en-US",
       currency: "USD",
     },
-    owner: {
-      email: "owner@alpha-os.test",
-      name: "Dev Owner",
-    },
+    owner: { email: "owner@alpha-os.test", name: "Dev Owner" },
   });
+  await activateWithPassword(ownerMembership.userId);
+
+  const supportUser = await userRepository.create({ id: generateId(), email: "support@alpha-os.test", name: "Dev Support" });
+  await membershipRepository.create({ id: generateId(), organizationId: organization.id, userId: supportUser.id, role: "support" });
+  await activateWithPassword(supportUser.id);
+
+  const customerUser = await userRepository.create({ id: generateId(), email: "customer@alpha-os.test", name: "Dev Customer" });
+  await membershipRepository.create({ id: generateId(), organizationId: organization.id, userId: customerUser.id, role: "member" });
+  await activateWithPassword(customerUser.id);
 
   console.log(`[seed] Created organization "${organization.displayName}" (${organization.id}).`);
-  console.log(`[seed] Created owner membership (${membership.id}), role="${membership.role}".`);
-  console.log("[seed] No password/session exists yet — Module 04 (Authentication) adds real sign-in.");
+  console.log("[seed] Three dev accounts ready (password for all: alpha-os-dev-password):");
+  console.log("[seed]   owner@alpha-os.test    role=owner    -> /admin");
+  console.log("[seed]   support@alpha-os.test  role=support  -> /support");
+  console.log("[seed]   customer@alpha-os.test role=member   -> /dashboard");
 }
 
 main()

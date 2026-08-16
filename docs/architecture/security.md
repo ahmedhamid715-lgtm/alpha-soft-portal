@@ -2,10 +2,10 @@
 
 **This module provides baseline platform security, not complete
 application security.** Authentication-specific hardening is Module 04's
-job, authorization/RBAC-specific is Module 05's, AI-prompt-injection
-defenses are Module 33/37's, tenant-isolation is Module 06/07's. Treat
-everything below as "the floor every module builds on," not "the whole
-picture."
+job (see `authentication.md` for its own dedicated security review),
+authorization/RBAC-specific is Module 05's, AI-prompt-injection defenses
+are Module 33/37's, tenant-isolation is Module 06/07's. Treat everything
+below as "the floor every module builds on," not "the whole picture."
 
 ## Server/client boundary enforcement
 
@@ -60,31 +60,46 @@ client input directly.
 
 ## Rate limiting
 
-`src/lib/platform/rate-limit.ts` defines the `RateLimiter` interface and
-ships a no-op default — nothing in Module 01 needs real rate limiting yet
-(no public API, no login form, no AI chat). The first module that adds a
-rate-limit-sensitive surface should swap in a real backend (Upstash Redis
-is the natural fit) without touching the interface.
+`src/lib/platform/rate-limit.ts` defines the `RateLimiter` interface;
+`rateLimiter` (no-op) is still the default for routes with no
+rate-limit-sensitive surface. Module 04 added the first real
+implementation, `InMemoryRateLimiter`/`authRateLimiter`, applied to
+login/forgot-password/reset-password — see `authentication.md` "Login
+protection." Still no Redis/Upstash configured anywhere; swap the
+implementation behind the same interface without touching call sites the
+moment horizontal scaling makes in-memory state insufficient.
 
 ## Cookies
 
-No cookie-setting code exists yet — that starts with Module 04
-(Authentication), which will set `httpOnly`, `secure` (in production),
-and `sameSite: "lax"` (at minimum) on any session cookie. Documenting the
-intended default here so Module 04 doesn't have to relitigate it.
+Module 04 (Authentication) added the first cookie-setting code — Auth.js's
+own session cookie, using its defaults (`httpOnly`, `sameSite: "lax"`,
+`secure` in production). Not overridden or hand-rolled.
 
-## Data sensitivity (Module 03's models)
+## Data sensitivity
 
 `User.email` and `User.name` are PII — logged only as IDs
 (`logger.info("...", { organizationId, userId: ... })`, never
 `{ email }`), never included in an error's `toSafeJSON()` output, and
 excluded from `translatePrismaError()`'s constraint-name mapping (a
 unique-email violation returns "A record with this value already
-exists," not the email itself — see `errors.ts`). No field in the current
-schema is a secret (no passwords, no API keys, no financial data yet) —
-when Module 04 adds credential storage, it must never store a plaintext
-password or session token; hash/sign per that module's chosen auth
-library's own guidance, not a hand-rolled scheme.
+exists," not the email itself — see `errors.ts`).
+
+**One narrow, deliberate exception**: `lib/mail/mailer.ts` logs the
+recipient address (`to: message.to`) on every send attempt. Mail
+delivery logging without the recipient is close to useless for
+debugging ("did this actually get sent to the right person?"), and
+logging it here isn't an incremental disclosure — the system is, by
+definition, already sending a real email to that exact address. This is
+different from logging it in an error path or API response, which could
+reach a broader audience than "this system's own operational logs."
+
+Module 04 (Authentication) added real secrets: password hashes
+(Argon2id, `UserCredential.passwordHash`) and single-use tokens (SHA-256
+hashed at rest, `AuthToken.tokenHash` — the raw value is never
+persisted). Neither is ever logged, returned from an API response, or
+crosses into a client component — see `authentication.md` "Password
+storage," "Token storage," and "Security issues found and fixed" for a
+real client-bundle boundary violation this caught.
 
 ## Database error safety
 

@@ -29,7 +29,12 @@ import {
  * "recommended direction" the spec asks this module to document, not an
  * accident.
  */
-export const SYSTEM_MEMBERSHIP_ROLES = ["owner", "admin", "member"] as const;
+// "support" added in Module 04 — see docs/architecture/authentication.md
+// "Role-aware routing" for why: the destination-routing requirement
+// (ADMIN/SUPPORT/CUSTOMER) needs a role this vocabulary didn't have yet.
+// Exactly the extensibility this string-not-enum column exists for (see
+// the class comment above) — no migration required.
+export const SYSTEM_MEMBERSHIP_ROLES = ["owner", "admin", "support", "member"] as const;
 export type SystemMembershipRole = (typeof SYSTEM_MEMBERSHIP_ROLES)[number];
 export const membershipRoleSchema = z.enum(SYSTEM_MEMBERSHIP_ROLES);
 
