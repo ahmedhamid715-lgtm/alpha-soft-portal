@@ -263,3 +263,24 @@ the database-level backstop for when application code gets that wrong.
 Neither replaces the other — see `authorization.md`'s own "Module 05 vs.
 Module 06" table, which this module's actual implementation matches
 exactly.
+
+## Module 07 — the first real, business-facing consumer
+
+Module 07 (`user-management.md`, `organization-management.md`,
+`invitations.md`) is the first module that actually lets a person create
+an organization, invite another person into it, and manage members —
+every one of those mutations runs through the exact `withTenantContext()`
+chokepoint this file describes, with zero new bypass paths. Two additions
+worth noting here specifically:
+
+- **Organization creation's tenant context** is set to the new
+  organization's own already-generated id before any row is written — the
+  same "the row being written IS what defines the context" reasoning this
+  file already gives for invitation acceptance, now with a second real
+  example.
+- **A caller with zero membership in an organization** (e.g. the platform
+  staff member who just created one) correctly resolves zero permissions
+  there via the normal `resolveOrganizationContext()` path — there is no
+  special case for "I just created this." Module 07's own UI had to be
+  designed around that fact (see `organization-management.md`'s
+  "Organization creation" section) rather than the other way around.

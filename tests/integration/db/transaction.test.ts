@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/db/client";
 import { withTransaction } from "@/lib/db/transaction";
 import { isDatabaseConfigured } from "@/config/environment";
@@ -8,6 +8,21 @@ import { membershipRepository } from "@/server/repositories/membership-repositor
 import { userRepository } from "@/server/repositories/user-repository";
 import { createOrganizationWithOwner } from "@/server/services/organization-service";
 import { ConflictError, DatabaseError } from "@/lib/errors/app-error";
+
+// Module 07 added authorization-gated functions to organization-service.ts
+// (createOrganization, updateOrganizationProfile, ...) alongside the
+// pre-existing createOrganizationWithOwner this file actually tests —
+// since it's all one module, importing anything from it now transitively
+// pulls in `@/lib/auth/session-guard` → `@/auth` (Auth.js), which needs
+// Next's own module resolution for `next/server` and fails to even load
+// under plain Vitest. None of the tests below call anything that needs
+// real authentication, but the module-load chain doesn't know that —
+// mocked the same way `role-service.test.ts`/`authorization-engine.test.ts`
+// (Modules 05/06) already do, purely so this file loads at all.
+vi.mock("@/lib/auth/session-guard", () => ({
+  getCurrentUser: vi.fn(async () => null),
+  getCurrentMembership: vi.fn(async () => null),
+}));
 
 describe.skipIf(!isDatabaseConfigured)("Transactions (database integration)", () => {
   const orgIds: string[] = [];

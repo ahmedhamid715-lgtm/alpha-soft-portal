@@ -86,15 +86,38 @@ export const membershipRepository = {
     );
   },
 
-  /** An organization's member list — genuinely unbounded (an enterprise org can have hundreds of members), so this one is paginated. */
+  /**
+   * An organization's member list — genuinely unbounded (an enterprise
+   * org can have hundreds of members), so this one is paginated. Module
+   * 07 (spec section 9) adds search/role/status filtering — still
+   * always scoped to the given `organizationId` first, never a global
+   * user search (spec section 32: "search must never become a global
+   * user directory").
+   */
   async listForOrganization(
     organizationId: string,
     params: OffsetPaginationParams,
+    filter: { search?: string; role?: string; status?: Prisma.OrganizationMembershipWhereInput["status"] } = {},
     tx: TransactionClient | typeof db = db,
   ): Promise<OffsetPaginatedResult<Prisma.OrganizationMembershipGetPayload<{ include: { user: true } }>>> {
+    const where: Prisma.OrganizationMembershipWhereInput = {
+      organizationId,
+      ...(filter.role ? { role: filter.role } : {}),
+      ...(filter.status ? { status: filter.status } : {}),
+      ...(filter.search
+        ? {
+            user: {
+              OR: [
+                { name: { contains: filter.search, mode: "insensitive" } },
+                { email: { contains: filter.search, mode: "insensitive" } },
+              ],
+            },
+          }
+        : {}),
+    };
     const items = await withDbErrorTranslation(() =>
       tx.organizationMembership.findMany({
-        where: { organizationId },
+        where,
         include: { user: true },
         orderBy: { createdAt: "asc" },
         skip: (params.page - 1) * params.limit,

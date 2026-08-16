@@ -3,6 +3,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { tenantDb } from "./client";
 import { translatePrismaError } from "@/lib/db/errors";
 import { logger } from "@/lib/logging";
+import { isAppError } from "@/lib/errors/app-error";
 
 /**
  * `withTenantContext()` — the ONLY way any code in this codebase should
@@ -61,15 +62,20 @@ export async function withTenantContext<T>(
       return fn(tx);
     });
   } catch (error) {
-    // Same error-translation contract as `withTransaction()`
-    // (`lib/db/transaction.ts`) — a raw Postgres RLS-policy violation
-    // (`new row violates row-level security policy`, SQLSTATE 42501)
-    // that somehow reaches this layer despite Module 05's own
-    // authorization check already having blocked the attempt (defense
-    // in depth firing) comes out as a safe, generic `DatabaseError` —
-    // never a raw SQL/constraint-name leak. This should be unreachable
-    // in normal operation; see rls.md "What RLS does and does not
-    // defend against."
+    // A callback that deliberately throws its own `AppError` (a
+    // `NotFoundError` for "this membership doesn't exist," etc.) is
+    // re-thrown as-is, not mistranslated into a generic `DatabaseError`
+    // — see `withTransaction()`'s identical fix/comment
+    // (`lib/db/transaction.ts`) for why this check has to come first;
+    // found by this module's own testing (`ownership-transfer-service.test.ts`).
+    if (isAppError(error)) throw error;
+    // Below this point: a raw Postgres RLS-policy violation (`new row
+    // violates row-level security policy`, SQLSTATE 42501) that somehow
+    // reaches this layer despite Module 05's own authorization check
+    // already having blocked the attempt (defense in depth firing)
+    // comes out as a safe, generic `DatabaseError` — never a raw
+    // SQL/constraint-name leak. Should be unreachable in normal
+    // operation; see rls.md "What RLS does and does not defend against."
     const appError = translatePrismaError(error);
     logger.error("Tenant-scoped transaction failed.", {
       operation: "tenancy.withTenantContext",

@@ -71,4 +71,21 @@ export const userRepository = {
       tx.user.update({ where: { id }, data: { lastLoginAt: new Date(), status: "ACTIVE" } }),
     );
   },
+
+  /**
+   * Module 07 — self-service profile fields ONLY (spec section 24):
+   * `name`, `avatarUrl`, `timezone`, `locale`. Deliberately cannot touch
+   * `email`/`status`/`emailVerifiedAt` — those are Module 04's
+   * authentication-identity fields, changed only through Module 04's own
+   * mechanisms (email change would need re-verification, which doesn't
+   * exist yet — see docs/architecture/user-management.md "What self-service
+   * profile updates cannot touch").
+   */
+  async updateProfile(
+    id: string,
+    input: { name?: string; avatarUrl?: string | null; timezone?: string | null; locale?: string | null },
+    tx: TransactionClient | typeof db = db,
+  ): Promise<User> {
+    return withDbErrorTranslation(() => tx.user.update({ where: { id }, data: input }));
+  },
 };

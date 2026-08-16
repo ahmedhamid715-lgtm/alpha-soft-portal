@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
-import { Building2 } from "lucide-react";
+import Link from "next/link";
+import { Building2, Plus } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
+import { Button } from "@/components/ui/button";
 import { getCurrentUser } from "@/lib/auth/session-guard";
 import { getSelectedOrganizationId } from "@/lib/tenancy";
+import { can } from "@/lib/authorization/authorize";
 import { membershipRepository } from "@/server/repositories/membership-repository";
 import { SwitchOrganizationForm } from "./switch-organization-form";
 
@@ -24,9 +27,10 @@ export default async function OrganizationsPage() {
   const identity = await getCurrentUser();
   if (!identity) return null; // unreachable — (protected)/layout.tsx already gates authentication
 
-  const [memberships, selectedOrganizationId] = await Promise.all([
+  const [memberships, selectedOrganizationId, canCreateOrganization] = await Promise.all([
     membershipRepository.listForUser(identity.user.id),
     getSelectedOrganizationId(),
+    can("organizations.create"),
   ]);
 
   return (
@@ -34,6 +38,16 @@ export default async function OrganizationsPage() {
       <PageHeader
         title="Organizations"
         description="Every organization you belong to. Switch to change which one your session acts within."
+        actions={
+          canCreateOrganization ? (
+            <Button asChild>
+              <Link href="/organizations/new">
+                <Plus />
+                Create organization
+              </Link>
+            </Button>
+          ) : undefined
+        }
       />
 
       {memberships.length === 0 ? (
@@ -65,7 +79,9 @@ export default async function OrganizationsPage() {
                   <tr key={membership.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-2.5">
                       <div className="flex flex-col">
-                        <span className="font-medium">{membership.organization.displayName}</span>
+                        <Link href={`/organizations/${membership.organizationId}`} className="font-medium hover:underline">
+                          {membership.organization.displayName}
+                        </Link>
                         {membership.organization.isPlatform ? (
                           <span className="text-xs text-muted-foreground">Platform organization</span>
                         ) : null}

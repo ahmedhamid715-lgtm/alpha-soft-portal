@@ -103,4 +103,39 @@ export const organizationRepository = {
       }),
     );
   },
+
+  /** Module 07 — suspend/reactivate (spec section 23). Reactivating clears `archivedAt` too, in case a caller reactivates a previously-archived org rather than only a suspended one — see organization-service.ts for which transitions are actually permitted. */
+  async updateStatus(
+    id: string,
+    status: "ACTIVE" | "SUSPENDED",
+    tx: TransactionClient | typeof db = db,
+  ): Promise<Organization> {
+    return withDbErrorTranslation(() =>
+      tx.organization.update({
+        where: { id },
+        data: { status, ...(status === "ACTIVE" ? { archivedAt: null } : {}) },
+      }),
+    );
+  },
+
+  /** Module 07 — organization profile fields (spec section 4), never `status`/`isPlatform`/`slug`-uniqueness concerns (those go through their own dedicated, validated paths — see organization-service.ts). */
+  async updateProfile(
+    id: string,
+    input: {
+      displayName?: string;
+      slug?: string;
+      timezone?: string;
+      locale?: string;
+      currency?: string;
+      logoUrl?: string | null;
+      website?: string | null;
+      industry?: string | null;
+      country?: string | null;
+      phone?: string | null;
+      primaryEmail?: string | null;
+    },
+    tx: TransactionClient | typeof db = db,
+  ): Promise<Organization> {
+    return withDbErrorTranslation(() => tx.organization.update({ where: { id }, data: input }));
+  },
 };

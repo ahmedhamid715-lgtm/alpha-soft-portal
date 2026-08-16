@@ -316,3 +316,27 @@ case; and a real-browser E2E suite (no mocked authentication) covering
 per-persona visibility, the DOM-forced-escalation attempt, cross-tenant
 UI isolation, and unauthenticated route access — plus axe-core across
 three personas × two themes × three viewports on the new UI.
+
+## Module 07 additions to the permission catalog
+
+Two new permissions, both following the existing catalog's own
+conventions rather than reusing a broader one out of convenience:
+
+- **`ownership.transfer`** (`ORGANIZATION`-scope) — granted only to the
+  `owner` system role, not folded into `ORGANIZATION_FULL` (which `admin`
+  also holds). Ownership transfer is deliberately owner-only.
+- **`organizations.reactivate`** (`PLATFORM`-scope) — granted to
+  `platform_owner`/`platform_admin`, not to organization-level roles at
+  all. Exists because `organizations.update` is unusable for this specific
+  case: `resolveOrganizationContext()` correctly zeroes every permission
+  for a non-`ACTIVE` organization (see below), which means a suspended
+  organization's own owner has no `organizations.update` to reactivate
+  with. This was found as a real, reproducible deadlock by Module 07's own
+  integration test, not designed in speculatively — see
+  `organization-management.md`'s "Organization lifecycle" section for the
+  full story, including why platform-only reactivation is the more
+  correct design regardless of the deadlock.
+
+Both required `role-service.ts`'s target action vocabulary (see
+`permissions.ts`'s `PERMISSION_ACTIONS`) to grow by one entry
+(`"reactivate"`) — a plain addition, not a special case.

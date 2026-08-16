@@ -79,3 +79,25 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
     text: `We received a request to reset your Alpha OS password. Visit the link below to choose a new one:\n\n${resetUrl}\n\nThis link expires in 1 hour and can only be used once. If you didn't request this, you can ignore this email — your password hasn't been changed.`,
   });
 }
+
+/**
+ * Module 07 — invitation delivery (spec section 13: "do not build a full
+ * email delivery provider... create an abstraction/event contract for
+ * Module 09"). This function IS that abstraction for now — it goes
+ * through the same `mailer`/`ConsoleMailProvider` every other
+ * transactional email in this app already does, so swapping in a real
+ * provider later (Module 09) touches this one file, not every invite
+ * call site. `invitation-service.ts` also emits a
+ * `"organization.member.invited"` domain event alongside calling this —
+ * see that file and `docs/architecture/invitations.md` "Notification
+ * boundary" for why both exist (this is delivery; the event is what a
+ * future Module 09 notification *subscriber* reacts to instead of
+ * polling this function).
+ */
+export async function sendInvitationEmail(to: string, organizationName: string, acceptUrl: string): Promise<void> {
+  await mailer.send({
+    to,
+    subject: `You've been invited to join ${organizationName} on Alpha OS`,
+    text: `You've been invited to join ${organizationName} on Alpha OS. Accept the invitation by visiting:\n\n${acceptUrl}\n\nThis link expires in 7 days. If you weren't expecting this, you can ignore this email.`,
+  });
+}

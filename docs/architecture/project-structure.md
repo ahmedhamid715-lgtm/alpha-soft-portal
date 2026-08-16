@@ -140,3 +140,28 @@ tests/
 
 `@/*` maps to `src/*` (see `tsconfig.json`). Always import via `@/...`,
 never a relative `../../../` chain across top-level directories.
+
+## Module 07 routes
+
+```
+src/app/(protected)/organizations/
+  new/                          — creation form (platform staff only)
+  [id]/                         — overview/dashboard
+  [id]/onboarding/              — new-owner setup flow (Stepper)
+  [id]/members/                 — directory + detail Sheet
+  [id]/settings/                — profile, lifecycle, ownership transfer
+  [id]/invitations/             — pending list + invite Dialog
+src/app/(protected)/profile/    — self-service profile
+src/app/(protected)/settings/account/ — account status (read-mostly)
+src/app/(public)/invitations/accept/  — token-based accept (works
+                                         authenticated or not)
+```
+
+Every one of these renders inside the same minimal `(protected)`/
+`(public)` layouts every earlier module used — **not** `AppShell`/
+`Sidebar` (Module 02). That composite pair is reserved for the real
+Admin/Support/Customer experiences (Modules 09/32/20), which have actual
+role-specific navigation to put in it; wiring it up here for a handful of
+organization-management pages would be premature. Each Module 07 page
+uses `PageHeader`'s own `breadcrumbs` prop plus plain `<Link>`s for
+in-module navigation instead.

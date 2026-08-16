@@ -16,8 +16,24 @@ const buttonVariants = cva(
           "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
         ghost:
           "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
+        // Dark mode's soft tint (`/20` default, `/30` hover) fell below
+        // WCAG AA's 4.5:1 text contrast against real Card/Dialog
+        // surfaces — measured as low as 1.3:1 in a nested-dialog
+        // context, and a same-hue text-on-tinted-background pairing
+        // like this is inherently fragile: Tailwind v4's opacity
+        // modifier blends in OKLCH, not simple sRGB alpha-over, so the
+        // actual rendered color at any given fraction doesn't match a
+        // naive contrast estimate, and it compounds further under
+        // Dialog/Sheet's own semi-transparent overlay layering — a
+        // lower tint fraction was tried here and still failed for the
+        // same reason. A solid fill sidesteps the whole problem: black
+        // text on the light dark-mode destructive red measures 7.5:1
+        // regardless of what's underneath. Found by this module's own
+        // axe-core testing across real Card/Dialog contexts, not by
+        // inspection — Module 02's own design-system showcase never
+        // happened to render this variant against one in dark mode.
         destructive:
-          "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
+          "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive dark:text-destructive-foreground dark:hover:bg-destructive/90 dark:focus-visible:ring-destructive/40",
         link: "text-link underline-offset-4 hover:underline",
       },
       size: {

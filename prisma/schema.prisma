@@ -61,6 +61,25 @@ model Organization {
   /// ISO 4217 currency code — see src/lib/utils/money.ts for how amounts are stored/converted.
   currency String @default("USD")
 
+  /// Module 07 — organization profile fields, evaluated individually
+  /// against the existing schema (spec section 4), not added as a block.
+  /// Deliberately NOT added: `legalName` — `name` above is already
+  /// documented as the legal/business name; a second field would just
+  /// duplicate it. All nullable: none of these are known at organization
+  /// creation time (spec section 29's creation transaction only requires
+  /// name/displayName/slug), filled in later via profile settings.
+  logoUrl      String? @map("logo_url")
+  website      String?
+  industry     String?
+  /// ISO 3166-1 alpha-2 — same convention as `currency`'s ISO 4217.
+  country      String?
+  phone        String?
+  /// The organization's own contact address — distinct from any member's
+  /// personal `User.email` (spec section 7's "separate global identity
+  /// from membership" applies here too: this is organization data, not
+  /// a person's).
+  primaryEmail String? @map("primary_email")
+
   /// Module 05 (RBAC) — resolves the "internal staff vs. customer" open
   /// question `tenancy-foundation.md` deliberately left open in Module 03,
   /// in favor of option 2 there: Alpha Page Rankers is its own seeded
@@ -89,6 +108,10 @@ model Organization {
   memberships OrganizationMembership[]
   /// Custom (organization-scoped) roles this organization has created — see Role below. System roles have `organizationId = null` and aren't reachable through this relation.
   roles       Role[]
+  /// Module 07 — invitations issued by this organization (pending, accepted, or revoked).
+  invitations Invitation[]
+  /// Module 07 — this organization's onboarding progress, if it has any (see OrganizationOnboarding).
+  onboarding  OrganizationOnboarding?
 
   @@index([status])
   @@index([isPlatform])
@@ -127,10 +150,26 @@ model User {
   /// Set by Module 04 on successful sign-in. Not itself an audit trail — see docs/architecture/tenancy-foundation.md "Audit foundation" for where real login history belongs.
   lastLoginAt     DateTime? @map("last_login_at") @db.Timestamptz(3)
 
+  /// Module 07 — self-service profile fields (spec section 24). All
+  /// nullable and fall back to defaults elsewhere (`config/app.ts`'s
+  /// `appConfig.defaults`, or the user's organization's own
+  /// timezone/locale) when unset — a person's own preference, distinct
+  /// from any organization's. Deliberately NOT a generic `preferences`
+  /// JSON blob (data-modeling.md's "no giant JSON dumping ground"
+  /// discipline applies to User exactly as it does to Organization) —
+  /// add a real column when a real preference is justified, the same
+  /// rule this file already follows throughout.
+  avatarUrl String? @map("avatar_url")
+  timezone  String?
+  locale    String?
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  memberships OrganizationMembership[]
+  memberships       OrganizationMembership[]
+  /// Module 07 — invitations this user has sent (as an org admin/owner) or accepted.
+  invitationsSent   Invitation[] @relation("InvitationsSent")
+  invitationsAccepted Invitation[] @relation("InvitationsAccepted")
   credential  UserCredential?
   sessions    UserSession[]
   authTokens  AuthToken[]
@@ -367,6 +406,8 @@ model Role {
   rolePermissions RolePermission[]
   /// Every membership currently holding this role — `onDelete: Restrict` on the other side of this relation (see OrganizationMembership.roleRef) is what makes deleting an assigned role fail loudly instead of silently orphaning memberships.
   memberships     OrganizationMembership[]
+  /// Module 07 — every pending/past invitation offering this role. Same `onDelete: Restrict` protection as `memberships` above — see Invitation's own comment.
+  invitations     Invitation[]
 
   @@unique([organizationId, key])
   @@index([scope])
@@ -424,4 +465,91 @@ model RolePermission {
   /// "Every role that grants this permission" — used by the role-management UI ("who can do X").
   @@index([permissionId])
   @@map("role_permissions")
+}
+
+// =============================================================================
+// Invitation — Module 07 (User & Organization Management)
+// =============================================================================
+
+/// A single-use, expiring, hashed-at-rest token offering someone
+/// (identified by email, not necessarily an existing `User`) a role in
+/// an organization. Deliberately NOT `AuthToken` (Module 04) reused with
+/// a new `purpose` value — `AuthToken.userId` is required, but an
+/// invitation to someone with no Alpha OS account yet (spec section 14's
+/// "email does not belong to existing user" case) has no `User` row to
+/// attach to. Same underlying token primitives as `AuthToken`
+/// (`lib/auth/tokens.ts`'s `generateRawToken`/`hashToken` — SHA-256, the
+/// raw value never persisted, only `tokenHash`), a genuinely different
+/// shape of row. See docs/architecture/invitations.md.
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+
+  @@map("invitation_status")
+}
+
+model Invitation {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  /// Normalized (see `normalizeEmail()`, reused from Module 04/`user-repository.ts` — one canonical normalization strategy, not a second one). Matched case-insensitively against `User.email` at acceptance.
+  email String
+
+  /// The role this invitation offers — validated at issuance (`invitation-service.ts`) to belong to this same organization or be a system role, exactly like `role-service.ts`'s `assignRole()` validates. `onDelete: Restrict` — a role can't be deleted while a pending invitation still offers it (same protection `OrganizationMembership.roleId` already has — see rbac.md "Deletion safety").
+  roleId String @map("role_id") @db.Uuid
+
+  /// Who sent it — for display ("invited by Jane") and so `invitation-service.ts` can enforce spec section 16 (an inviter can't offer a role they themselves couldn't grant) using the SAME `requirePermission()`/`assignRole()`-shaped checks role assignment already uses, not a parallel rule.
+  invitedByUserId String @map("invited_by_user_id") @db.Uuid
+
+  /// SHA-256 hex digest — see `AuthToken.tokenHash`'s identical comment. The raw token is delivered out of band (spec section 13's notification-layer event contract) and never persisted.
+  tokenHash String @unique @map("token_hash")
+
+  status InvitationStatus @default(PENDING)
+
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(3)
+  acceptedAt DateTime? @map("accepted_at") @db.Timestamptz(3)
+  /// Set only on acceptance — may differ from whichever `User` row `email` originally implied if that person's account didn't exist yet at invitation time (created during acceptance) — see invitations.md "Existing vs. new user."
+  acceptedByUserId String? @map("accepted_by_user_id") @db.Uuid
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role         Role         @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  invitedBy    User         @relation("InvitationsSent", fields: [invitedByUserId], references: [id], onDelete: Restrict)
+  acceptedBy   User?        @relation("InvitationsAccepted", fields: [acceptedByUserId], references: [id], onDelete: SetNull)
+
+  /// "This organization's pending/past invitations" — the admin-facing invitation list.
+  @@index([organizationId, status])
+  /// "Does this email already have a pending invitation to this org" / "what invitations exist for this email" (acceptance lookup, enumeration-safe checks — see invitations.md).
+  @@index([email])
+  @@map("organization_invitations")
+}
+
+// =============================================================================
+// OrganizationOnboarding — Module 07 (User & Organization Management)
+// =============================================================================
+
+/// One row per organization, created alongside it (spec section 29's
+/// creation transaction). `currentStep` is a plain string key — like
+/// `Role.key`/`Permission.key`, not a Postgres enum — so the actual step
+/// vocabulary (`lib/organizations/onboarding.ts`) stays
+/// application-defined and extensible without a migration, per spec
+/// section 27's explicit "do not hardcode business-specific onboarding
+/// steps here."
+model OrganizationOnboarding {
+  id             String @id @db.Uuid
+  organizationId String @unique @map("organization_id") @db.Uuid
+
+  currentStep String @map("current_step")
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("organization_onboarding")
 }

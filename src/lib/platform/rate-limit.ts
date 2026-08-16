@@ -99,3 +99,14 @@ export class InMemoryRateLimiter implements RateLimiter {
  * app has a rate-limit-sensitive surface yet.
  */
 export const authRateLimiter: RateLimiter = new InMemoryRateLimiter(10, 15 * 60 * 1000);
+
+/**
+ * Module 07 — invitation issuance/resend (spec section 42). Reuses this
+ * same `InMemoryRateLimiter` class, a new instance/key namespace — not a
+ * second rate-limiting implementation. 20 invitations per hour, keyed by
+ * `` `invite:${organizationId}` `` (per-organization, not per-inviter —
+ * an org's TOTAL invite volume is the actual abuse surface: a compromised
+ * admin account inviting hundreds of addresses, not one legitimate
+ * admin's normal onboarding pace).
+ */
+export const invitationRateLimiter: RateLimiter = new InMemoryRateLimiter(20, 60 * 60 * 1000);

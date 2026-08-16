@@ -93,12 +93,18 @@ async function activateWithPassword(userId: string): Promise<void> {
   await credentialRepository.create({ id: generateId(), userId, passwordHash: await hashPassword(DEV_PASSWORD) });
 }
 
-async function ensureMember(
+/**
+ * Find-or-create a user + membership by (organizationId, email) — exported
+ * for `seed-user-org-management.ts` (Module 07) to reuse rather than
+ * reimplement (spec section 2's "one source of truth" applies to seed
+ * fixtures too, not just app code).
+ */
+export async function ensureMember(
   organizationId: string,
   email: string,
   name: string,
   roleKey: keyof typeof SYSTEM_ROLES,
-): Promise<void> {
+): Promise<string> {
   const role = await roleRepository.findSystemRoleByKey(roleKey);
   if (!role) throw new Error(`[seed-rbac] System role "${roleKey}" not seeded yet — run seedRbac() first.`);
 
@@ -107,7 +113,7 @@ async function ensureMember(
   if (!existing) await activateWithPassword(user.id);
 
   const existingMembership = await membershipRepository.findByOrganizationAndUser(organizationId, user.id);
-  if (existingMembership) return;
+  if (existingMembership) return user.id;
 
   const membership = await membershipRepository.create({
     id: generateId(),
@@ -116,16 +122,38 @@ async function ensureMember(
     role: role.key,
   });
   await membershipRepository.updateRoleAssignment(membership.id, { role: role.key, roleId: role.id });
+  return user.id;
 }
 
-/** Find-or-create by slug — granular idempotency (spec section 30) so adding one new fixture later doesn't require re-running (or re-guarding) the whole function. */
-async function ensureOrganization(input: { slug: string; name: string; displayName: string; isPlatform?: boolean }): Promise<string> {
+/**
+ * Find-or-create by slug — granular idempotency (spec section 30) so
+ * adding one new fixture later doesn't require re-running (or
+ * re-guarding) the whole function. Exported for `seed-user-org-management.ts`
+ * (Module 07) to reuse for its own lifecycle-state (suspended/archived)
+ * organization fixtures — same reuse rationale as `ensureMember` above.
+ */
+export async function ensureOrganization(input: {
+  slug: string;
+  name: string;
+  displayName: string;
+  isPlatform?: boolean;
+  status?: "ACTIVE" | "SUSPENDED" | "ARCHIVED";
+}): Promise<string> {
   const existing = await organizationRepository.findBySlug(input.slug);
   if (existing) return existing.id;
 
   const id = generateId();
   await db.organization.create({
-    data: { id, name: input.name, displayName: input.displayName, slug: input.slug, isPlatform: input.isPlatform ?? false },
+    data: {
+      id,
+      name: input.name,
+      displayName: input.displayName,
+      slug: input.slug,
+      isPlatform: input.isPlatform ?? false,
+      ...(input.status && input.status !== "ACTIVE"
+        ? { status: input.status, ...(input.status === "ARCHIVED" ? { archivedAt: new Date() } : {}) }
+        : {}),
+    },
   });
   return id;
 }
@@ -158,7 +186,12 @@ export async function seedAuthorizationFixtures(): Promise<void> {
   const orgBId = await ensureOrganization({ slug: "beta-industries-dev", name: "Beta Industries", displayName: "Beta Industries" });
   await ensureMember(orgBId, "owner-b@alpha-os.test", "Owner B (Dev)", "owner");
   await ensureMember(orgBId, "member-b@alpha-os.test", "Member B (Dev)", "member");
-  console.log(`[seed-rbac] Organization B "Beta Industries" seeded/verified (${orgBId}) with 2 accounts.`);
+  // Module 07 spec section 63's exact Org B roster is "Owner, Admin,
+  // Customer" — added on top of the pre-existing owner/member pair
+  // (kept, not removed, since Module 05/06 tests already depend on them).
+  await ensureMember(orgBId, "admin-b@alpha-os.test", "Admin B (Dev)", "admin");
+  await ensureMember(orgBId, "customer-b@alpha-os.test", "Customer B (Dev)", "customer");
+  console.log(`[seed-rbac] Organization B "Beta Industries" seeded/verified (${orgBId}) with 4 accounts.`);
 
   // --- Multi-organization user (spec section 23) — one identity, two
   // memberships, two different roles. Proves permissions never leak

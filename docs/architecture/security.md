@@ -145,3 +145,46 @@ real client-bundle boundary violation this caught.
 never leaks a constraint name, table name, or connection detail to a
 client — this is as much a security concern (information disclosure) as
 a UX one.
+
+## Module 07 — a real transaction-helper bug this module's testing found
+
+Both `withTransaction()` (`lib/db/transaction.ts`, Module 01) and
+`withTenantContext()` (`lib/tenancy/context.ts`, Module 06) caught *every*
+error escaping their callback and unconditionally ran it through
+`translatePrismaError()` — which only recognizes genuine Prisma error
+classes. A callback that deliberately threw its own `AppError` (a
+`NotFoundError` for "this membership doesn't exist," a `ValidationError`
+for a business-rule check) fell through to the generic `DatabaseError`
+catch-all instead, silently turning a precise 404/400 into an opaque 500.
+Nothing before Module 07 had thrown a non-Prisma error from inside one of
+these transactions, so it was never triggered. Fixed in both files by
+checking `isAppError(error)` and re-throwing as-is before the Prisma
+translation runs — found by `ownership-transfer-service.test.ts` actually
+receiving a generic `DatabaseError` instead of the `NotFoundError` a
+forged cross-org `toMembershipId` should produce, not by inspection.
+
+## Module 07 — IDOR/escalation surface (spec sections 47–49)
+
+Every new mutation follows the identical shape every earlier module's
+security review checked for (authenticate → resolve context → validate →
+require permission → verify resource ownership → `withTenantContext()`),
+so the cross-tenant/escalation coverage is enumerated in
+`organization-management.md` and `invitations.md` rather than repeated
+here. Two IDOR-relevant design decisions worth calling out at this level:
+
+- **Ownership transfer's `fromMembershipId` doesn't exist as an input
+  field at all** — it's derived server-side from the caller's own
+  verified membership, which is a stronger guarantee than "we checked the
+  forged value and rejected it": there is no forgeable value in the first
+  place.
+- **A hidden-form-field forgery test genuinely mutates the DOM** (a real
+  dev-tools-style attack simulation — editing a rendered `<input
+  type="hidden">`'s `.value` before submit), not a hand-crafted raw HTTP
+  request. A raw `request.post()` to a Server-Action-backed page was tried
+  first and found NOT to invoke the action at all — Next.js Server Actions
+  require the real, server-generated `$ACTION_REF_1`/`$ACTION_1:0`/
+  `$ACTION_KEY` hidden fields to route a POST to the bound action, which a
+  hand-crafted request doesn't have. A "forged" request that never
+  reaches the action under test proves nothing; the equivalent guarantee
+  for those cases is proven at the service layer with real Postgres
+  instead (see the relevant Vitest files).

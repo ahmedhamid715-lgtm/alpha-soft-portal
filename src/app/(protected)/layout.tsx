@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireAuthenticatedPage } from "@/lib/auth/session-guard";
 import { Button } from "@/components/ui/button";
 import { appConfig } from "@/config/app";
@@ -19,7 +20,24 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   return (
     <div className="flex min-h-svh flex-col bg-background">
       <header className="flex items-center justify-between border-b px-6 py-4">
-        <span className="text-sm font-semibold">{appConfig.name}</span>
+        <div className="flex items-center gap-6">
+          <span className="text-sm font-semibold">{appConfig.name}</span>
+          {/* Module 07 — plain text links, not the full AppShell/Sidebar
+              (Module 02): that's reserved for the real Admin/Support/
+              Customer experience (Modules 09/32/20), same boundary this
+              layout's own top comment already documents. */}
+          <nav className="hidden items-center gap-4 text-sm text-muted-foreground sm:flex">
+            <Link href="/organizations" className="hover:text-foreground">
+              Organizations
+            </Link>
+            <Link href="/profile" className="hover:text-foreground">
+              Profile
+            </Link>
+            <Link href="/settings/account" className="hover:text-foreground">
+              Account
+            </Link>
+          </nav>
+        </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">{user.email}</span>
           <form action={logoutAction}>

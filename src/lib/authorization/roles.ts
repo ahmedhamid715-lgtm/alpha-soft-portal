@@ -54,6 +54,8 @@ const PLATFORM_FULL: PermissionKey[] = [
   "users.update",
   "users.delete",
   "organizations.read",
+  "organizations.create",
+  "organizations.reactivate",
   "roles.read",
   "roles.create",
   "roles.update",
@@ -141,7 +143,7 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     name: "Organization Owner",
     description: "Ultimate control over this organization, including billing. Protected by last-owner rules.",
     scope: "ORGANIZATION",
-    permissions: [...ORGANIZATION_FULL, "billing.manage"],
+    permissions: [...ORGANIZATION_FULL, "billing.manage", "ownership.transfer"],
   },
   admin: {
     key: "admin",

@@ -25,6 +25,19 @@ import { membershipRepository } from "@/server/repositories/membership-repositor
  * This is Module 03's one representative service (spec section 22) —
  * later modules add their own (`server/services/crm-service.ts`, etc.)
  * following this same shape, not by adding more functions here.
+ *
+ * **Deliberately kept free of any `@/lib/authorization`/
+ * `@/lib/tenancy`/`@/lib/auth/session-guard` import** (Module 07): this
+ * file is imported directly by `prisma/seed.ts`/`prisma/seed-rbac.ts`,
+ * which run as a bare `tsx` process with no Next.js bundler in the loop.
+ * `session-guard.ts` imports `next/navigation`, which — found by
+ * actually running the seed script, not by inspection — throws
+ * (`_react.default.createContext is not a function`) under that bare
+ * process; anything importing it transitively breaks `npm run db:seed`.
+ * `organization-management-service.ts` holds every authorized,
+ * RBAC-integrated organization operation Module 07 adds — a new file, so
+ * the seed script's import graph never touches that chain. See that
+ * file's own top comment for the full reasoning.
  */
 
 const slugSchema = z
@@ -104,3 +117,6 @@ export async function createOrganizationWithOwner(
 
 /** Exposed for callers that already have a validated email and just need the normalized form (e.g. a lookup before calling the mutation above). */
 export { normalizeEmail };
+
+/** The slug validation schema, exposed for `organization-management-service.ts` (Module 07) to reuse — one canonical slug rule, not two. */
+export { slugSchema };

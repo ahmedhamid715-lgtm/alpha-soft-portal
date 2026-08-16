@@ -22,7 +22,17 @@ const statusBadgeVariants = cva(
         warning: "border-warning/20 bg-warning/10 text-warning",
         destructive: "border-destructive/20 bg-destructive/10 text-destructive",
         info: "border-info/20 bg-info/10 text-info",
-        primary: "border-primary/20 bg-primary/10 text-link",
+        // `text-link` alone (#c34eff) clears 4.5:1 against a PLAIN dark
+        // card surface (4.62:1) but not against this badge's OWN
+        // `bg-primary` tint layered on top of one — every opacity step
+        // Tailwind exposes still lands under 4.5:1 there (0.05 → 4.49,
+        // the tightest miss). `dark:text-[#d17aff]` is `--link` lightened
+        // just for this composited case (6.27:1 on a tinted card,
+        // comfortable margin) — the shared `--link` token itself is
+        // untouched, since real anchor text elsewhere never sits on this
+        // tinted background. Found by this module's own axe-core testing
+        // of the "You're the owner" badge on `/organizations/[id]`.
+        primary: "border-primary/20 bg-primary/10 text-link dark:text-[#d17aff]",
       },
     },
     defaultVariants: {

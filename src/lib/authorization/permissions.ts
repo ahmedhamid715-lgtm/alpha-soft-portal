@@ -33,6 +33,7 @@ export const PERMISSION_ACTIONS = [
   "invite",
   "remove",
   "execute",
+  "reactivate",
 ] as const;
 export type PermissionAction = (typeof PERMISSION_ACTIONS)[number];
 
@@ -111,21 +112,47 @@ export const PERMISSION_CATALOG = {
   ),
 
   // --- organizations — `read` is platform-wide visibility (any staff
-  // member with this permission can see any organization); `update` is
-  // organization-scoped (an org managing its own settings).
+  // member with this permission can see any organization); `create`/
+  // `update` are organization-scoped (managing one's own org) except
+  // `create`, which is inherently pre-tenant — see roles.ts for why
+  // it's granted only to PLATFORM_OWNER/PLATFORM_ADMIN (Module 07 —
+  // Alpha OS has no public self-service org signup; client organizations
+  // are created by Alpha Page Rankers staff).
   "organizations.read": permission(
     "organizations",
     "read",
     "PLATFORM",
     "View any organization's profile (platform-wide visibility).",
-    true,
+  ),
+  "organizations.create": permission(
+    "organizations",
+    "create",
+    "PLATFORM",
+    "Create a new organization (spec section 28 — not a general authenticated-user capability).",
   ),
   "organizations.update": permission(
     "organizations",
     "update",
     "ORGANIZATION",
-    "Update this organization's own settings.",
-    true,
+    "Update this organization's own settings — also covers self-service suspend/archive (an org may deactivate itself).",
+  ),
+  // Deliberately its own, narrower, PLATFORM-scope permission rather than
+  // reusing `organizations.update` (spec section 34's `ownership.transfer`
+  // precedent: introduce a new, narrower permission rather than broaden
+  // an existing one) — found necessary by this module's own testing, not
+  // designed speculatively: `resolveOrganizationContext()` correctly
+  // zeroes out ALL permissions for a non-ACTIVE organization (spec
+  // section 21), which means an org's own owner has zero
+  // `organizations.update` once suspended — reactivation would be
+  // permanently impossible if it used that same permission. Reactivation
+  // is a platform-administrative action, not organization self-service,
+  // by design: an org suspended for cause must not be able to
+  // un-suspend itself.
+  "organizations.reactivate": permission(
+    "organizations",
+    "reactivate",
+    "PLATFORM",
+    "Reactivate a suspended organization. Platform-staff-only — an organization cannot un-suspend itself.",
   ),
 
   // --- members (ORGANIZATION) — this organization's OrganizationMembership rows. Live enforcement point: role-service.ts.
@@ -138,6 +165,14 @@ export const PERMISSION_CATALOG = {
     "Edit a member's status or role assignment — the permission role-assignment itself requires (spec section 24).",
   ),
   "members.remove": permission("members", "remove", "ORGANIZATION", "Remove a member from this organization."),
+
+  // --- ownership (Module 07) — a distinct, strictly narrower permission
+  // than members.update on purpose: spec section 34's authorization
+  // matrix marks "Transfer ownership" Owner-only, not Admin — the same
+  // `members.update` gate role reassignment otherwise uses would let
+  // ADMIN transfer ownership too, which the spec explicitly does not
+  // want. Granted only to the `owner` system role (see roles.ts).
+  "ownership.transfer": permission("ownership", "execute", "ORGANIZATION", "Transfer organization ownership to another member.", false, "ownership.transfer"),
 
   // --- roles (both scopes; see rbac.md "Role management" for how the
   // resolved context, not the key, decides "system role" vs. "custom
