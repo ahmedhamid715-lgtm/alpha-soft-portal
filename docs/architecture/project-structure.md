@@ -7,7 +7,9 @@ src/
 │   │   └── auth/[...nextauth]/route.ts  # Auth.js's handler — see authentication.md
 │   ├── (public)/           #   Unauthenticated pages: login, forgot/reset-password, verify-email (Module 04)
 │   ├── (protected)/        #   Authenticated placeholder pages: admin, support, dashboard (Module 04) —
-│   │                            NOT real Admin/Support/Customer UI, see authentication.md "Protected routes"
+│   │                            NOT real Admin/Support/Customer UI, see authentication.md "Protected routes".
+│   │                            admin/roles/ (Module 05) is the one real, permission-gated page here —
+│   │                            see authorization.md "UI"
 │   ├── layout.tsx          #   Root layout — fonts, TooltipProvider, Toaster
 │   └── globals.css         #   Design tokens (primitive → semantic → component)
 │
@@ -33,6 +35,9 @@ src/
 │   │                              component imports from (`@/lib/utils`, see components.json)
 │   ├── auth/                  # Password hashing/policy, tokens, session-guard, role→destination
 │   │                              routing (Module 04) — see authentication.md
+│   ├── authorization/            # Permission/role catalogs, context resolution, the can/
+│   │                                requirePermission/authorize engine, resource policies
+│   │                                (Module 05) — see authorization.md and rbac.md
 │   ├── mail/                    # Mail provider abstraction (Module 04) — see authentication.md "Email"
 │   ├── db/                   # Prisma singleton, error translation, transactions, health check
 │   ├── errors/                # AppError taxonomy + API response contract — see errors.md
@@ -53,11 +58,16 @@ src/
 │   │                              wraps multi-write operations in withTransaction() (see
 │   │                              organization-service.ts for the pattern). Module 04 added
 │   │                              auth-service.ts, session-service.ts, password-reset-service.ts,
-│   │                              email-verification-service.ts.
+│   │                              email-verification-service.ts. Module 05 added role-service.ts
+│   │                              (role CRUD, permission grants, role assignment — the
+│   │                              privilege-escalation/last-owner chokepoint, see authorization.md)
+│   │                              and membership-service.ts (member removal/status, shares the
+│   │                              same last-owner guard).
 │   └── repositories/          # Data-access layer over Prisma — typed, tx-composable, no
 │                                  validation of its own (see organization-repository.ts).
 │                                  Module 04 added credential-repository.ts, session-repository.ts,
-│                                  auth-token-repository.ts.
+│                                  auth-token-repository.ts. Module 05 added role-repository.ts,
+│                                  permission-repository.ts.
 │
 ├── types/                     # Cross-cutting types not owned by a specific module (lifecycle.ts,
 │                                  next-auth.d.ts — Auth.js session/JWT type augmentation)
@@ -67,16 +77,24 @@ src/
 
 prisma/
 ├── schema.prisma               # Organization/User/OrganizationMembership (Module 03) +
-│                                    UserCredential/UserSession/AuthToken (Module 04) — see
-│                                    docs/architecture/database-schema.md and authentication.md
+│                                    UserCredential/UserSession/AuthToken (Module 04) +
+│                                    Role/Permission/RolePermission (Module 05) — see
+│                                    docs/architecture/database-schema.md, authentication.md, rbac.md
 ├── migrations/                 # Prisma-generated SQL, one directory per migration — never hand-edit
-└── seed.ts                     # Dev-only seed script — see database.md "Seeding"
+│                                    (two Module 05 migrations include a hand-added partial unique
+│                                    index each — see rbac.md "The NULL-uniqueness gap" and
+│                                    "isPlatform")
+├── seed.ts                     # Dev-only seed script — see database.md "Seeding"
+└── seed-rbac.ts                 # Module 05's permission/role catalog seed + its own dev fixtures
+                                     (a platform org + two customer orgs) — see rbac.md "Seeding"
 
 docs/
 ├── architecture/                # Why decisions were made (this directory)
 └── development/                 # How to actually run/test the thing
 
-scripts/                         # Empty — one-off maintenance scripts land here, not in prisma/ or lib/
+scripts/                         # One-off maintenance/verification scripts, not in prisma/ or lib/ —
+                                     e.g. verify-auth-security.sh (re-runnable, real HTTP+DB checks
+                                     of Module 04's core security claims)
 playwright.config.ts             # E2E test config (Module 04) — see authentication.md "Testing"
 tests/
 ├── unit/                        # Vitest unit tests, mirrors src/ structure — no database needed

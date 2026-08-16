@@ -1,4 +1,4 @@
-import { requireAuthenticatedUser } from "@/lib/auth/session-guard";
+import { requireAuthenticatedPage } from "@/lib/auth/session-guard";
 import { Button } from "@/components/ui/button";
 import { appConfig } from "@/config/app";
 import { logoutAction } from "./actions";
@@ -14,7 +14,7 @@ import { logoutAction } from "./actions";
 // See (public)/layout.tsx's comment — a route-group-only layout has no
 // single concrete URL for `next typegen` to key a `LayoutProps<...>` off.
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
-  const { user } = await requireAuthenticatedUser();
+  const { user } = await requireAuthenticatedPage();
 
   return (
     <div className="flex min-h-svh flex-col bg-background">

@@ -106,6 +106,33 @@ export const membershipRepository = {
     return withDbErrorTranslation(() => db.organizationMembership.update({ where: { id }, data: { role } }));
   },
 
+  /**
+   * Module 05 (RBAC) — sets both `role` (Module 04's string, untouched
+   * in meaning) and `roleId` (the real `Role` foreign key) together, in
+   * one write, so they can never drift out of sync. `role-service.ts`'s
+   * `assignRole()` is the only caller; nothing else should update
+   * `roleId` independently — see `schema.prisma`'s field comment.
+   */
+  async updateRoleAssignment(
+    id: string,
+    input: { role: string; roleId: string },
+  ): Promise<OrganizationMembership> {
+    return withDbErrorTranslation(() =>
+      db.organizationMembership.update({ where: { id }, data: { role: input.role, roleId: input.roleId } }),
+    );
+  },
+
+  async findById(id: string, tx: TransactionClient | typeof db = db): Promise<OrganizationMembership | null> {
+    return withDbErrorTranslation(() => tx.organizationMembership.findUnique({ where: { id } }));
+  },
+
+  /** How many ACTIVE memberships in this organization currently hold `role` — the last-owner-protection check (spec section 27). */
+  async countActiveByRole(organizationId: string, role: string): Promise<number> {
+    return withDbErrorTranslation(() =>
+      db.organizationMembership.count({ where: { organizationId, role, status: "ACTIVE" } }),
+    );
+  },
+
   async updateStatus(
     id: string,
     status: "ACTIVE" | "SUSPENDED",

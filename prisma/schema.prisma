@@ -61,6 +61,22 @@ model Organization {
   /// ISO 4217 currency code — see src/lib/utils/money.ts for how amounts are stored/converted.
   currency String @default("USD")
 
+  /// Module 05 (RBAC) — resolves the "internal staff vs. customer" open
+  /// question `tenancy-foundation.md` deliberately left open in Module 03,
+  /// in favor of option 2 there: Alpha Page Rankers is its own seeded
+  /// Organization (`isPlatform = true`), and its staff hold PLATFORM-scope
+  /// roles via ordinary `OrganizationMembership` rows — no second
+  /// membership table, no `User.type` column. At most one row may carry
+  /// this flag — enforced by a hand-added partial unique index
+  /// (`organizations_single_platform_org`, migration
+  /// `20260816120000_platform_org_singleton`), not just service-layer
+  /// discipline: this module's own authorization-engine test found that
+  /// a second `isPlatform = true` row made `findPlatformOrganization()`'s
+  /// `findFirst()` non-deterministically resolve the wrong one, silently
+  /// breaking platform-staff authorization. See
+  /// docs/architecture/rbac.md "Platform vs. organization scope."
+  isPlatform Boolean @default(false) @map("is_platform")
+
   /// Deliberately flexible bag for settings that don't yet have (or may never need) a dedicated column — see data-modeling.md "JSON/JSONB strategy" for what belongs here vs. a real column.
   metadata Json?
 
@@ -71,8 +87,11 @@ model Organization {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   memberships OrganizationMembership[]
+  /// Custom (organization-scoped) roles this organization has created — see Role below. System roles have `organizationId = null` and aren't reachable through this relation.
+  roles       Role[]
 
   @@index([status])
+  @@index([isPlatform])
   @@map("organizations")
 }
 
@@ -144,8 +163,10 @@ model OrganizationMembership {
   organizationId String @map("organization_id") @db.Uuid
   userId         String @map("user_id") @db.Uuid
 
-  /// A role KEY (e.g. "owner", "admin", "member"), not a Postgres enum and not yet a foreign key to a Role table. See tenancy-foundation.md "Role/permission foundation" for why — this is the deliberate, documented extension point Module 05 (RBAC) builds on, not a placeholder that was forgotten.
+  /// Module 04's original role KEY ("owner", "admin", "support", "member") — kept exactly as-is, still authoritative for `resolveDestination()` (Module 04's post-login routing), untouched by Module 05. See `roleId` below for the real RBAC relationship; the two are kept in sync by `roleAssignmentService.assignRole()`, never written independently.
   role   String
+  /// Module 05 (RBAC) — the actual `Role` this membership grants, resolving `tenancy-foundation.md`'s "migration path when Module 05 lands": a real foreign key, not a second guess at what `role` (the string) means. Nullable rather than a same-migration NOT NULL, per `migrations.md`'s expand→migrate→contract — every membership this module creates or updates always sets it; existing Module 03/04 rows are backfilled by this module's seed. `onDelete: Restrict` is section 26's "prevent deletion of roles currently assigned to users," enforced by the database, not just application code.
+  roleId String? @map("role_id") @db.Uuid
   status MembershipStatus @default(ACTIVE)
 
   invitedAt DateTime? @map("invited_at") @db.Timestamptz(3)
@@ -156,6 +177,7 @@ model OrganizationMembership {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleRef      Role?        @relation(fields: [roleId], references: [id], onDelete: Restrict)
 
   /// A user has at most one membership per organization — their role changes in place, they don't get a second row.
   @@unique([organizationId, userId])
@@ -163,6 +185,8 @@ model OrganizationMembership {
   @@index([userId])
   /// "Who are this organization's active members" — the member-list query.
   @@index([organizationId, status])
+  /// The authorization engine's hot path — "what role does this membership have."
+  @@index([roleId])
   @@map("organization_memberships")
 }
 
@@ -276,4 +300,128 @@ model AuthToken {
   /// "Does this user already have a live verification/reset token" — checked before issuing a new one.
   @@index([userId, purpose])
   @@map("auth_tokens")
+}
+
+// =============================================================================
+// Role / Permission / RolePermission — Module 05 (RBAC & Authorization)
+// =============================================================================
+//
+// Implements tenancy-foundation.md's documented "migration path when
+// Module 05 lands": a real Role table, keyed by the same string values
+// Module 04 already used ("owner", "admin", "support", "member"), plus a
+// foreign key from OrganizationMembership to it (`roleId`, added above).
+// `OrganizationMembership.role` (the string) is untouched — Module 04's
+// destination routing keeps working unmodified — but it is no longer the
+// source of truth for *authorization*; `roleId` → Role → RolePermission →
+// Permission is. See docs/architecture/rbac.md for the full model.
+
+/// PLATFORM roles operate across Alpha OS itself (assigned only within the
+/// one Organization where `isPlatform = true`). ORGANIZATION roles operate
+/// within a single tenant organization. A role's scope is fixed at
+/// creation — see rbac.md "Platform vs. organization boundaries" for why
+/// this must never be inferred from *which* organization a membership
+/// happens to be in.
+enum RoleScope {
+  PLATFORM
+  ORGANIZATION
+
+  @@map("role_scope")
+}
+
+/// A named, permission-bearing role. System roles (`isSystem = true`,
+/// `organizationId = null`) are seeded once (`prisma/seed-rbac.ts`),
+/// globally visible, and protected from deletion/renaming by application
+/// code (`role-service.ts`) — see rbac.md "System vs. custom roles."
+/// Custom roles are organization-scoped (`organizationId` set,
+/// `isSystem = false`), created/edited by an organization with
+/// `roles.manage`, and can never collide with another organization's
+/// custom role of the same `key` (the unique index below is scoped to
+/// `organizationId`).
+///
+/// **NULL-uniqueness note**: Postgres's standard unique index treats two
+/// NULLs as distinct, so `@@unique([organizationId, key])` alone would
+/// not stop two system roles (`organizationId = null`) from sharing a
+/// `key`. A hand-added partial unique index closes that gap — see the
+/// migration SQL and `database-schema.md` "Role" for the exact statement
+/// this schema depends on but cannot express natively.
+model Role {
+  id String @id @db.Uuid
+
+  /// Null for a system role (global); set for a custom, organization-scoped role.
+  organizationId String? @map("organization_id") @db.Uuid
+
+  /// A slug: "owner", "platform_admin", "custom-billing-lead". Unique within its scope — see the NULL-uniqueness note above.
+  key         String
+  name        String
+  description String?
+
+  scope RoleScope
+
+  /// Protected: cannot be deleted, renamed, or rescoped by `role-service.ts` regardless of the caller's permissions — see rbac.md "System role protection."
+  isSystem Boolean @default(false) @map("is_system")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization    Organization?            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  rolePermissions RolePermission[]
+  /// Every membership currently holding this role — `onDelete: Restrict` on the other side of this relation (see OrganizationMembership.roleRef) is what makes deleting an assigned role fail loudly instead of silently orphaning memberships.
+  memberships     OrganizationMembership[]
+
+  @@unique([organizationId, key])
+  @@index([scope])
+  @@index([isSystem])
+  @@map("roles")
+}
+
+/// The permission catalog — see `src/lib/authorization/permissions.ts` for
+/// the single TypeScript source of truth this table is seeded from
+/// (spec section 9/10: "do not duplicate permission arrays in multiple
+/// places" — the seed reads the catalog constant, nothing hand-types rows
+/// here twice). `key` is `resource.action` (`"tickets.assign"`); `scope`
+/// lets the role-permission assignment service reject an obviously wrong
+/// grant (a PLATFORM-only permission on an ORGANIZATION-scope role) at
+/// write time instead of only at check time.
+model Permission {
+  id          String  @id @db.Uuid
+  /// `resource.action`, e.g. "users.read", "tickets.assign" — see permissions.ts for the centralized resource/action vocabulary this must be built from.
+  key         String  @unique
+  resource    String
+  action      String
+  scope       RoleScope
+  description String?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  rolePermissions RolePermission[]
+
+  /// "Every permission for this resource" — used when rendering a role-editor grouped by resource.
+  @@index([resource])
+  @@index([scope])
+  @@map("permissions")
+}
+
+/// The Role↔Permission grant. Pure join, no independent value once either
+/// side is gone — cascade-deleted like `OrganizationMembership`, not
+/// archived (see data-modeling.md "Deletion strategy"). A `Role` itself
+/// cannot be deleted while assigned to a membership (`Restrict` above),
+/// so by the time a Role delete reaches this table, no live grant here
+/// still matters to an active user.
+model RolePermission {
+  id           String @id @db.Uuid
+  roleId       String @map("role_id") @db.Uuid
+  permissionId String @map("permission_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  /// A role has each permission at most once.
+  @@unique([roleId, permissionId])
+  /// The authorization engine's hot path — "every permission this role grants," read on every `requirePermission()` call (see rbac.md "Permission caching" for why this isn't cached yet).
+  @@index([roleId])
+  /// "Every role that grants this permission" — used by the role-management UI ("who can do X").
+  @@index([permissionId])
+  @@map("role_permissions")
 }

@@ -29,6 +29,7 @@ import { createOrganizationWithOwner } from "../src/server/services/organization
 import { userRepository } from "../src/server/repositories/user-repository";
 import { credentialRepository } from "../src/server/repositories/credential-repository";
 import { membershipRepository } from "../src/server/repositories/membership-repository";
+import { seedRbac, seedAuthorizationFixtures } from "./seed-rbac";
 
 /** Obviously a dev fixture, not a real password — satisfies the length-based policy (12+ chars). Never used outside this script. */
 const DEV_PASSWORD = "alpha-os-dev-password";
@@ -42,6 +43,14 @@ async function main() {
   if (process.env.NODE_ENV === "production") {
     throw new Error("Refusing to run the development seed script in production.");
   }
+
+  // Module 05 (RBAC) — the permission/role catalog and its own dev
+  // fixtures. Called before the early-return below (not after) so both
+  // still run on a repeat `npm run db:seed` invocation where Module 04's
+  // own dev organization already exists — each is independently
+  // idempotent (see prisma/seed-rbac.ts), so this is always safe.
+  await seedRbac();
+  await seedAuthorizationFixtures();
 
   const existing = await db.organization.findUnique({ where: { slug: "alpha-page-rankers-dev" } });
   if (existing) {

@@ -3,9 +3,27 @@
 **This module provides baseline platform security, not complete
 application security.** Authentication-specific hardening is Module 04's
 job (see `authentication.md` for its own dedicated security review),
-authorization/RBAC-specific is Module 05's, AI-prompt-injection defenses
-are Module 33/37's, tenant-isolation is Module 06/07's. Treat everything
-below as "the floor every module builds on," not "the whole picture."
+authorization/RBAC-specific is Module 05's (see `authorization.md`'s own
+"Security review" — privilege escalation, cross-tenant access, IDOR,
+role/owner deletion safety), AI-prompt-injection defenses are Module
+33/37's, deeper tenant-isolation (RLS, defense in depth) is Module 06's.
+Treat everything below as "the floor every module builds on," not "the
+whole picture."
+
+## Authorization (Module 05)
+
+Client-supplied `userId`/`organizationId`/`role`/`permission` values are
+never trusted for an authorization decision — every check re-derives
+identity and permissions server-side from Module 04's session plus a
+database read (`src/lib/authorization/context.ts`). See
+`authorization.md` for the full engine and `rbac.md` for the data model.
+Two genuinely new secrets-adjacent concerns Module 05 introduces beyond
+Module 04's: a `Role`'s permission grants must never be readable/writable
+by anyone who hasn't independently authorized for `roles.read`/
+`roles.update` (enforced by `role-service.ts`, not left to the UI), and a
+system role's definition must never be mutable at runtime regardless of
+the caller's permission level (see `rbac.md` "System roles vs. custom
+roles").
 
 ## Server/client boundary enforcement
 

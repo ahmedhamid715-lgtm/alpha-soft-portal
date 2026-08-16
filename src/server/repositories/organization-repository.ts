@@ -59,6 +59,21 @@ export const organizationRepository = {
     return withDbErrorTranslation(() => tx.organization.findUnique({ where: { slug } }));
   },
 
+  /**
+   * Module 05 (RBAC) — the one organization with `isPlatform = true`
+   * (Alpha Page Rankers itself; see rbac.md "Platform vs. organization
+   * scope"). `findFirst`, not `findUnique`, because the database doesn't
+   * enforce "at most one platform organization" as a constraint — see
+   * `Organization.isPlatform`'s schema comment for why that's a
+   * deliberate service-layer invariant, not a DB one. Returns `null`
+   * (never throws) if the platform organization hasn't been seeded yet —
+   * callers (`context.ts`'s `resolvePlatformContext`) treat that the same
+   * as "not platform staff," not an error.
+   */
+  async findPlatformOrganization(tx: TransactionClient | typeof db = db): Promise<Organization | null> {
+    return withDbErrorTranslation(() => tx.organization.findFirst({ where: { isPlatform: true } }));
+  },
+
   async list(
     params: OffsetPaginationParams,
     filter: { status?: Prisma.OrganizationWhereInput["status"] } = {},

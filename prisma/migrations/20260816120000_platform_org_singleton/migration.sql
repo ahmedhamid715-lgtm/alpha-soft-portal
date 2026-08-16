@@ -1,0 +1,12 @@
+-- Enforces "at most one platform organization" (Organization.isPlatform)
+-- at the database level, not just service-layer discipline. Found by
+-- this module's own authorization-engine integration test: creating a
+-- second isPlatform=true row made findPlatformOrganization()'s
+-- findFirst() (no ordering) non-deterministically resolve the wrong
+-- one, silently breaking platform-staff authorization for real users.
+--
+-- A unique index on a constant expression, filtered to isPlatform=true
+-- rows only, is the standard Postgres pattern for "at most one row
+-- matching a condition" — every qualifying row has the same expression
+-- value (TRUE), so a second one collides.
+CREATE UNIQUE INDEX "organizations_single_platform_org" ON "organizations" ((true)) WHERE "is_platform" = true;

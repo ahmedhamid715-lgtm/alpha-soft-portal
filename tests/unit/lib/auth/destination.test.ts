@@ -11,6 +11,16 @@ describe("resolveDestination", () => {
     expect(resolveDestination("support")).toBe(DESTINATIONS.support);
   });
 
+  it("routes Module 05's platform_owner/platform_admin roles to the admin destination", () => {
+    expect(resolveDestination("platform_owner")).toBe(DESTINATIONS.admin);
+    expect(resolveDestination("platform_admin")).toBe(DESTINATIONS.admin);
+  });
+
+  it("routes Module 05's support_admin/support_agent roles to the support destination", () => {
+    expect(resolveDestination("support_admin")).toBe(DESTINATIONS.support);
+    expect(resolveDestination("support_agent")).toBe(DESTINATIONS.support);
+  });
+
   it("routes the member role to the customer destination", () => {
     expect(resolveDestination("member")).toBe(DESTINATIONS.customer);
   });

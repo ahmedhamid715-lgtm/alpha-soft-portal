@@ -1,4 +1,5 @@
 import "server-only";
+import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { sessionRepository } from "@/server/repositories/session-repository";
 import { userRepository } from "@/server/repositories/user-repository";
@@ -38,11 +39,37 @@ export async function getCurrentUser(): Promise<CurrentIdentity | null> {
   return { user, sessionId: userSession.id };
 }
 
-/** Throws `AuthenticationError` (safe, generic — see errors.md) instead of returning `null`. Use this at the top of anything that must not proceed unauthenticated — the normal case for a protected Server Action or Route Handler. */
+/** Throws `AuthenticationError` (safe, generic — see errors.md) instead of returning `null`. Use this at the top of anything that must not proceed unauthenticated — the normal case for a protected Server Action or Route Handler, where a thrown `AppError` is the correct contract (translated to a structured 401 by `apiError()`/the action's own error handling). **Do not call this directly from a Server Component page/layout** — see `requireAuthenticatedPage()` below. */
 export async function requireAuthenticatedUser(): Promise<CurrentIdentity> {
   const identity = await getCurrentUser();
   if (!identity) throw new AuthenticationError();
   return identity;
+}
+
+/**
+ * The Server-Component-safe equivalent of `requireAuthenticatedUser()` —
+ * for a page/layout, not a Server Action or Route Handler. A thrown
+ * `AppError` has nowhere to go from a React Server Component render: it
+ * surfaces as Next.js's generic uncaught-error page, an **HTTP 500**, not
+ * a 401 or a redirect. This was a real bug this module's own security
+ * audit caught by revoking a live session directly in the database
+ * (bypassing `signOut()`) and replaying the still-otherwise-valid JWT
+ * cookie against a protected page: access was correctly *denied* — no
+ * data leaked, the thrown error's message/stack never reached the
+ * response body — but the visitor got a broken 500 instead of a clean
+ * bounce back to `/login`. Every currently-protected page
+ * ((protected)/layout.tsx) uses this, not `requireAuthenticatedUser()`
+ * directly.
+ */
+export async function requireAuthenticatedPage(): Promise<CurrentIdentity> {
+  try {
+    return await requireAuthenticatedUser();
+  } catch (error) {
+    if (error instanceof AuthenticationError) {
+      redirect("/login");
+    }
+    throw error;
+  }
 }
 
 /**

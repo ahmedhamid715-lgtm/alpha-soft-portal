@@ -17,17 +17,27 @@ export const DESTINATIONS = {
 
 /**
  * `role` is the current membership's role key (see
- * `membership-repository.ts`'s `SYSTEM_MEMBERSHIP_ROLES`), or `null` for
- * a user with no resolvable organization membership at all. `owner` and
- * `admin` both route to the admin destination — an organization owner is
- * a superset of admin, not a separate destination.
+ * `membership-repository.ts`'s `SYSTEM_MEMBERSHIP_ROLES`, extended by
+ * Module 05's own system role catalog — `lib/authorization/roles.ts`),
+ * or `null` for a user with no resolvable organization membership at
+ * all. `owner`/`admin` (organization-scope) and `platform_owner`/
+ * `platform_admin` (platform-scope) all route to the admin destination —
+ * this is post-login UX routing only, not an authorization decision;
+ * `/admin` itself is what actually enforces who may stay (see
+ * `(protected)/admin/page.tsx`'s `requirePermission()` call). `support`
+ * and `support_admin`/`support_agent` both route to the support
+ * destination for the same reason.
  */
 export function resolveDestination(role: string | null): string {
   switch (role) {
     case "owner":
     case "admin":
+    case "platform_owner":
+    case "platform_admin":
       return DESTINATIONS.admin;
     case "support":
+    case "support_admin":
+    case "support_agent":
       return DESTINATIONS.support;
     default:
       // "member", any future role this function doesn't recognize yet, or

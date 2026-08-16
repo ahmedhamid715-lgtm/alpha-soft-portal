@@ -33,6 +33,11 @@ directly, which a composite key makes awkward.
 
 ## Role/permission foundation — the deliberate extension point
 
+**Resolved by Module 05** — see `docs/architecture/rbac.md` for the
+actual implementation. What follows is Module 03's original reasoning,
+kept for the historical record of why the schema was shaped this way
+before Module 05 landed.
+
 Module 05 (RBAC) owns the actual permission system. This module commits
 to exactly one thing: `OrganizationMembership.role` is a plain string
 column holding a role **key** (`"owner"`, `"admin"`, `"member"` — see
@@ -62,7 +67,11 @@ introduces a separate `roleId` column and deprecates `role` via the
 expand/contract pattern in `migrations.md`). Nothing about the current
 schema blocks either direction.
 
-## Internal (Admin/Support) vs. customer users — an open question, not a defect
+## Internal (Admin/Support) vs. customer users — resolved by Module 05
+
+**Resolved**: option 2 below — see `rbac.md` "Resolving 'who is Alpha
+Page Rankers'" for the actual implementation
+(`Organization.isPlatform`). Kept below for the historical record.
 
 The original three-portal concept (Admin / Support / Customer) implies
 two different *kinds* of user: Alpha Page Rankers' own internal staff,
