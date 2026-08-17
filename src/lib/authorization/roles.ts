@@ -64,6 +64,8 @@ const PLATFORM_FULL: PermissionKey[] = [
   "settings.update",
   "audit.readPlatform",
   "audit.exportPlatform",
+  "notifications.observability",
+  "notifications.manageProvider",
   "analytics.read",
   "reports.read",
   "reports.export",
@@ -129,7 +131,7 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     name: "Support Administrator",
     description: "Oversees support operations platform-wide. Read-heavy; no user/org mutation, no billing.",
     scope: "PLATFORM",
-    permissions: ["users.read", "organizations.read", "roles.read", "analytics.read", "audit.readPlatform", "reports.read"],
+    permissions: ["users.read", "organizations.read", "roles.read", "analytics.read", "audit.readPlatform", "notifications.observability", "reports.read"],
   },
   support_agent: {
     key: "support_agent",

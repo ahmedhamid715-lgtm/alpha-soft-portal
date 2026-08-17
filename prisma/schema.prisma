@@ -125,6 +125,13 @@ model Organization {
   /// evidence — without permanently pinning the organization row in
   /// place.
   auditEvents AuditEvent[]
+  /// Module 09 — notifications associated with this organization
+  /// (grouping/filtering/observability only, never the SELECT boundary —
+  /// see `docs/architecture/notifications.md` "Notification —
+  /// recipient-owned, organization-*associated*"). `SetNull`, same
+  /// Module-08-learned reasoning as `auditEvents` above.
+  notifications         Notification[]
+  notificationDeliveries NotificationDelivery[]
 
   @@index([status])
   @@index([isPlatform])
@@ -191,6 +198,19 @@ model User {
   /// Never joined for display (see `AuditEvent.actorDisplayName`); this
   /// relation exists for referential integrity only.
   auditEvents AuditEvent[]
+  /// Module 09 — notifications addressed to this user. `Cascade`, NOT
+  /// `SetNull` like `auditEvents` — deliberately different reasoning,
+  /// not an oversight: `recipientUserId` is a required field (a
+  /// notification with no recipient is meaningless), and a notification
+  /// has no independent evidentiary value once its recipient doesn't
+  /// exist (unlike an `AuditEvent`, which IS the record of what
+  /// happened regardless of whether the actor account survives). `User`
+  /// rows are never hard-deleted in real operation (`data-modeling.md`
+  /// "Deletion strategy" — deactivation, not deletion) — this FK choice
+  /// matters for test-fixture cleanup ergonomics (the exact class of bug
+  /// Module 08 hit with `Restrict`), not for any real production path.
+  notifications           Notification[]
+  notificationPreferences NotificationPreference[]
 
   @@index([status])
   @@map("users")
@@ -716,4 +736,228 @@ enum AuditCategory {
   COMPLIANCE
 
   @@map("audit_category")
+}
+
+// =============================================================================
+// Notification — Module 09 (Notification & Communication Infrastructure)
+// =============================================================================
+// See docs/architecture/notifications.md for the full domain-model and
+// ownership-classification reasoning behind every choice below — not
+// repeated per-field here.
+
+enum NotificationStatus {
+  UNREAD
+  READ
+  ARCHIVED
+
+  @@map("notification_status")
+}
+
+enum NotificationSeverity {
+  INFO
+  WARNING
+  CRITICAL
+
+  @@map("notification_severity")
+}
+
+/// A message intended for one specific person. See notifications.md
+/// "Notification — recipient-owned, organization-*associated*" — the
+/// access boundary is `recipientUserId`, not `organizationId`.
+model Notification {
+  id String @id @db.Uuid
+
+  /// Nullable — a pre-tenant/global notification (e.g. "your password
+  /// changed") is real, exactly like `AuditEvent.organizationId`. Never
+  /// the SELECT boundary. `SetNull`, never `Cascade` — see the
+  /// `Organization.notifications` comment.
+  organizationId String? @map("organization_id") @db.Uuid
+
+  /// The real access boundary. `Cascade` — see the `User.notifications`
+  /// comment for why this is deliberately different from `AuditEvent`'s
+  /// `SetNull`.
+  recipientUserId String @map("recipient_user_id") @db.Uuid
+
+  /// Extensible string key (`lib/notifications/categories.ts`), not an
+  /// enum — same reasoning as `AuditEvent.action`: the category
+  /// vocabulary must grow with future modules (`TICKET_ACTIVITY`,
+  /// `BILLING`, ...) without a migration. Drives preference lookup and
+  /// mandatory/optional policy — see `notification-preferences.md`.
+  category String
+
+  severity NotificationSeverity @default(INFO)
+  status   NotificationStatus   @default(UNREAD)
+
+  title String
+  /// Human-readable body — already rendered from a template
+  /// (`lib/notifications/templates.ts`) by the time this is written, not
+  /// raw structured data the UI re-interprets.
+  body  String
+
+  /// Where "view" / the notification's primary action takes the user —
+  /// an internal, relative path only (never an absolute/external URL —
+  /// same open-redirect discipline `login/actions.ts`'s own
+  /// `callbackUrl` handling already applies).
+  actionUrl String? @map("action_url")
+
+  /// Small, bounded, category-specific extra context — e.g. the
+  /// membership id a `MembershipRemoved` notification refers to. Passed
+  /// through the SAME `lib/audit/redact.ts` redaction Module 08 already
+  /// built before being written — see notifications.md "reuse" table.
+  /// Never a secret/token/credential.
+  metadata Json? @db.JsonB
+
+  /// The event this notification is a reaction to (Section 4.5) — plain
+  /// columns, not a second `NotificationEvent` table (a 1:1 relationship
+  /// doesn't need its own join table). `sourceEventType` is the
+  /// `events.ts` event name (e.g. `"MembershipStatusChanged"`);
+  /// `sourceEntityType`/`sourceEntityId` name the specific business
+  /// entity involved (e.g. `"membership"` / that membership's id) —
+  /// distinct from `AuditEvent.resourceType/resourceId`, which is a
+  /// different record for a different purpose (evidence, not a UI
+  /// message), even when they happen to describe the same underlying
+  /// mutation.
+  sourceEventType   String  @map("source_event_type")
+  sourceEntityType  String? @map("source_entity_type")
+  sourceEntityId    String? @map("source_entity_id") @db.Uuid
+
+  /// Structural duplicate prevention (Section 4.5 — "enforce this
+  /// structurally where possible with database constraints", not only
+  /// an application-level `if exists` check). Convention:
+  /// `{sourceEventType}:{sourceEntityId}:{recipientUserId}` — see
+  /// `lib/notifications/service.ts`'s `buildIdempotencyKey()`, the one
+  /// place this string is constructed.
+  idempotencyKey String @unique @map("idempotency_key")
+
+  readAt     DateTime? @map("read_at") @db.Timestamptz(3)
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz(3)
+  /// Distinct from deletion (Section 21 / notification-security.md
+  /// "Retention") — an expired notification is still a real row; only a
+  /// manual, documented process removes rows entirely.
+  expiresAt  DateTime? @map("expires_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization?          @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  recipient    User                   @relation(fields: [recipientUserId], references: [id], onDelete: Cascade)
+  deliveries   NotificationDelivery[]
+
+  /// "This person's notification feed, newest first" — the primary query (cursor-paginated, see notifications.md).
+  @@index([recipientUserId, createdAt])
+  /// "This person's unread count" / "this person's unread feed."
+  @@index([recipientUserId, status])
+  /// "This organization's notification volume" — platform observability.
+  @@index([organizationId, createdAt])
+  /// "Did this event already produce a notification for this recipient" — the idempotency check path (also enforced structurally by the unique constraint above).
+  @@index([sourceEventType, sourceEntityId])
+  @@map("notifications")
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  /// Reserved — no `SmsChannel` implementation exists yet (spec Section 5: "Do not implement SMS or push in this module").
+  SMS
+  /// Reserved — same as SMS.
+  PUSH
+
+  @@map("notification_channel")
+}
+
+enum NotificationDeliveryStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  CANCELLED
+
+  @@map("notification_delivery_status")
+}
+
+/// One delivery ATTEMPT record per (notification, channel) — see
+/// notifications.md "NotificationDelivery — operational, platform-
+/// observable only." A notification with two channels (IN_APP + EMAIL)
+/// has two of these. Never claims SENT merely because the application
+/// called a provider — see `lib/notifications/delivery.ts`.
+model NotificationDelivery {
+  id             String @id @db.Uuid
+  notificationId String @map("notification_id") @db.Uuid
+  /// Denormalized from the parent `Notification` at creation time —
+  /// avoids a join for the platform observability view's own filters,
+  /// and is what this table's RLS INSERT policy checks (see the
+  /// migration) — never trusted as a second, independent source of
+  /// truth (the parent `Notification.organizationId` is canonical).
+  organizationId String? @map("organization_id") @db.Uuid
+
+  channel  NotificationChannel
+  /// Provider NAME (`"console"`, later `"resend"`, ...) — plain string,
+  /// not an enum, so a new provider never needs a migration. Distinct
+  /// from `channel`, which is genuinely bounded.
+  provider String
+
+  status       NotificationDeliveryStatus @default(PENDING)
+  attemptCount Int                        @default(0) @map("attempt_count")
+
+  queuedAt      DateTime  @default(now()) @map("queued_at") @db.Timestamptz(3)
+  sentAt        DateTime? @map("sent_at") @db.Timestamptz(3)
+  failedAt      DateTime? @map("failed_at") @db.Timestamptz(3)
+  /// Null once terminal (SENT, CANCELLED, or FAILED past max attempts) — see `lib/notifications/delivery.ts`'s retry classification.
+  nextAttemptAt DateTime? @map("next_attempt_at") @db.Timestamptz(3)
+
+  /// The provider's own message id, once accepted — for correlating with the provider's own dashboard/webhooks later.
+  providerMessageId String? @map("provider_message_id")
+  /// Machine-readable failure classification (e.g. `"invalid_recipient"`, `"provider_timeout"`) — drives retryable/terminal decisions.
+  failureCode       String? @map("failure_code")
+  /// Human-readable, ALREADY sanitized — never the provider's raw error body (see notification-security.md "Provider error leakage").
+  failureReason     String? @map("failure_reason")
+  /// Small, bounded, provider-specific context. Redacted before write, same discipline as `Notification.metadata`.
+  metadata          Json?   @db.JsonB
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  /// "This notification's delivery attempts across channels."
+  @@index([notificationId])
+  /// The retry processor's own query: "what's due for another attempt."
+  @@index([status, nextAttemptAt])
+  /// Platform observability: "this organization's recent delivery activity."
+  @@index([organizationId, createdAt])
+  @@map("notification_deliveries")
+}
+
+/// A user's own control over whether a category/channel combination is
+/// attempted at all — see notifications.md "NotificationPreference —
+/// global identity data, not tenant-owned" for why this table has NO
+/// RLS (same category as `User`/`UserCredential`/`UserSession`) and NO
+/// `organizationId` at all — global per-user, not per-organization.
+model NotificationPreference {
+  id     String @id @db.Uuid
+  userId String @map("user_id") @db.Uuid
+
+  /// Matches `Notification.category` — same extensible-string reasoning.
+  category String
+  channel  NotificationChannel
+
+  /// The user's stated preference. NOT the final word — see
+  /// `lib/notifications/policy.ts`: a mandatory category/channel
+  /// combination overrides this at evaluation time regardless of what's
+  /// stored here (the row can still say `false`; the policy engine
+  /// ignores it for mandatory categories rather than refusing to let the
+  /// row exist, which would require the UI and the database schema to
+  /// independently agree on the mandatory set — one place, the policy
+  /// engine, is enough).
+  enabled Boolean @default(true)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// One preference row per (user, category, channel) — the policy engine's own lookup key, also the structural "no duplicate preference rows" guarantee.
+  @@unique([userId, category, channel])
+  @@map("notification_preferences")
 }

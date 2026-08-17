@@ -66,7 +66,15 @@ export async function transferOwnership(rawInput: unknown): Promise<void> {
   const adminRole = await roleRepository.findSystemRoleByKey("admin");
   if (!ownerRole || !adminRole) throw new NotFoundError("System role");
 
-  await withTenantContext(
+  // Module 09's own event emit (below, after the transaction commits)
+  // needs `fromUserId`/`toUserId` — captured here, inside the
+  // transaction, where `currentFrom`/`target` are in scope, and
+  // returned out. Neither variable exists in the outer function scope
+  // (a real bug this module's own reconnaissance pass found: the
+  // previous version of the code below referenced `currentFrom`/`target`
+  // directly at emit time, which doesn't compile — those bindings are
+  // local to this callback).
+  const { fromUserId, toUserId } = await withTenantContext(
     { userId: context.user!.id, organizationId: input.organizationId, isPlatformStaff: context.isPlatformStaff },
     async (tx) => {
       // Serializes concurrent transfer attempts on this exact
@@ -112,6 +120,8 @@ export async function transferOwnership(rawInput: unknown): Promise<void> {
         newState: { ownerMembershipId: input.toMembershipId, ownerUserId: target.userId, ownerName: toUser?.name ?? null },
         tx,
       });
+
+      return { fromUserId: currentFrom.userId, toUserId: target.userId };
     },
   );
 
@@ -121,10 +131,20 @@ export async function transferOwnership(rawInput: unknown): Promise<void> {
     fromMembershipId,
     toMembershipId: input.toMembershipId,
   });
+  // `fromUserId`/`toUserId` — a small, additive Module 09 extension
+  // (same reasoning `membership-service.ts`'s own emit sites document):
+  // a notification handler needs the recipient USER ids, not just
+  // membership ids, and re-querying them after this point would mean
+  // trusting a second, later `membershipRepository.findById()` — a real
+  // race if either membership changes again before the (in-process,
+  // synchronous) event handler runs. No existing subscriber to break —
+  // zero listeners registered for this event before this module.
   await events.emit("ownership.transferred", {
     organizationId: input.organizationId,
     fromMembershipId,
     toMembershipId: input.toMembershipId,
+    fromUserId,
+    toUserId,
   });
 }
 

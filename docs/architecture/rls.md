@@ -95,6 +95,15 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE O
 -- way). See docs/architecture/audit-security.md for the full trust
 -- model this restriction is (and is not) part of.
 REVOKE UPDATE, DELETE ON audit_events FROM alpha_os_app;
+
+-- Module 09 — notifications/notification_deliveries are never deleted
+-- by the application (UPDATE stays granted — marking a notification
+-- read/archived, and the delivery processor updating attempt state, are
+-- real operations). Same "re-run for a role created after the migration
+-- already applied" reasoning as above. See
+-- docs/architecture/notification-security.md.
+REVOKE DELETE ON notifications FROM alpha_os_app;
+REVOKE DELETE ON notification_deliveries FROM alpha_os_app;
 ```
 
 **`prisma migrate reset` wipes these grants — re-run this block after

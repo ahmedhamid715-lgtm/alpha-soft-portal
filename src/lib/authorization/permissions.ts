@@ -237,6 +237,30 @@ export const PERMISSION_CATALOG = {
   "audit.export": permission("audit", "export", "ORGANIZATION", "Export this organization's own audit log as CSV."),
   "audit.readPlatform": permission("audit", "read", "PLATFORM", "View platform-wide audit events (never another organization's own audit trail).", false, "audit.readPlatform"),
   "audit.exportPlatform": permission("audit", "export", "PLATFORM", "Export platform-wide audit events as CSV (never another organization's own audit trail).", false, "audit.exportPlatform"),
+
+  // --- notifications (Module 09) — deliberately NOT "notifications.read"
+  // for a user's own inbox: reading/managing your own notifications and
+  // preferences is an IDENTITY check (getCurrentUser() + row ownership),
+  // not an RBAC permission — no role should ever need "permission" to
+  // read their own notifications. These two keys exist only for the
+  // genuinely privileged, platform-wide operational surfaces — see
+  // docs/architecture/notifications.md "Authorization model".
+  "notifications.observability": permission(
+    "notifications",
+    "read",
+    "PLATFORM",
+    "View delivery status/failures/retry state across organizations (operational metadata only — never a grant of a specific customer's notification content).",
+    false,
+    "notifications.observability",
+  ),
+  "notifications.manageProvider": permission(
+    "notifications",
+    "manage",
+    "PLATFORM",
+    "Configure the email provider and send test notifications.",
+    false,
+    "notifications.manageProvider",
+  ),
 } as const satisfies Record<string, PermissionDefinition>;
 
 export type PermissionKey = keyof typeof PERMISSION_CATALOG;

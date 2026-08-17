@@ -64,7 +64,15 @@ export async function removeMember(rawInput: unknown): Promise<void> {
     organizationId: membership.organizationId,
     membershipId: membership.id,
   });
-  await events.emit("MembershipRemoved", { membershipId: membership.id, organizationId: membership.organizationId });
+  // `userId` is a small, additive extension to this event's payload
+  // (Module 09) — the membership row itself is hard-deleted by the time
+  // any subscriber runs (`events.emit()` fires after the transaction
+  // commits), so a notification handler has no other way to learn WHO
+  // to notify. No existing subscriber destructures a fixed payload
+  // shape that this could break — `events.on("MembershipRemoved", ...)`
+  // had zero registered listeners before this module (see
+  // `role-service.ts`'s own doc comment).
+  await events.emit("MembershipRemoved", { membershipId: membership.id, organizationId: membership.organizationId, userId: membership.userId });
 }
 
 const suspendMemberSchema = z.object({ membershipId: z.string().uuid(), status: z.enum(["ACTIVE", "SUSPENDED"]) });
@@ -105,9 +113,11 @@ export async function updateMemberStatus(rawInput: unknown): Promise<void> {
     membershipId: membership.id,
     status: input.status,
   });
+  // `userId` — same Module 09 extension/reasoning as `MembershipRemoved` above.
   await events.emit("MembershipStatusChanged", {
     membershipId: membership.id,
     organizationId: membership.organizationId,
     status: input.status,
+    userId: membership.userId,
   });
 }

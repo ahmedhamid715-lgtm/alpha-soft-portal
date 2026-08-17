@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireAuthenticatedPage } from "@/lib/auth/session-guard";
 import { Button } from "@/components/ui/button";
 import { appConfig } from "@/config/app";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 import { logoutAction } from "./actions";
 
 /**
@@ -36,9 +37,16 @@ export default async function ProtectedLayout({ children }: { children: React.Re
             <Link href="/settings/account" className="hover:text-foreground">
               Account
             </Link>
+            {/* Module 09 — the notification center's own full page; the
+                bell (below) is the quick-preview surface, not a
+                replacement for a real link into it. */}
+            <Link href="/notifications" className="hover:text-foreground">
+              Notifications
+            </Link>
           </nav>
         </div>
         <div className="flex items-center gap-3">
+          <NotificationBell />
           <span className="text-sm text-muted-foreground">{user.email}</span>
           <form action={logoutAction}>
             <Button type="submit" variant="outline" size="sm">

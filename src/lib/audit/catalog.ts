@@ -83,6 +83,20 @@ export const AUDIT_CATALOG = {
 
   // --- Compliance / this module's own actions ---
   "audit.export.created": action("COMPLIANCE", "An audit trail export was generated."),
+
+  // --- Notifications (Module 09) — deliberately NOT auditing every
+  // mark-read/mark-unread (noise — the same "no audit events for
+  // meaningless UI interactions" discipline this module already applies
+  // elsewhere; see docs/architecture/notification-security.md "What's
+  // audited, and what isn't"). Reuses DATA/SYSTEM/ADMINISTRATION rather
+  // than adding a new AuditCategory enum value for one module's four
+  // actions — same restraint this catalog already applies to indexes
+  // and tamper-evidence: don't add structure without a concrete need.
+  "notification.archived": action("DATA", "A user archived one of their own notifications."),
+  "notification.preference.updated": action("DATA", "A user changed a notification preference."),
+  "notification.delivery.failed": action("SYSTEM", "A notification delivery attempt reached a terminal failure state."),
+  "notification.test.sent": action("ADMINISTRATION", "Platform staff sent a test notification to verify provider configuration."),
+  "notification.provider.changed": action("ADMINISTRATION", "The configured email provider was changed.", true),
 } as const satisfies Record<string, AuditActionDefinition>;
 
 export type AuditActionKey = keyof typeof AUDIT_CATALOG;

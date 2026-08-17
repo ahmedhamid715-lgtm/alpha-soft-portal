@@ -110,3 +110,18 @@ export const authRateLimiter: RateLimiter = new InMemoryRateLimiter(10, 15 * 60 
  * admin's normal onboarding pace).
  */
 export const invitationRateLimiter: RateLimiter = new InMemoryRateLimiter(20, 60 * 60 * 1000);
+
+/**
+ * Module 09 — notification-preference mutation and mark-all-read (spec
+ * section 17: "protect... preference mutation endpoints, mark-all-read").
+ * Same `InMemoryRateLimiter` class, a new instance/key namespace — not a
+ * third rate-limiting implementation. 60 per 5-minute window per key
+ * (`${action}:${userId}`) — generous enough for a user clicking through
+ * every toggle on `/settings/notifications` in one sitting, tight enough
+ * to stop a scripted hammer of the same Server Action. Notification
+ * *creation* itself (`notificationService.notify()`) is not rate-limited
+ * here — it's never called with client-controlled frequency (only from
+ * server-side event subscribers), so there's nothing for a client to
+ * abuse; see notification-security.md "Rate limiting."
+ */
+export const notificationRateLimiter: RateLimiter = new InMemoryRateLimiter(60, 5 * 60 * 1000);

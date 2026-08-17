@@ -5,7 +5,7 @@ import { generateId } from "@/lib/utils/id";
 import { issueEmailVerificationToken, verifyEmail } from "@/server/services/email-verification-service";
 import { userRepository } from "@/server/repositories/user-repository";
 import { authTokenRepository } from "@/server/repositories/auth-token-repository";
-import { mailer } from "@/lib/mail/mailer";
+import { emailProvider } from "@/lib/mail/mailer";
 import { generateRawToken, hashToken } from "@/lib/auth/tokens";
 
 describe.skipIf(!isDatabaseConfigured)("Email verification service (database integration)", () => {
@@ -26,7 +26,7 @@ describe.skipIf(!isDatabaseConfigured)("Email verification service (database int
 
   it("issueEmailVerificationToken sends an email with a working link", async () => {
     const user = await makeUnverifiedUser();
-    const sendSpy = vi.spyOn(mailer, "send").mockResolvedValue();
+    const sendSpy = vi.spyOn(emailProvider, "send").mockResolvedValue({ accepted: true });
 
     await issueEmailVerificationToken(user.id);
 
@@ -38,7 +38,7 @@ describe.skipIf(!isDatabaseConfigured)("Email verification service (database int
   it("issueEmailVerificationToken is a no-op for an already-verified user", async () => {
     const user = await makeUnverifiedUser();
     await db.user.update({ where: { id: user.id }, data: { emailVerifiedAt: new Date() } });
-    const sendSpy = vi.spyOn(mailer, "send").mockResolvedValue();
+    const sendSpy = vi.spyOn(emailProvider, "send").mockResolvedValue({ accepted: true });
 
     await issueEmailVerificationToken(user.id);
     expect(sendSpy).not.toHaveBeenCalled();

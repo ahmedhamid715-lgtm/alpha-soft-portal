@@ -55,6 +55,17 @@ const serverEnvSchema = z.object({
   OPENAI_BASE_URL: z.string().url().optional(),
   OPENAI_CHAT_MODEL: z.string().min(1).optional(),
 
+  // --- Email (Module 09 — Notification & Communication Infrastructure) ---
+  // Selects the `EmailProvider` implementation (`lib/mail/mailer.ts`).
+  // Only "console" has a real implementation today — any other value (or
+  // unset) falls back to it with a logged warning rather than throwing at
+  // boot; see notifications.md "What was deliberately not built."
+  // Provider-specific credentials (a future Resend/Postmark/SES API key)
+  // belong here too, server-only, never behind NEXT_PUBLIC_*.
+  EMAIL_PROVIDER: z.string().min(1).optional(),
+  EMAIL_FROM_ADDRESS: z.string().email().optional(),
+  EMAIL_FROM_NAME: z.string().min(1).optional(),
+
   // --- Observability (Module 58 formalizes this; logger uses it now) ---
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });

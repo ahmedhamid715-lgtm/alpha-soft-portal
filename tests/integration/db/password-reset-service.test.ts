@@ -8,7 +8,7 @@ import { userRepository } from "@/server/repositories/user-repository";
 import { credentialRepository } from "@/server/repositories/credential-repository";
 import { sessionRepository } from "@/server/repositories/session-repository";
 import { authTokenRepository } from "@/server/repositories/auth-token-repository";
-import { mailer } from "@/lib/mail/mailer";
+import { emailProvider } from "@/lib/mail/mailer";
 import { generateRawToken, hashToken } from "@/lib/auth/tokens";
 
 // `resetPassword()` now records `auth.session.revoked` (Module 08) via a
@@ -46,7 +46,7 @@ describe.skipIf(!isDatabaseConfigured)("Password reset service (database integra
 
   it("requestPasswordReset sends an email with a working link for an existing account", async () => {
     const user = await makeActiveUser();
-    const sendSpy = vi.spyOn(mailer, "send").mockResolvedValue();
+    const sendSpy = vi.spyOn(emailProvider, "send").mockResolvedValue({ accepted: true });
 
     await requestPasswordReset({ email: user.email });
 
@@ -56,7 +56,7 @@ describe.skipIf(!isDatabaseConfigured)("Password reset service (database integra
   });
 
   it("requestPasswordReset is enumeration-safe — resolves the same way for a nonexistent account, without sending mail", async () => {
-    const sendSpy = vi.spyOn(mailer, "send").mockResolvedValue();
+    const sendSpy = vi.spyOn(emailProvider, "send").mockResolvedValue({ accepted: true });
     await expect(requestPasswordReset({ email: "no-such-account@example.com" })).resolves.toBeUndefined();
     expect(sendSpy).not.toHaveBeenCalled();
   });

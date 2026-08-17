@@ -31,6 +31,7 @@ import { credentialRepository } from "../src/server/repositories/credential-repo
 import { membershipRepository } from "../src/server/repositories/membership-repository";
 import { seedRbac, seedAuthorizationFixtures } from "./seed-rbac";
 import { seedUserOrgManagementFixtures } from "./seed-user-org-management";
+import { seedNotificationFixtures } from "./seed-notifications";
 
 /** Obviously a dev fixture, not a real password — satisfies the length-based policy (12+ chars). Never used outside this script. */
 const DEV_PASSWORD = "alpha-os-dev-password";
@@ -53,6 +54,7 @@ async function main() {
   await seedRbac();
   await seedAuthorizationFixtures();
   await seedUserOrgManagementFixtures();
+  await seedNotificationFixtures();
 
   const existing = await db.organization.findUnique({ where: { slug: "alpha-page-rankers-dev" } });
   if (existing) {

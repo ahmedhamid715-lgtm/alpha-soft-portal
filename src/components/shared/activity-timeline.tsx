@@ -56,7 +56,8 @@ function subscribeNever() {
  * read) for the SSR-matched first paint, then swap to the real relative
  * label once mounted — a one-way client-side update, not a mismatch.
  */
-function useRelativeTime(date: Date): string {
+/** Exported for reuse outside this file (Module 09's notification list/bell — see `docs/architecture/notifications.md` "reuse" table) rather than duplicating the hydration-safe relative-time pattern. */
+export function useRelativeTime(date: Date): string {
   const mounted = useSyncExternalStore(subscribeNever, () => true, () => false)
   if (!mounted) return date.toISOString().slice(0, 10)
   return formatRelativeTime(date)

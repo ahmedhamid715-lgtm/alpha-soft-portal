@@ -13,6 +13,7 @@ import { parseOrThrow } from "@/lib/validation/parse";
 import { logger } from "@/lib/logging";
 import { appConfig } from "@/config/app";
 import { audit } from "@/lib/audit/service";
+import { events } from "@/lib/platform/events";
 
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000; // 1 hour — short-lived, per spec section 12
 
@@ -110,6 +111,12 @@ export async function resetPassword(rawInput: unknown): Promise<ResetPasswordRes
     .catch((auditError) => {
       console.error("[audit] failed to record auth.session.revoked", auditError);
     });
+
+  // Module 09's own first real subscriber (`lib/notifications/subscribers.ts`)
+  // reacts to this — a real, already-shipped Module 04 flow, not a
+  // synthetic test event. Minimal payload (`userId` only) — same "IDs,
+  // not full entity dumps" convention `events.ts` already documents.
+  await events.emit("PasswordResetCompleted", { userId: token.userId });
 
   return "reset";
 }
