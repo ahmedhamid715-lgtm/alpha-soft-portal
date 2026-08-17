@@ -310,4 +310,145 @@ describe.skipIf(!isDatabaseConfigured)("organization-management-service (databas
 
     await expect(listOrganizationsForPlatform({ page: 1, limit: 10 })).rejects.toMatchObject({ code: "AUTHORIZATION_ERROR" });
   });
+
+  it("listOrganizationsForPlatform cursor-paginates and filters by search/status — never offset-only, never every organization at once", async () => {
+    const { listOrganizationsForPlatform } = await import("@/server/services/organization-management-service");
+    const admin = await makeMember(platformOrgId, "platform_admin", "list-cursor-admin@example.com");
+    actAs(admin.userId, admin.membership);
+
+    const firstPage = await listOrganizationsForPlatform({ limit: 1, search: "OrgMgmt Org A" });
+    expect(firstPage.items).toHaveLength(1);
+    expect(firstPage.items[0]?.id).toBe(orgAId);
+    expect(firstPage.pageInfo).not.toHaveProperty("page"); // cursor shape, not offset shape
+
+    const suspendedOnly = await listOrganizationsForPlatform({ limit: 25, status: "ACTIVE" });
+    expect(suspendedOnly.items.every((org) => org.status === "ACTIVE")).toBe(true);
+  });
+
+  // --- Module 11: lifecycle state-machine guards (spec section 5 — "invalid transitions must be rejected") ---
+
+  it("reactivateOrganization() rejects an ARCHIVED organization — archival is terminal, not reversible through this action (regression test for a real, previously-unguarded gap)", async () => {
+    const { archiveOrganization, reactivateOrganization } = await import("@/server/services/organization-management-service");
+    const admin = await makeMember(orgAId, "admin", "archive-then-reactivate-admin@example.com");
+    actAs(admin.userId, admin.membership);
+    await archiveOrganization({ organizationId: orgAId });
+
+    const platformAdmin = await makeMember(platformOrgId, "platform_admin", "archive-then-reactivate-platform@example.com");
+    actAs(platformAdmin.userId, platformAdmin.membership);
+
+    // Before this module's own fix, `organizations.reactivate` (a
+    // PLATFORM permission, resolved independently of the target
+    // organization's status) had nothing else stopping this call from
+    // silently un-archiving the organization.
+    await expect(reactivateOrganization({ organizationId: orgAId })).rejects.toMatchObject({ code: "CONFLICT" });
+
+    const stillArchived = await organizationRepository.findById(orgAId);
+    expect(stillArchived?.status).toBe("ARCHIVED");
+  });
+
+  it("reactivateOrganization() rejects an already-ACTIVE organization", async () => {
+    const { reactivateOrganization } = await import("@/server/services/organization-management-service");
+    const platformAdmin = await makeMember(platformOrgId, "platform_admin", "reactivate-active-admin@example.com");
+    actAs(platformAdmin.userId, platformAdmin.membership);
+
+    await expect(reactivateOrganization({ organizationId: orgAId })).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("suspendOrganization()/archiveOrganization()'s own state guards are unreachable through the normal permission path, by design — resolveOrganizationContext() already zeroes organizations.update for ANY non-ACTIVE organization, unconditionally, for every caller including one with a genuine membership there (spec section 21). The guards this module added are real defense-in-depth, not a fix for a reachable gap the way reactivateOrganization()'s was.", async () => {
+    const { suspendOrganization, archiveOrganization } = await import("@/server/services/organization-management-service");
+    const owner = await makeMember(orgAId, "owner", "already-suspended-owner@example.com");
+    actAs(owner.userId, owner.membership);
+    await suspendOrganization({ organizationId: orgAId });
+
+    // A second, genuinely ACTIVE member added to the now-SUSPENDED org
+    // still cannot reach `suspendOrganization()`'s own state guard —
+    // `resolveOrganizationContext()` zeroes their permissions first,
+    // based on the ORGANIZATION's status, independent of their own
+    // membership status.
+    const secondOwner = await makeMember(orgAId, "owner", "already-suspended-second-owner@example.com");
+    actAs(secondOwner.userId, secondOwner.membership);
+    await expect(suspendOrganization({ organizationId: orgAId })).rejects.toMatchObject({ code: "AUTHORIZATION_ERROR" });
+    await expect(archiveOrganization({ organizationId: orgAId })).rejects.toMatchObject({ code: "AUTHORIZATION_ERROR" });
+  });
+
+  it("concurrent suspend attempts land on the same final state (SUSPENDED) — a benign race, not a security issue: no invariant depends on which caller \"won\"", async () => {
+    const { suspendOrganization } = await import("@/server/services/organization-management-service");
+    const owner = await makeMember(orgAId, "owner", "concurrent-suspend-owner@example.com");
+    actAs(owner.userId, owner.membership);
+
+    const results = await Promise.allSettled([
+      suspendOrganization({ organizationId: orgAId }),
+      suspendOrganization({ organizationId: orgAId }),
+    ]);
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    expect(fulfilled.length).toBeGreaterThanOrEqual(1);
+
+    const final = await organizationRepository.findById(orgAId);
+    expect(final?.status).toBe("SUSPENDED");
+  });
+
+  // --- Module 11: getOrganizationForPlatform ---
+
+  it("getOrganizationForPlatform() returns the current owner and a bounded membership-status count, never a full member roster", async () => {
+    const { getOrganizationForPlatform } = await import("@/server/services/organization-management-service");
+    await makeMember(orgAId, "owner", "platform-view-owner@example.com");
+    await makeMember(orgAId, "member", "platform-view-member@example.com");
+
+    const platformAdmin = await makeMember(platformOrgId, "platform_admin", "platform-view-admin@example.com");
+    actAs(platformAdmin.userId, platformAdmin.membership);
+
+    const detail = await getOrganizationForPlatform({ organizationId: orgAId });
+    expect(detail.owner?.email).toBe("platform-view-owner@example.com");
+    expect(detail.membershipCounts.ACTIVE).toBe(2);
+    expect(detail).not.toHaveProperty("members"); // no full roster field at all
+  });
+
+  it("getOrganizationForPlatform() is denied for a caller without organizations.read (e.g. a customer org's own owner)", async () => {
+    const { getOrganizationForPlatform } = await import("@/server/services/organization-management-service");
+    const owner = await makeMember(orgAId, "owner", "platform-view-denied-owner@example.com");
+    actAs(owner.userId, owner.membership);
+
+    await expect(getOrganizationForPlatform({ organizationId: orgBId })).rejects.toMatchObject({ code: "AUTHORIZATION_ERROR" });
+  });
+
+  // --- Module 11: notification integration ---
+
+  it("suspending, reactivating, and archiving an organization each notify every ACTIVE member — never a suspended/invited one", async () => {
+    // `events.on()` registration is a side effect of importing
+    // `subscribers.ts` — real production servers get that for free from
+    // `src/instrumentation.ts`'s `register()` hook (Module 09), but a
+    // bare Vitest run never loads that hook, so `events.emit()` below
+    // would otherwise be a documented no-op with zero listeners.
+    await import("@/lib/notifications/subscribers");
+    const { suspendOrganization, reactivateOrganization, archiveOrganization } = await import("@/server/services/organization-management-service");
+    const { emailProvider } = await import("@/lib/mail/mailer");
+    const sendSpy = vi.spyOn(emailProvider, "send").mockResolvedValue({ accepted: true });
+
+    const owner = await makeMember(orgAId, "owner", "notif-owner@example.com");
+    const member = await makeMember(orgAId, "member", "notif-member@example.com");
+    const suspendedMember = await makeMember(orgAId, "member", "notif-suspended-member@example.com");
+    await membershipRepository.updateStatus(suspendedMember.membership.id, "SUSPENDED");
+
+    actAs(owner.userId, owner.membership);
+    await suspendOrganization({ organizationId: orgAId });
+
+    const notificationsAfterSuspend = await db.notification.findMany({ where: { organizationId: orgAId, category: "ORGANIZATION_ACTIVITY", sourceEventType: "organization.suspended" } });
+    const suspendRecipients = notificationsAfterSuspend.map((n) => n.recipientUserId).sort();
+    expect(suspendRecipients).toEqual([member.userId, owner.userId].sort());
+    expect(suspendRecipients).not.toContain(suspendedMember.userId);
+    expect(sendSpy).toHaveBeenCalled(); // EMAIL is optional-but-default-on for ORGANIZATION_ACTIVITY
+
+    const platformAdmin = await makeMember(platformOrgId, "platform_admin", "notif-platform-admin@example.com");
+    actAs(platformAdmin.userId, platformAdmin.membership);
+    await reactivateOrganization({ organizationId: orgAId });
+
+    const notificationsAfterReactivate = await db.notification.findMany({ where: { organizationId: orgAId, sourceEventType: "organization.reactivated" } });
+    expect(notificationsAfterReactivate.map((n) => n.recipientUserId).sort()).toEqual([member.userId, owner.userId].sort());
+
+    actAs(owner.userId, owner.membership); // ACTIVE again — the owner regains organizations.update
+    await archiveOrganization({ organizationId: orgAId });
+
+    const notificationsAfterArchive = await db.notification.findMany({ where: { organizationId: orgAId, sourceEventType: "organization.archived" } });
+    expect(notificationsAfterArchive.map((n) => n.recipientUserId).sort()).toEqual([member.userId, owner.userId].sort());
+  });
 });

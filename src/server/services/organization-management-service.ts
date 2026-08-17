@@ -2,7 +2,7 @@ import "server-only";
 import { z } from "zod";
 import type { Organization, OrganizationMembership } from "@/generated/prisma/client";
 import { generateId } from "@/lib/utils/id";
-import { parseOrThrow } from "@/lib/validation/parse";
+import { parseOrThrow, optionalFromQueryParam } from "@/lib/validation/parse";
 import { ConflictError, NotFoundError } from "@/lib/errors/app-error";
 import { logger } from "@/lib/logging";
 import { events } from "@/lib/platform/events";
@@ -225,6 +225,17 @@ export async function suspendOrganization(rawInput: unknown): Promise<Organizati
 
   const before = await organizationRepository.findById(input.organizationId);
   if (!before) throw new NotFoundError("Organization");
+  // Module 11 — the only valid transition INTO SUSPENDED is FROM ACTIVE
+  // (spec section 5's own explicit state diagram). In practice
+  // `resolveOrganizationContext()` already zeroes `organizations.update`
+  // for any non-ACTIVE organization's own members (spec section 21), so
+  // this mostly guards the narrower case of platform staff who also
+  // hold a genuine ACTIVE membership with this permission in the target
+  // organization — "invalid transitions must be rejected" is a hard
+  // requirement, not merely a usual side effect of the permission model.
+  if (before.status !== "ACTIVE") {
+    throw new ConflictError(`Only an active organization can be suspended (currently ${before.status}).`);
+  }
 
   const updated = await withTenantContext(
     { userId: context.user!.id, organizationId: input.organizationId, isPlatformStaff: context.isPlatformStaff },
@@ -262,6 +273,23 @@ export async function reactivateOrganization(rawInput: unknown): Promise<Organiz
 
   const before = await organizationRepository.findById(input.organizationId);
   if (!before) throw new NotFoundError("Organization");
+  // Module 11 — a real, previously-unguarded gap this module's own
+  // testing found: `organizations.reactivate` is a PLATFORM permission
+  // resolved independently of the target organization's own status (by
+  // design — see this function's own top comment), so nothing else
+  // stopped a caller from "reactivating" an ARCHIVED organization before
+  // this check existed. The spec's own state diagram lists only
+  // `SUSPENDED → ACTIVE` as a valid reactivation — `ARCHIVED` is
+  // terminal, the same "not a hard delete, but not casually reversible
+  // either" status `organization-management.md`'s own "No hard delete
+  // anywhere" section already establishes for it.
+  if (before.status !== "SUSPENDED") {
+    throw new ConflictError(
+      before.status === "ARCHIVED"
+        ? "An archived organization cannot be reactivated through this action."
+        : `Only a suspended organization can be reactivated (currently ${before.status}).`,
+    );
+  }
 
   const updated = await withTenantContext(
     { userId: context.user!.id, organizationId: input.organizationId, isPlatformStaff: true },
@@ -292,6 +320,13 @@ export async function archiveOrganization(rawInput: unknown): Promise<Organizati
 
   const before = await organizationRepository.findById(input.organizationId);
   if (!before) throw new NotFoundError("Organization");
+  // Module 11 — ACTIVE or SUSPENDED may both archive (spec section 5's
+  // diagram); an already-ARCHIVED organization archiving again is a
+  // no-op state, not a real transition — rejected explicitly rather
+  // than silently succeeding a second time.
+  if (before.status === "ARCHIVED") {
+    throw new ConflictError("This organization is already archived.");
+  }
 
   const updated = await withTenantContext(
     { userId: context.user!.id, organizationId: input.organizationId, isPlatformStaff: context.isPlatformStaff },
@@ -355,10 +390,88 @@ export async function advanceOnboardingStep(rawInput: unknown) {
   return updated;
 }
 
-/** Platform-wide organization listing (spec section 35) — `organizations.read`, PLATFORM-scope. Not a tenant query at all (no `organizationId` to scope by — that's the entire point), so it does not use `withTenantContext()`, same as `findPlatformOrganization()`/`findBySlug()` (see rls.md "Tables deliberately without RLS"). */
+/**
+ * Module 11 — the platform-wide organization directory
+ * (`/admin/organizations`, spec section 1) — `organizations.read`,
+ * PLATFORM-scope. Cursor-paginated (`organizationRepository.search()`),
+ * search + status filter — see that repository method's own doc comment
+ * for why this replaced the original offset-based call: an unbounded,
+ * ever-growing platform dataset must not use offset pagination, the
+ * same reasoning `user-repository.ts:search()` already established for
+ * Module 10's user directory. Not a tenant query at all (no
+ * `organizationId` to scope by — that's the entire point of this
+ * function), so it does not use `withTenantContext()`, same as
+ * `findPlatformOrganization()`/`findBySlug()` (see rls.md "Tables
+ * deliberately without RLS").
+ */
+const listOrganizationsForPlatformSchema = z.object({
+  cursor: optionalFromQueryParam(z.string().uuid()),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  search: optionalFromQueryParam(z.string().max(200)),
+  status: optionalFromQueryParam(z.enum(["ACTIVE", "SUSPENDED", "ARCHIVED"])),
+});
 export async function listOrganizationsForPlatform(rawInput: unknown) {
-  const paginationSchema = z.object({ page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(100).default(25) });
-  const input = parseOrThrow(paginationSchema, rawInput);
+  const input = parseOrThrow(listOrganizationsForPlatformSchema, rawInput);
   await requirePermission("organizations.read");
-  return organizationRepository.list(input);
+  return organizationRepository.search({ cursor: input.cursor, limit: input.limit }, { search: input.search, status: input.status });
+}
+
+export interface OrganizationForPlatform {
+  organization: Organization;
+  owner: { name: string; email: string } | null;
+  membershipCounts: Awaited<ReturnType<typeof organizationRepository.membershipStatusCounts>>;
+}
+
+/**
+ * The platform admin organization view (spec section 2) —
+ * `organizations.read`. Deliberately narrow: identity, current owner
+ * (name/email only — never a full member roster; that stays at
+ * `/organizations/{id}/members`, gated by that organization's own
+ * `members.read`, which platform staff don't automatically hold — spec
+ * section 2's own instruction: "do not expose information merely
+ * because the viewer is platform staff"), and a bounded membership
+ * status count (one `GROUP BY`, not a full member list — spec
+ * section 20's own "avoid N+1 member-count queries").
+ *
+ * This is the ONLY reachable path for platform staff to view/manage an
+ * organization they are not themselves a member of — see
+ * `organization-lifecycle.md` "The reactivation reachability gap" for
+ * the real bug this closes: `/organizations/{id}/settings`
+ * (`resolveOrganizationContext()`-gated) 404s/denies platform staff with
+ * no membership in that specific organization, even though they
+ * genuinely hold `organizations.reactivate` via their PLATFORM context —
+ * a suspended organization had no reachable "Reactivate" button at all
+ * before this function/page existed.
+ */
+export async function getOrganizationForPlatform(rawInput: unknown): Promise<OrganizationForPlatform> {
+  const input = parseOrThrow(z.object({ organizationId: z.string().uuid() }), rawInput);
+  const context = await requirePermission("organizations.read");
+
+  const organization = await organizationRepository.findById(input.organizationId);
+  if (!organization) throw new NotFoundError("Organization");
+
+  // `OrganizationMembership` IS RLS-protected (Module 06) — unlike
+  // `Organization` itself, which deliberately isn't (see `rls.md`
+  // "Tables deliberately without RLS"). These two reads go through
+  // `withTenantContext()`'s platform-context bypass rather than the
+  // plain, RLS-bypassing `db` client, so this function stays a real
+  // second line of defense, not just an application-permission check —
+  // "do not use an unrestricted/superuser database client to avoid
+  // implementing proper tenancy" (spec section 17's own explicit
+  // instruction).
+  const [ownerPage, membershipCounts] = await withTenantContext(
+    { userId: context.user!.id, organizationId: input.organizationId, isPlatformStaff: true },
+    (tx) =>
+      Promise.all([
+        membershipRepository.listForOrganization(input.organizationId, { page: 1, limit: 1 }, { role: "owner", status: "ACTIVE" }, tx),
+        organizationRepository.membershipStatusCounts(input.organizationId, tx),
+      ]),
+  );
+  const ownerRow = ownerPage.items[0];
+
+  return {
+    organization,
+    owner: ownerRow ? { name: ownerRow.user.name, email: ownerRow.user.email } : null,
+    membershipCounts,
+  };
 }

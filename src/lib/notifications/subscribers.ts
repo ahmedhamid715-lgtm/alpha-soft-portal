@@ -2,7 +2,10 @@ import "server-only";
 import { events } from "@/lib/platform/events";
 import { organizationRepository } from "@/server/repositories/organization-repository";
 import { userRepository } from "@/server/repositories/user-repository";
+import { membershipRepository } from "@/server/repositories/membership-repository";
+import type { NotifyInput } from "./service";
 import { notificationService } from "./service";
+import type { NotificationTemplateKey } from "./templates";
 
 /**
  * Module 09's own event subscribers — the proof that
@@ -108,6 +111,59 @@ events.on<OwnershipTransferredPayload>("ownership.transferred", async (event) =>
     sourceEntityId: toMembershipId,
     templateData: { organizationName },
   });
+});
+
+interface OrganizationLifecyclePayload {
+  organizationId: string;
+}
+
+/**
+ * Module 11 — `organization.suspended`/`reactivated`/`archived`
+ * (`organization-management-service.ts`) are whole-organization events,
+ * unlike every handler above (each of which already has one specific
+ * recipient in its own event payload) — every ACTIVE member loses/
+ * regains/keeps-but-differently access, so every one of them gets
+ * notified, not just the org's owner. `notifyMany()` (not N sequential
+ * `notify()` calls) — see `service.ts`'s own reasoning for why that's
+ * the right entry point for a real fan-out. `sourceEntityId` is the
+ * organization id for all of them; `idempotencyKey`
+ * (`{eventType}:{organizationId}:{recipientUserId}`) is still unique
+ * per recipient, so this is structurally N independent notifications,
+ * never one row N people would race to "own."
+ */
+async function notifyAllActiveMembers(organizationId: string, templateKey: NotificationTemplateKey, sourceEventType: string): Promise<void> {
+  const organization = await organizationRepository.findById(organizationId);
+  if (!organization) return; // deleted between the event firing and this handler running — nothing to notify about.
+
+  // Bounded by realistic organization size (spec section 20's own
+  // "avoid unbounded queries" applies here too) — 500 is generous for
+  // any organization this platform manages today; a future module with
+  // genuinely larger organizations should paginate this properly rather
+  // than raise the constant.
+  const members = await membershipRepository.listForOrganization(organizationId, { page: 1, limit: 500 }, { status: "ACTIVE" });
+
+  const inputs: NotifyInput[] = members.items.map((membership) => ({
+    templateKey,
+    recipientUserId: membership.userId,
+    organizationId,
+    sourceEventType,
+    sourceEntityType: "organization",
+    sourceEntityId: organizationId,
+    templateData: { organizationName: organization.displayName },
+  }));
+  await notificationService.notifyMany(inputs);
+}
+
+events.on<OrganizationLifecyclePayload>("organization.suspended", async (event) => {
+  await notifyAllActiveMembers(event.payload.organizationId, "organization.suspended", "organization.suspended");
+});
+
+events.on<OrganizationLifecyclePayload>("organization.reactivated", async (event) => {
+  await notifyAllActiveMembers(event.payload.organizationId, "organization.reactivated", "organization.reactivated");
+});
+
+events.on<OrganizationLifecyclePayload>("organization.archived", async (event) => {
+  await notifyAllActiveMembers(event.payload.organizationId, "organization.archived", "organization.archived");
 });
 
 events.on<PasswordResetCompletedPayload>("PasswordResetCompleted", async (event) => {

@@ -153,6 +153,27 @@ truth.
 | Create a new organization | `organizations.create` | | | | | | *(`platform_owner`/`platform_admin` only)* |
 | List organizations platform-wide | `organizations.read` | | | | | | *(platform staff only)* |
 
+## Platform-wide administration (Module 11)
+
+Everything above is either self-service (an organization managing
+itself) or platform-only-because-of-a-deadlock (`organizations.reactivate`).
+Module 11 adds the platform-staff-facing directory and detail view —
+`/admin/organizations` and `/admin/organizations/[id]` — reusing
+`listOrganizationsForPlatform()`/`getOrganizationForPlatform()`
+(extended/added in `organization-management-service.ts`, this same
+file) rather than a second organization-listing system. See
+`organization-lifecycle.md` for the real reachability bug this closes
+and `organization-security.md` for the full trust model.
+
+`listOrganizationsForPlatform()` was extended from its original offset-
+paginated shape to cursor pagination + search/status filter — the exact
+same "an unbounded platform dataset must not use offset pagination"
+reasoning `user-management.md`'s own directory decision documents for
+Module 10. `getOrganizationForPlatform()` is new: identity, current
+owner (name/email only), and a bounded membership-status count — never
+a full member roster or that organization's own audit trail (see
+`organization-security.md` "What platform staff can and cannot see").
+
 ## Security boundary (unchanged from Module 06)
 
 Every mutation in this module follows the exact same shape every earlier

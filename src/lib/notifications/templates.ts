@@ -108,6 +108,50 @@ export const NOTIFICATION_TEMPLATES = {
       actionUrl: "/organizations",
     }),
   }),
+
+  /// Module 11 — reacts to `organization.suspended`
+  /// (`organization-management-service.ts`). One copy per ACTIVE member
+  /// — see `lib/notifications/subscribers.ts`'s own handler for why this
+  /// is a whole-organization fan-out, unlike every other Module 09
+  /// subscriber, which already has a single known recipient in its event
+  /// payload.
+  "organization.suspended": template({
+    version: 1,
+    active: true,
+    category: "ORGANIZATION_ACTIVITY",
+    severity: "CRITICAL",
+    render: (data: { organizationName: string }) => ({
+      title: "Organization suspended",
+      body: `${data.organizationName} was suspended by platform staff. You and every other member have lost access until it's reactivated.`,
+      actionUrl: "/organizations",
+    }),
+  }),
+
+  /// Reacts to `organization.reactivated`.
+  "organization.reactivated": template({
+    version: 1,
+    active: true,
+    category: "ORGANIZATION_ACTIVITY",
+    severity: "INFO",
+    render: (data: { organizationName: string }) => ({
+      title: "Organization reactivated",
+      body: `${data.organizationName} was reactivated. Access has been restored.`,
+      actionUrl: "/organizations",
+    }),
+  }),
+
+  /// Reacts to `organization.archived`.
+  "organization.archived": template({
+    version: 1,
+    active: true,
+    category: "ORGANIZATION_ACTIVITY",
+    severity: "WARNING",
+    render: (data: { organizationName: string }) => ({
+      title: "Organization archived",
+      body: `${data.organizationName} has been archived and is no longer active. Your historical access and data are preserved.`,
+      actionUrl: "/organizations",
+    }),
+  }),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as const satisfies Record<string, NotificationTemplateDefinition<any>>;
 

@@ -24,6 +24,10 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   // — this is display convenience, never the authorization boundary).
   const platformContext = await resolvePlatformContext();
   const canViewUserDirectory = platformContext.permissions.has("users.read");
+  // Module 11 — same display-convenience-only reasoning as
+  // `canViewUserDirectory` above; the real gate is `/admin/organizations`
+  // itself.
+  const canViewOrganizationDirectory = platformContext.permissions.has("organizations.read");
 
   return (
     <div className="flex min-h-svh flex-col bg-background">
@@ -57,6 +61,11 @@ export default async function ProtectedLayout({ children }: { children: React.Re
             {canViewUserDirectory ? (
               <Link href="/admin/users" className="hover:text-foreground">
                 Users
+              </Link>
+            ) : null}
+            {canViewOrganizationDirectory ? (
+              <Link href="/admin/organizations" className="hover:text-foreground">
+                All organizations
               </Link>
             ) : null}
           </nav>
