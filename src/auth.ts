@@ -42,12 +42,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         const identity = await verifyCredentials(credentials);
+        if (!identity) return null;
         // Auth.js's User type wants `id` as the only required field;
         // `email`/`name` ride along for the jwt callback's `user` param
         // below. No password/hash ever touches this return value.
-        return identity;
+        // `userAgent` (Module 10 — see types/next-auth.d.ts's own doc
+        // comment) is the one place this module ever sees the real
+        // `Request` — `authorize()`'s second parameter, which no other
+        // callback receives. Truncated the same defensive way
+        // `createUserSession()` already truncates it on write; capturing
+        // the full untruncated header here would just move the same
+        // "don't let an oversized header value do anything surprising"
+        // concern one hop earlier for no benefit.
+        return { ...identity, userAgent: request.headers.get("user-agent")?.slice(0, 255) ?? null };
       },
     }),
   ],
@@ -68,7 +77,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // own session row and carry its id in the token; nothing else
         // identity-related goes into the JWT (see spec section 7 — "do
         // not put unnecessary personal/business data into the session").
-        token.sessionId = await createUserSession(user.id, null);
+        token.sessionId = await createUserSession(user.id, user.userAgent ?? null);
         token.sub = user.id;
       }
       return token;

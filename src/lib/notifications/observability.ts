@@ -2,7 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { requirePermission } from "@/lib/authorization/authorize";
 import { withTenantContext } from "@/lib/tenancy/context";
-import { parseOrThrow } from "@/lib/validation/parse";
+import { parseOrThrow, optionalFromQueryParam } from "@/lib/validation/parse";
 import { audit } from "@/lib/audit/service";
 import { notificationDeliveryRepository } from "@/server/repositories/notification-delivery-repository";
 import type { CursorPaginatedResult } from "@/lib/platform/pagination";
@@ -19,12 +19,21 @@ import { getCurrentUser } from "@/lib/auth/session-guard";
  * DIFFERENT function) is what a regular user's own feed uses.
  */
 
+// `optionalFromQueryParam`, not a bare `.optional()` — this page's own
+// `<select name="status">`/`<select name="channel">` submit an empty
+// string (not an absent key) for their unselected "Any status"/"Any
+// channel" options; a bare `z.enum([...]).optional()` rejects `""`
+// outright instead of treating it as "no filter," crashing the whole
+// page. A real bug, found via Module 10's own Playwright testing of the
+// structurally identical `/admin/users` filter form and fixed here too
+// once found — see `lib/validation/parse.ts`'s own doc comment and
+// `docs/architecture/user-management.md` "Real bugs found."
 const listSchema = z.object({
-  cursor: z.string().uuid().optional(),
+  cursor: optionalFromQueryParam(z.string().uuid()),
   limit: z.coerce.number().int().min(1).max(100).default(25),
-  organizationId: z.string().uuid().optional(),
-  status: z.enum(["PENDING", "PROCESSING", "SENT", "FAILED", "CANCELLED"]).optional(),
-  channel: z.enum(["IN_APP", "EMAIL", "SMS", "PUSH"]).optional(),
+  organizationId: optionalFromQueryParam(z.string().uuid()),
+  status: optionalFromQueryParam(z.enum(["PENDING", "PROCESSING", "SENT", "FAILED", "CANCELLED"])),
+  channel: optionalFromQueryParam(z.enum(["IN_APP", "EMAIL", "SMS", "PUSH"])),
 });
 
 /** Delivery status/failures/retry state across every organization — `notifications.observability` (PLATFORM). Never a grant of notification content beyond what's already on the delivery row itself (channel, provider, failure code/reason — never `Notification.body`). */

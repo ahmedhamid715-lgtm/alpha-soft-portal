@@ -1,7 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import type { AuditCategory, AuditEvent, AuditOutcome } from "@/generated/prisma/client";
-import { parseOrThrow } from "@/lib/validation/parse";
+import { parseOrThrow, optionalFromQueryParam } from "@/lib/validation/parse";
 import { requirePermission } from "@/lib/authorization/authorize";
 import { organizationRepository } from "@/server/repositories/organization-repository";
 import { auditEventRepository, type AuditEventFilter } from "@/server/repositories/audit-event-repository";
@@ -22,24 +22,6 @@ import { audit } from "./service";
  * these are two structurally separate functions, not one query with an
  * `isPlatformStaff` bypass flag.
  */
-
-/**
- * An empty string and an absent key must validate identically — every
- * one of these filters ultimately comes from a URL search-param object
- * (`Object.fromEntries(url.searchParams)` in the export route, or a
- * plain `<form method="get">`'s submission in the filter UI), where an
- * unfilled input still submits its `name` with an empty string value,
- * not no key at all. Without this, `z.coerce.date().optional()` on `""`
- * doesn't skip validation (only a genuinely `undefined` value does) —
- * `new Date("")` is `Invalid Date`, which fails `.optional()`'s inner
- * check anyway, so the *whole request* 500s the moment a user submits
- * the filter form with the date range left blank (the common case).
- * Found by actually clicking through the filter form in a real browser
- * (Phase 40), not by reading the schema.
- */
-function optionalFromQueryParam<T extends z.ZodTypeAny>(schema: T) {
-  return z.preprocess((value) => (value === "" ? undefined : value), schema.optional());
-}
 
 const filterSchema = z.object({
   actorUserId: optionalFromQueryParam(z.string().uuid()),

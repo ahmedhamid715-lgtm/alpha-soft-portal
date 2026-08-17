@@ -81,6 +81,27 @@ export const invitationRepository = {
     return toOffsetPaginatedResult(items, params);
   },
 
+  /**
+   * Module 10 — every invitation ever addressed to this email, across
+   * every organization, newest first. Read-only cross-org visibility for
+   * the global user-detail page (spec section 10: "administrative
+   * visibility for pending/accepted/expired/revoked"); actually
+   * resending/revoking one still goes through `invitation-service.ts`'s
+   * existing `resendInvitation()`/`revokeInvitation()` (each independently
+   * re-checks `members.invite` in THAT invitation's own organization —
+   * this query grants no authorization by itself, it only lists rows).
+   */
+  async listByEmail(email: string, tx: TransactionClient | typeof db = db): Promise<Prisma.InvitationGetPayload<{ include: { organization: true; role: true } }>[]> {
+    return withDbErrorTranslation(() =>
+      tx.invitation.findMany({
+        where: { email },
+        include: { organization: true, role: true },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      }),
+    );
+  },
+
   async revoke(id: string, tx: TransactionClient | typeof db = db): Promise<Invitation> {
     return withDbErrorTranslation(() =>
       tx.invitation.update({ where: { id }, data: { status: "REVOKED", revokedAt: new Date() } }),

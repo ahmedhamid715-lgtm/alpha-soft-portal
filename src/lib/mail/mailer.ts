@@ -175,3 +175,20 @@ export async function sendInvitationEmail(to: string, organizationName: string, 
     text: `You've been invited to join ${organizationName} on Alpha OS. Accept the invitation by visiting:\n\n${acceptUrl}\n\nThis link expires in 7 days. If you weren't expecting this, you can ignore this email.`,
   });
 }
+
+/**
+ * Module 10 — platform-staff account provisioning
+ * (`user-management-service.ts:createPlatformUser()`). Reuses the SAME
+ * `PASSWORD_RESET` `AuthToken`/`resetPassword()` mechanism the forgot-
+ * password flow already uses (spec's own instruction: "use the existing
+ * token primitives," not a new account-activation token type) — this is
+ * only different copy for the identical link, sent to someone who has
+ * never had a password at all yet rather than someone resetting one.
+ */
+export async function sendWelcomeEmail(to: string, name: string, setPasswordUrl: string): Promise<void> {
+  await emailProvider.send({
+    to,
+    subject: "Your Alpha OS account is ready",
+    text: `Hi ${name},\n\nAn Alpha OS account has been created for you. Set your password to get started:\n\n${setPasswordUrl}\n\nThis link expires in 1 hour and can only be used once.`,
+  });
+}

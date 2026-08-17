@@ -23,6 +23,21 @@ declare module "next-auth" {
      */
     sessionId?: string;
   }
+
+  /**
+   * Module 10 — a purely transient carrier, NOT persisted on the JWT or
+   * `Session` (no augmentation added to either of those for it, unlike
+   * `sessionId` above). `authorize()` in `auth.ts` is the only place
+   * Auth.js gives this module a real `Request` (and therefore its
+   * `user-agent` header) at all; the `jwt` callback's own `user`
+   * parameter (Auth.js's own mechanism for "what `authorize()` just
+   * returned") is the only way to carry it the one hop from there to
+   * `createUserSession()` — real, request-scoped data, never a stored
+   * credential.
+   */
+  interface User {
+    userAgent?: string | null;
+  }
 }
 
 declare module "next-auth/jwt" {

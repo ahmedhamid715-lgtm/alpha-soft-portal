@@ -1,4 +1,4 @@
-import type { z } from "zod";
+import { z } from "zod";
 // Import from app-error.ts directly, not the `@/lib/errors` barrel — that
 // barrel also re-exports api-response.ts, which is marked "server-only".
 // ValidationError itself has no server-only dependency, so this file stays
@@ -56,4 +56,24 @@ export function safeParseResult<Schema extends z.ZodType>(
     (fieldErrors[path] ??= []).push(issue.message);
   }
   return { success: false, fieldErrors };
+}
+
+/**
+ * An empty string and an absent key must validate identically — every
+ * one of these filters ultimately comes from a URL search-param object
+ * or a plain `<form method="get">`'s submission, where a `<select>`
+ * with an "Any status"/"All categories"-style unselected `<option
+ * value="">` still submits its `name` with an empty string, not no key
+ * at all. Without this, `z.enum([...]).optional()` on `""` doesn't skip
+ * validation (only a genuinely `undefined` value does), so the *whole
+ * request* crashes the moment a user submits a filter form with nothing
+ * chosen — the common case. Originally `audit/query.ts`'s own local
+ * helper (found there by actually clicking through that filter form in
+ * a real browser); promoted here once `notification-observability`'s
+ * and `user-management`'s own filter schemas needed the identical fix,
+ * caught the same way — see `docs/architecture/user-management.md`
+ * "Real bugs found."
+ */
+export function optionalFromQueryParam<T extends z.ZodTypeAny>(schema: T) {
+  return z.preprocess((value) => (value === "" ? undefined : value), schema.optional());
 }

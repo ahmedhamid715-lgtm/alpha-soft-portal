@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { parseOrThrow, safeParseResult } from "@/lib/validation/parse";
+import { parseOrThrow, safeParseResult, optionalFromQueryParam } from "@/lib/validation/parse";
 import { ValidationError } from "@/lib/errors/app-error";
 
 const schema = z.object({
@@ -33,6 +33,31 @@ describe("parseOrThrow", () => {
 
   it("rejects malicious/unexpected shapes (extra fields don't smuggle through as valid)", () => {
     expect(() => parseOrThrow(schema, { email: "a@example.com" /* missing age */ })).toThrow(ValidationError);
+  });
+});
+
+describe("optionalFromQueryParam", () => {
+  // Regression coverage for a real bug (Module 10's own Playwright
+  // testing of `/admin/users`' filter form against a production build):
+  // a `<select>`'s unselected "Any status" option submits `status=`
+  // (empty string), not an absent key — a bare `z.enum([...]).optional()`
+  // schema rejects that as invalid instead of treating it as "no
+  // filter," crashing the whole page. `audit/query.ts` had already
+  // solved this once for date/string filters before this helper was
+  // promoted to be shared; this suite is what proves it generalizes to
+  // enums too, which is exactly the case that crashed.
+  const filterSchema = z.object({
+    status: optionalFromQueryParam(z.enum(["ACTIVE", "SUSPENDED"])),
+  });
+
+  it("treats an empty string the same as an absent key — never a validation error", () => {
+    expect(parseOrThrow(filterSchema, { status: "" })).toEqual({ status: undefined });
+    expect(parseOrThrow(filterSchema, {})).toEqual({ status: undefined });
+  });
+
+  it("still validates a real, non-empty value against the inner schema", () => {
+    expect(parseOrThrow(filterSchema, { status: "ACTIVE" })).toEqual({ status: "ACTIVE" });
+    expect(() => parseOrThrow(filterSchema, { status: "NOT_A_REAL_STATUS" })).toThrow(ValidationError);
   });
 });
 

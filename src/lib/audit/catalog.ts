@@ -81,6 +81,18 @@ export const AUDIT_CATALOG = {
   // --- Profile (Module 07) ---
   "profile.updated": action("DATA", "A user updated their own profile (name, avatar, timezone, or locale — never credentials or membership)."),
 
+  // --- User management (Module 10) — administrative actions platform
+  // staff take on ANOTHER person's global `User` record, distinct from
+  // `profile.updated` (self-service, Module 07) and from
+  // `organization.member.*` (membership-scoped, one organization).
+  // `ADMINISTRATION`, matching the same category `notification.*.changed`
+  // already uses for platform-staff-on-someone-else's-account actions.
+  "user.created": action("ADMINISTRATION", "Platform staff created a new platform user record."),
+  "user.updated": action("ADMINISTRATION", "Platform staff edited another user's profile."),
+  "user.suspended": action("ADMINISTRATION", "Platform staff suspended a user's global account."),
+  "user.reactivated": action("ADMINISTRATION", "Platform staff reactivated a suspended or deactivated user's global account."),
+  "user.deactivated": action("ADMINISTRATION", "Platform staff deactivated a user's global account (never a hard delete — see data-modeling.md)."),
+
   // --- Compliance / this module's own actions ---
   "audit.export.created": action("COMPLIANCE", "An audit trail export was generated."),
 
