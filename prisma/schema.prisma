@@ -112,6 +112,19 @@ model Organization {
   invitations Invitation[]
   /// Module 07 — this organization's onboarding progress, if it has any (see OrganizationOnboarding).
   onboarding  OrganizationOnboarding?
+  /// Module 08 — this organization's audit trail. `SetNull`, never
+  /// `Cascade` (see tenancy-foundation.md "Audit foundation" — an audit
+  /// trail that disappears when the thing it describes is deleted has
+  /// failed at its one job — and `AuditEvent.organizationId`'s own
+  /// `Restrict` first draft turned out to be the wrong choice too: it
+  /// was found, by actually running the test suite (not just source
+  /// inspection — Phase 40), to make every org hard-delete anywhere —
+  /// including ordinary test fixture cleanup — fail once a single audit
+  /// event referenced it. `SetNull` preserves the row and its
+  /// `resourceName`/`actorDisplayName` snapshot fields — the actual
+  /// evidence — without permanently pinning the organization row in
+  /// place.
+  auditEvents AuditEvent[]
 
   @@index([status])
   @@index([isPlatform])
@@ -173,6 +186,11 @@ model User {
   credential  UserCredential?
   sessions    UserSession[]
   authTokens  AuthToken[]
+  /// Module 08 — audit events where this user is the actor. `SetNull`,
+  /// same reasoning as `Organization.auditEvents` — never `Cascade`.
+  /// Never joined for display (see `AuditEvent.actorDisplayName`); this
+  /// relation exists for referential integrity only.
+  auditEvents AuditEvent[]
 
   @@index([status])
   @@map("users")
@@ -552,4 +570,150 @@ model OrganizationOnboarding {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("organization_onboarding")
+}
+
+// =============================================================================
+// AuditEvent — Module 08 (Audit & Compliance)
+// =============================================================================
+
+/// The single, append-only source of truth for "what action did an
+/// identifiable actor actually perform" across Alpha OS — see
+/// docs/architecture/audit-system.md for the full design and why every
+/// field below exists. No future module may create its own audit table
+/// (docs/development/auditing.md) — every mutation worth auditing writes
+/// here, through `lib/audit/service.ts`, never directly.
+///
+/// Deliberately has no `updatedAt` — this table is INSERT-only from the
+/// application (enforced at the repository layer, the database-role
+/// layer, and RLS below); a mutable-timestamp column on an append-only
+/// table would be a contradiction in the schema itself.
+model AuditEvent {
+  id String @id @db.Uuid
+
+  /// Nullable for two independent reasons: pre-tenant events are real (a
+  /// login failure before any org is known, a platform-wide
+  /// administrative action, an unauthenticated denied request) — never
+  /// null for an organization-owned mutation at write time — and
+  /// `SetNull` (never `Cascade`, tenancy-foundation.md "Audit
+  /// foundation") means a hard-deleted organization also leaves this
+  /// null on its old rows. Either way, `resourceName`/`actorDisplayName`
+  /// below still make the record readable — the FK's job is referential
+  /// integrity, not being the only copy of the identifying information.
+  organizationId String? @map("organization_id") @db.Uuid
+
+  actorType AuditActorType @map("actor_type")
+  /// `SetNull`, never `Cascade` — same reasoning as `organizationId`.
+  /// Never joined for display — see `actorDisplayName`.
+  actorUserId String? @map("actor_user_id") @db.Uuid
+  /// Future SERVICE/AI actor identifier (spec Phase 28) — no table backs
+  /// this yet, so it's a plain string, not a relation; this model won't
+  /// need to change when that table eventually exists.
+  actorServiceId String? @map("actor_service_id")
+  /// Snapshot at the moment of the event, not a live join — the actor's
+  /// `name`/`email` can change or the account can be deactivated years
+  /// later; the record must still read correctly. Same reasoning
+  /// Module 07 applied to `Invitation` never joining live for display.
+  actorDisplayName String? @map("actor_display_name")
+
+  /// Canonical catalog key (`lib/audit/catalog.ts`), e.g.
+  /// `"organization.suspended"`. Plain string, not an enum — the
+  /// catalog must be extensible by future modules without a migration
+  /// (Phase 3/36); `category`/`outcome`/`actorType` are genuinely
+  /// bounded, `action` is not.
+  action   String
+  category AuditCategory
+  outcome  AuditOutcome
+
+  /// Plain string, not an enum, for the same extensibility reason as `action`.
+  resourceType String? @map("resource_type")
+  resourceId   String? @map("resource_id") @db.Uuid
+  /// Snapshot, not a live join — same reasoning as `actorDisplayName`.
+  resourceName String? @map("resource_name")
+
+  /// Field-level diffs only, never a full row snapshot — see
+  /// audit-system.md "State-change capture." Always passed through
+  /// `lib/audit/redact.ts` before being written.
+  previousState Json? @map("previous_state") @db.JsonB
+  newState      Json? @map("new_state") @db.JsonB
+  /// Small, bounded, action-specific extra context. Always redacted before write.
+  metadata      Json? @db.JsonB
+
+  /// Best-effort investigative signal only — never an authorization
+  /// input. No established trusted-proxy model exists in this codebase;
+  /// see audit-system.md "IP/UA handling."
+  ipAddress String? @map("ip_address")
+  userAgent String? @map("user_agent") @db.VarChar(255)
+
+  /// One HTTP request / Server Action execution — minted fresh per
+  /// top-level audited call when the caller supplies none (Server
+  /// Actions have no `Request` object for `lib/platform/request-id.ts`
+  /// to read).
+  requestId String @map("request_id")
+  /// Groups multiple audit events from one logical operation. Defaults
+  /// to the same value as `requestId` for single-event operations.
+  correlationId String @map("correlation_id")
+
+  /// Server-generated (`now()` at the database) — client clock skew can
+  /// never misorder an audit record.
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  actorUser    User?         @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  /// "This organization's recent activity" — the audit UI's primary list query.
+  @@index([organizationId, createdAt])
+  /// "Everything this person did."
+  @@index([actorUserId, createdAt])
+  /// "This specific record's history" — the investigation-workflow "follow the resource" navigation.
+  @@index([resourceType, resourceId])
+  /// "Every occurrence of this action" — filtering by action in the audit UI.
+  @@index([action, createdAt])
+  /// Correlating one request's audit trail with its application logs.
+  @@index([requestId])
+  /// Following one logical operation's several events.
+  @@index([correlationId])
+  /// Category-level filtering in the audit UI.
+  @@index([category, createdAt])
+  @@map("audit_events")
+}
+
+enum AuditActorType {
+  /// A real, authenticated person acting through the UI.
+  USER
+  /// The platform itself — no identifiable human initiator (e.g. a future scheduled job).
+  SYSTEM
+  /// A future backend service/integration acting on its own credentials.
+  SERVICE
+  /// A future AI agent — never appears as a plain USER action (spec Phase 28).
+  AI
+  /// A future external API caller (e.g. an API key), distinct from an interactive USER session.
+  API
+  /// A future automated workflow/rule execution.
+  AUTOMATION
+
+  @@map("audit_actor_type")
+}
+
+enum AuditOutcome {
+  SUCCESS
+  FAILURE
+  DENIED
+
+  @@map("audit_outcome")
+}
+
+enum AuditCategory {
+  AUTHENTICATION
+  AUTHORIZATION
+  ORGANIZATION
+  MEMBERSHIP
+  INVITATION
+  ROLE
+  SECURITY
+  DATA
+  SYSTEM
+  ADMINISTRATION
+  COMPLIANCE
+
+  @@map("audit_category")
 }

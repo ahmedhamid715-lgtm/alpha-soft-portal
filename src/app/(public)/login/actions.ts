@@ -9,6 +9,7 @@ import { resolveDestination } from "@/lib/auth/destination";
 import { safeParseResult } from "@/lib/validation/parse";
 import { userRepository } from "@/server/repositories/user-repository";
 import { membershipRepository } from "@/server/repositories/membership-repository";
+import { audit } from "@/lib/audit/service";
 
 const loginSchema = z.object({
   email: z.string().email("Enter a valid email address."),
@@ -52,6 +53,27 @@ export async function loginAction(_prevState: LoginActionState, formData: FormDa
     await signIn("credentials", { email, password, redirect: false });
   } catch (error) {
     if (error instanceof AuthError) {
+      // A DB lookup here (not the response) — safe for enumeration
+      // protection (the returned message never changes based on the
+      // result) but lets the audit record carry a real actorUserId when
+      // the email does correspond to a real, just-rejected account,
+      // instead of only ever a free-text label. Best-effort per
+      // audit-system.md's failure-semantics table — a lost audit write
+      // must never turn a login failure into an unrelated 500.
+      const attemptedUser = await userRepository.findByEmail(email).catch(() => null);
+      await audit
+        .recordFailure({
+          action: "auth.login.failure",
+          resourceType: "user",
+          resourceId: attemptedUser?.id,
+          resourceName: attemptedUser?.name ?? email,
+          knownActor: attemptedUser ? { userId: attemptedUser.id, displayName: attemptedUser.name } : undefined,
+          unauthenticatedActorDisplayName: attemptedUser ? undefined : email,
+        })
+        .catch((auditError) => {
+          console.error("[audit] failed to record auth.login.failure", auditError);
+        });
+
       // Deliberately the same generic message regardless of *why*
       // authorize() returned null (no such account, wrong password,
       // suspended account, ...) — see auth-service.ts's verifyCredentials
@@ -75,6 +97,23 @@ export async function loginAction(_prevState: LoginActionState, formData: FormDa
   const user = await userRepository.findByEmail(email);
   const memberships = user ? await membershipRepository.listForUser(user.id) : [];
   const membershipRole = memberships.length === 1 ? memberships[0].role : null;
+
+  // Best-effort, same reasoning as the failure path above — `signIn()`
+  // already succeeded; a lost audit write must not turn a real,
+  // successful login into a user-facing error.
+  if (user) {
+    await audit
+      .recordSuccess({
+        action: "auth.login.success",
+        resourceType: "user",
+        resourceId: user.id,
+        resourceName: user.name,
+        knownActor: { userId: user.id, displayName: user.name },
+      })
+      .catch((auditError) => {
+        console.error("[audit] failed to record auth.login.success", auditError);
+      });
+  }
 
   // Prefer sending the user back where they were headed (e.g. proxy.ts
   // redirected them to /login from a protected page) — but only for a

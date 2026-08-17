@@ -12,6 +12,7 @@ import { sessionRepository } from "@/server/repositories/session-repository";
 import { parseOrThrow } from "@/lib/validation/parse";
 import { logger } from "@/lib/logging";
 import { appConfig } from "@/config/app";
+import { audit } from "@/lib/audit/service";
 
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000; // 1 hour — short-lived, per spec section 12
 
@@ -89,5 +90,26 @@ export async function resetPassword(rawInput: unknown): Promise<ResetPasswordRes
     operation: "auth.resetPassword",
     userId: token.userId,
   });
+
+  // Best-effort (see audit-system.md's failure-semantics table) — the
+  // reset itself already succeeded; a lost audit write must not turn it
+  // into a user-facing error. Actor is the token's own `userId` — a
+  // `knownActor` override, since this flow authenticates via a
+  // possession-proof token, never a session (`getCurrentUser()` would
+  // resolve nothing here even for the account's own owner).
+  const resetUser = await userRepository.findById(token.userId).catch(() => null);
+  await audit
+    .recordSuccess({
+      action: "auth.session.revoked",
+      resourceType: "user",
+      resourceId: token.userId,
+      resourceName: resetUser?.name ?? undefined,
+      metadata: { reason: "password_reset" },
+      knownActor: { userId: token.userId, displayName: resetUser?.name ?? null },
+    })
+    .catch((auditError) => {
+      console.error("[audit] failed to record auth.session.revoked", auditError);
+    });
+
   return "reset";
 }

@@ -181,12 +181,15 @@ role's grant to actually gate (see "Reserved permissions" below).
 | users.create *(reserved)* | ✓ | ✓ |  |  |  |  |  |  |  |  |
 | users.update *(reserved)* | ✓ | ✓ |  |  |  |  |  |  |  |  |
 | users.delete *(reserved)* | ✓ | ✓ |  |  |  |  |  |  |  |  |
-| organizations.read *(reserved)* | ✓ | ✓ | ✓ | ✓ |  |  |  |  |  |  |
-| organizations.update *(reserved)* |  |  |  |  | ✓ | ✓ |  |  |  |  |
+| organizations.read | ✓ | ✓ | ✓ | ✓ |  |  |  |  |  |  |
+| organizations.create | ✓ | ✓ |  |  |  |  |  |  |  |  |
+| organizations.update |  |  |  |  | ✓ | ✓ |  |  |  |  |
+| organizations.reactivate | ✓ | ✓ |  |  |  |  |  |  |  |  |
 | members.read |  |  |  |  | ✓ | ✓ | ✓ |  |  |  |
 | members.invite |  |  |  |  | ✓ | ✓ |  |  |  |  |
 | members.update |  |  |  |  | ✓ | ✓ |  |  |  |  |
 | members.remove |  |  |  |  | ✓ | ✓ |  |  |  |  |
+| ownership.transfer |  |  |  |  | ✓ |  |  |  |  |  |
 | roles.read | ✓ | ✓ | ✓ |  | ✓ | ✓ | ✓ |  |  |  |
 | roles.create | ✓ | ✓ |  |  | ✓ | ✓ |  |  |  |  |
 | roles.update | ✓ | ✓ |  |  | ✓ | ✓ |  |  |  |  |
@@ -211,7 +214,10 @@ role's grant to actually gate (see "Reserved permissions" below).
 | ai.manage *(reserved)* |  |  |  |  | ✓ | ✓ |  |  |  |  |
 | integrations.read *(reserved)* |  |  |  |  | ✓ | ✓ |  |  |  |  |
 | integrations.manage *(reserved)* |  |  |  |  | ✓ | ✓ |  |  |  |  |
-| audit.read *(reserved)* | ✓ | ✓ | ✓ |  |  |  |  |  |  |  |
+| audit.read |  |  |  |  | ✓ | ✓ |  |  |  |  |
+| audit.export |  |  |  |  | ✓ | ✓ |  |  |  |  |
+| audit.readPlatform | ✓ | ✓ | ✓ |  |  |  |  |  |  |  |
+| audit.exportPlatform | ✓ | ✓ |  |  |  |  |  |  |  |  |
 
 Regenerate:
 
@@ -232,16 +238,26 @@ for (const key of PERMISSION_KEYS) {
 ### Reserved permissions
 
 `tickets.*`, `projects.*`, `billing.*`, `reports.*`, `settings.*` (beyond
-`organizations.update`'s basic fields), `ai.*`, `integrations.*`, and
-`audit.read` are seeded (so a future module's role-permission
-assignments have a real catalog row to reference — and so this module's
-role definitions already express sensible defaults for them) but have no
-`requirePermission()` call anywhere in Module 05's own shipped code — no
-`Ticket`, `Project`, `Invoice`, `Report`, `AiAction`, `Integration`, or
-`AuditEvent` resource exists yet to check against. Module 30 (Support),
-future project-delivery modules, Module 08 (Audit), Module 17/33 (AI),
-and Module 54 (Integrations) are the expected first real callers — see
-"Future module compatibility" in this module's completion report.
+`organizations.update`'s basic fields), `ai.*`, and `integrations.*` are
+seeded (so a future module's role-permission assignments have a real
+catalog row to reference — and so this module's role definitions already
+express sensible defaults for them) but have no `requirePermission()`
+call anywhere in Module 05's own shipped code — no `Ticket`, `Project`,
+`Invoice`, `Report`, `AiAction`, or `Integration` resource exists yet to
+check against. Module 30 (Support), future project-delivery modules,
+Module 17/33 (AI), and Module 54 (Integrations) are the expected first
+real callers — see "Future module compatibility" in this module's
+completion report.
+
+`audit.read`/`audit.export`/`audit.readPlatform`/`audit.exportPlatform`
+were seeded here as reserved placeholders by this module, but are no
+longer reserved — Module 08 (Audit & Compliance) claimed them with real
+`requirePermission()` call sites (`lib/audit/query.ts`) and updated
+their role grants accordingly (see the permission matrix above and
+`docs/architecture/audit-security.md` "Access control matrix" for the
+full reasoning). `organizations.read`/`organizations.update` were
+likewise claimed for real by Module 07 — no longer reserved either, and
+no longer marked as such in the table above.
 
 ## Indexes for the authorization hot path (spec section 38)
 

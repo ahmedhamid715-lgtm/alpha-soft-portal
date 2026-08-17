@@ -23,11 +23,18 @@ import { getOrCreateRequestId, REQUEST_ID_HEADER } from "./request-id";
  *     const data = await doSomething();
  *     return apiSuccess(data);
  *   });
+ *
+ * Dynamic route segments (`[id]`): Next calls the exported `GET`/`POST`/…
+ * with a second argument, `{ params: Promise<Record<string, string>> }`
+ * — this wrapper forwards it through unchanged as `ctx.params` (Module
+ * 08's audit CSV export routes are the first real consumer). Routes with
+ * no dynamic segment simply never destructure it, same as before this
+ * existed.
  */
-export function createRouteHandler(
-  handler: (request: NextRequest, ctx: { requestId: string }) => Promise<Response>,
+export function createRouteHandler<TParams = Record<string, string>>(
+  handler: (request: NextRequest, ctx: { requestId: string; params: Promise<TParams> }) => Promise<Response>,
 ) {
-  return async (request: NextRequest): Promise<Response> => {
+  return async (request: NextRequest, routeContext?: { params: Promise<TParams> }): Promise<Response> => {
     const requestId = getOrCreateRequestId(request);
     const requestLogger = logger.child({
       requestId,
@@ -37,7 +44,10 @@ export function createRouteHandler(
     });
 
     try {
-      const response = await handler(request, { requestId });
+      const response = await handler(request, {
+        requestId,
+        params: routeContext?.params ?? Promise.resolve({} as TParams),
+      });
       response.headers.set(REQUEST_ID_HEADER, requestId);
       return response;
     } catch (error) {

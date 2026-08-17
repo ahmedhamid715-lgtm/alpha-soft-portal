@@ -11,6 +11,21 @@ import { authTokenRepository } from "@/server/repositories/auth-token-repository
 import { mailer } from "@/lib/mail/mailer";
 import { generateRawToken, hashToken } from "@/lib/auth/tokens";
 
+// `resetPassword()` now records `auth.session.revoked` (Module 08) via a
+// `knownActor` override, never `getCurrentUser()` (this flow is
+// token-authenticated, no session exists) — but `lib/audit/service.ts`
+// still statically imports `session-guard.ts`, which pulls in the real
+// `@/auth` (next-auth) module graph. Every other authorization-adjacent
+// integration test in this project already mocks this import for
+// exactly this reason (see invitation-service.test.ts etc.) — without
+// it, this file fails to even load: "Cannot find module
+// '.../node_modules/next/server'", a Vite/next-auth resolution quirk
+// specific to loading that chain outside a real Next.js server context.
+vi.mock("@/lib/auth/session-guard", () => ({
+  getCurrentUser: vi.fn(async () => null),
+  getCurrentMembership: vi.fn(async () => null),
+}));
+
 describe.skipIf(!isDatabaseConfigured)("Password reset service (database integration)", () => {
   const userIds: string[] = [];
 

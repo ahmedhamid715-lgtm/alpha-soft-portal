@@ -7,6 +7,7 @@ import { logger } from "@/lib/logging";
 import { events } from "@/lib/platform/events";
 import { userRepository } from "@/server/repositories/user-repository";
 import { getCurrentUser } from "@/lib/auth/session-guard";
+import { audit } from "@/lib/audit/service";
 
 /**
  * Self-service user profile (spec section 24) — deliberately separate
@@ -43,6 +44,24 @@ export async function updateOwnProfile(rawInput: unknown): Promise<User> {
 
   logger.info("Profile updated.", { operation: "profile.update", userId: identity.user.id });
   await events.emit("profile.updated", { userId: identity.user.id, fields: Object.keys(input) });
+
+  // Best-effort, SUCCESS-only (see audit-system.md's failure-semantics
+  // table — "explicitly low-sensitivity... still audited, just not
+  // fail-closed"). Field-level diff of only the submitted fields, never
+  // email/status/credentials (this file structurally cannot touch
+  // those — see the top comment).
+  const changedFields = Object.keys(input) as (keyof typeof input)[];
+  await audit
+    .recordSuccess({
+      action: "profile.updated",
+      resourceType: "user",
+      resourceId: identity.user.id,
+      resourceName: updated.name,
+      newState: Object.fromEntries(changedFields.map((field) => [field, (updated as unknown as Record<string, unknown>)[field]])),
+    })
+    .catch((auditError) => {
+      console.error("[audit] failed to record profile.updated", auditError);
+    });
 
   return updated;
 }

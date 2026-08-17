@@ -10,10 +10,12 @@ import { roleRepository } from "@/server/repositories/role-repository";
 import { permissionRepository, rolePermissionRepository } from "@/server/repositories/permission-repository";
 import { membershipRepository } from "@/server/repositories/membership-repository";
 import { organizationRepository } from "@/server/repositories/organization-repository";
+import { userRepository } from "@/server/repositories/user-repository";
 import { requirePermission } from "@/lib/authorization/authorize";
 import { isPermissionKey, type PermissionKey } from "@/lib/authorization/permissions";
 import { withTenantContext } from "@/lib/tenancy/context";
 import type { AuthorizationContext } from "@/lib/authorization/context";
+import { audit } from "@/lib/audit/service";
 
 /**
  * Module 06 (Multi-Tenancy/RLS) — every mutation below runs inside
@@ -105,6 +107,16 @@ export async function createCustomRole(rawInput: unknown): Promise<Role> {
       );
     }
 
+    await audit.recordSuccess({
+      action: "role.created",
+      organizationId: input.organizationId,
+      resourceType: "role",
+      resourceId: created.id,
+      resourceName: created.name,
+      newState: { key: created.key, name: created.name, permissions: permissionKeys },
+      tx,
+    });
+
     return created;
   });
 
@@ -159,6 +171,17 @@ export async function updateRole(rawInput: unknown): Promise<Role> {
       );
     }
 
+    await audit.recordSuccess({
+      action: "role.updated",
+      organizationId: input.organizationId,
+      resourceType: "role",
+      resourceId: role.id,
+      resourceName: result.name,
+      previousState: { name: role.name, description: role.description },
+      newState: { name: result.name, description: result.description, ...(permissionKeys ? { permissions: permissionKeys } : {}) },
+      tx,
+    });
+
     return result;
   });
 
@@ -197,7 +220,18 @@ export async function deleteRole(rawInput: unknown): Promise<void> {
     );
   }
 
-  await withTenantContext(tenantInputFor(context), async (tx) => roleRepository.remove(role.id, tx));
+  await withTenantContext(tenantInputFor(context), async (tx) => {
+    await roleRepository.remove(role.id, tx);
+    await audit.recordSuccess({
+      action: "role.deleted",
+      organizationId: input.organizationId,
+      resourceType: "role",
+      resourceId: role.id,
+      resourceName: role.name,
+      previousState: { key: role.key, name: role.name },
+      tx,
+    });
+  });
 
   logger.info("Role deleted.", { operation: "role.delete", organizationId: input.organizationId, roleId: role.id });
   await events.emit("RoleDeleted", { roleId: role.id, organizationId: input.organizationId, key: role.key });
@@ -274,9 +308,22 @@ export async function assignRole(rawInput: unknown): Promise<void> {
     );
   }
 
-  await withTenantContext(tenantInputFor(context), async (tx) =>
-    membershipRepository.updateRoleAssignment(membership.id, { role: role.key, roleId: role.id }, tx),
-  );
+  const targetUser = await userRepository.findById(membership.userId);
+  const previousRoleKey = membership.role;
+
+  await withTenantContext(tenantInputFor(context), async (tx) => {
+    await membershipRepository.updateRoleAssignment(membership.id, { role: role.key, roleId: role.id }, tx);
+    await audit.recordSuccess({
+      action: "organization.member.role_changed",
+      organizationId: membership.organizationId,
+      resourceType: "membership",
+      resourceId: membership.id,
+      resourceName: targetUser?.name ?? targetUser?.email ?? undefined,
+      previousState: { role: previousRoleKey },
+      newState: { role: role.key },
+      tx,
+    });
+  });
 
   logger.info("Role assigned.", {
     operation: "role.assign",

@@ -117,15 +117,22 @@ describe.skipIf(!isDatabaseConfigured)("organization-management-service (databas
     const admin = await makeMember(platformOrgId, "platform_admin", "org-create-dup-admin@example.com");
     actAs(admin.userId, admin.membership);
 
+    // Email is unique to THIS test (not the literal "dup-owner@example.com"
+    // reused by invitation-service.test.ts's own fixture) — Vitest runs
+    // integration test files concurrently against the same real Postgres
+    // database, so a shared literal email is a genuine cross-file race:
+    // this test's `findByEmail` below could observe the other file's row,
+    // not a stray created here, and fail non-deterministically.
+    const ownerEmail = `dup-owner-${orgAId}@example.com`;
     await expect(
       createOrganization({
         organization: { name: "Dup", displayName: "Dup", slug: `orgmgmt-org-a-${orgAId}` },
-        owner: { email: "dup-owner@example.com", name: "Dup Owner" },
+        owner: { email: ownerEmail, name: "Dup Owner" },
       }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
 
     // No stray user created for the rejected attempt.
-    const stray = await userRepository.findByEmail("dup-owner@example.com");
+    const stray = await userRepository.findByEmail(ownerEmail);
     expect(stray).toBeNull();
   });
 

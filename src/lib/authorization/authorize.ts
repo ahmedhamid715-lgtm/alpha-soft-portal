@@ -2,6 +2,7 @@ import "server-only";
 import { resolveOrganizationContext, resolvePlatformContext, type AuthorizationContext } from "./context";
 import { getPermissionDefinition, type PermissionKey } from "./permissions";
 import { AuthenticationError, PermissionDeniedError } from "./errors";
+import { audit } from "@/lib/audit/service";
 
 /**
  * The centralized authorization engine (spec section 11) — the one place
@@ -60,6 +61,24 @@ export async function requirePermission(permission: PermissionKey, organizationI
   const context = await resolveContextForPermission(permission, organizationId);
   if (!context.user) throw new AuthenticationError();
   if (!context.permissions.has(permission)) {
+    // Best-effort (see audit-system.md's failure-semantics table — "a
+    // denial, by definition, means no mutation transaction was ever
+    // opened to share"). This is the one real enforcement chokepoint
+    // (`can()`/`cannot()` never throw and are never audited here — see
+    // Phase 12's "no noisy UI-interaction events"), so every audited
+    // denial here reflects an actual blocked attempt, not a UI hint.
+    await audit
+      .recordDenied({
+        action: "security.authorization.denied",
+        organizationId: context.organizationId,
+        resourceType: "permission",
+        resourceId: undefined,
+        resourceName: permission,
+        metadata: { permission },
+      })
+      .catch((auditError) => {
+        console.error("[audit] failed to record security.authorization.denied", auditError);
+      });
     throw new PermissionDeniedError(permission, { organizationId: context.organizationId });
   }
   return context;

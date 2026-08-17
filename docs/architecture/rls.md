@@ -84,7 +84,28 @@ CREATE ROLE alpha_os_app
 GRANT USAGE ON SCHEMA public TO alpha_os_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO alpha_os_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO alpha_os_app;
+
+-- Module 08 — audit_events is INSERT + SELECT only, even for this
+-- otherwise-broad role. Migration 20260818090000_audit_system already
+-- runs this REVOKE for any environment where alpha_os_app already
+-- exists at migration time; run it again here for a role created
+-- *after* that migration already applied (a fresh environment set up in
+-- the order this file recommends — role first, then `prisma migrate
+-- deploy` — never hits this gap, but re-running it is harmless either
+-- way). See docs/architecture/audit-security.md for the full trust
+-- model this restriction is (and is not) part of.
+REVOKE UPDATE, DELETE ON audit_events FROM alpha_os_app;
 ```
+
+**`prisma migrate reset` wipes these grants — re-run this block after
+every reset.** The role itself (`CREATE ROLE alpha_os_app`) is
+cluster-level and survives a reset; the `GRANT`/`ALTER DEFAULT
+PRIVILEGES` statements above are schema-level and do not — `migrate
+reset` drops and recreates the schema, taking them with it. Skipping
+this step surfaces as every RLS-protected query failing with `permission
+denied for schema public`, not a subtler RLS-policy mismatch — found by
+actually resetting a local dev database (Module 08's own testing), not
+by inspection.
 
 Then set `APP_DATABASE_URL="postgresql://alpha_os_app:<password>@<host>:5432/<database>"`.
 `isTenantRoleConfigured` (`lib/tenancy/client.ts`) is `false` if unset —

@@ -224,8 +224,19 @@ export const PERMISSION_CATALOG = {
     true,
   ),
 
-  // --- audit (PLATFORM, reserved — Module 08)
-  "audit.read": permission("audit", "read", "PLATFORM", "View the platform audit log.", true),
+  // --- audit (Module 08) — deliberately four separate keys, not one
+  // "audit.read" gated by an `isPlatformStaff` flag: an organization
+  // admin and a platform admin get genuinely different query scopes (see
+  // audit-system.md "Platform vs. organization audit"), so they need
+  // genuinely different permission keys a role can be granted
+  // independently. `readPlatform`/`exportPlatform` aren't part of the
+  // fixed action vocabulary (spec section 9) — same `keyOverride`
+  // convention as `tickets.close`/`ai.use` above; `action` still records
+  // the real, canonical "read"/"export" verb.
+  "audit.read": permission("audit", "read", "ORGANIZATION", "View this organization's own audit log."),
+  "audit.export": permission("audit", "export", "ORGANIZATION", "Export this organization's own audit log as CSV."),
+  "audit.readPlatform": permission("audit", "read", "PLATFORM", "View platform-wide audit events (never another organization's own audit trail).", false, "audit.readPlatform"),
+  "audit.exportPlatform": permission("audit", "export", "PLATFORM", "Export platform-wide audit events as CSV (never another organization's own audit trail).", false, "audit.exportPlatform"),
 } as const satisfies Record<string, PermissionDefinition>;
 
 export type PermissionKey = keyof typeof PERMISSION_CATALOG;

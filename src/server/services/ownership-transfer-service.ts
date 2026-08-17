@@ -6,8 +6,10 @@ import { logger } from "@/lib/logging";
 import { events } from "@/lib/platform/events";
 import { membershipRepository } from "@/server/repositories/membership-repository";
 import { roleRepository } from "@/server/repositories/role-repository";
+import { userRepository } from "@/server/repositories/user-repository";
 import { requirePermission } from "@/lib/authorization/authorize";
 import { withTenantContext, type TenantTransactionClient } from "@/lib/tenancy/context";
+import { audit } from "@/lib/audit/service";
 
 /**
  * Ownership transfer (spec sections 20/21/46) — deliberately its own
@@ -95,6 +97,21 @@ export async function transferOwnership(rawInput: unknown): Promise<void> {
 
       await membershipRepository.updateRoleAssignment(fromMembershipId, { role: "admin", roleId: adminRole.id }, tx);
       await membershipRepository.updateRoleAssignment(input.toMembershipId, { role: "owner", roleId: ownerRole.id }, tx);
+
+      const [fromUser, toUser] = await Promise.all([
+        userRepository.findById(currentFrom.userId, tx),
+        userRepository.findById(target.userId, tx),
+      ]);
+      await audit.recordSuccess({
+        action: "organization.owner.transfer_completed",
+        organizationId: input.organizationId,
+        resourceType: "membership",
+        resourceId: input.toMembershipId,
+        resourceName: toUser?.name ?? toUser?.email ?? undefined,
+        previousState: { ownerMembershipId: fromMembershipId, ownerUserId: currentFrom.userId, ownerName: fromUser?.name ?? null },
+        newState: { ownerMembershipId: input.toMembershipId, ownerUserId: target.userId, ownerName: toUser?.name ?? null },
+        tx,
+      });
     },
   );
 

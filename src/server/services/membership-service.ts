@@ -5,10 +5,12 @@ import { ConflictError, NotFoundError } from "@/lib/errors/app-error";
 import { logger } from "@/lib/logging";
 import { events } from "@/lib/platform/events";
 import { membershipRepository } from "@/server/repositories/membership-repository";
+import { userRepository } from "@/server/repositories/user-repository";
 import { requirePermission } from "@/lib/authorization/authorize";
 import { withTenantContext } from "@/lib/tenancy/context";
 import type { AuthorizationContext } from "@/lib/authorization/context";
 import { wouldRemoveLastOwner } from "./role-service";
+import { audit } from "@/lib/audit/service";
 
 /** Module 06 — see role-service.ts's identical helper for why the mutation runs inside the already-verified context, not a re-derived one. */
 function tenantInputFor(context: AuthorizationContext) {
@@ -42,7 +44,20 @@ export async function removeMember(rawInput: unknown): Promise<void> {
     });
   }
 
-  await withTenantContext(tenantInputFor(context), async (tx) => membershipRepository.remove(membership.id, tx));
+  const targetUser = await userRepository.findById(membership.userId);
+
+  await withTenantContext(tenantInputFor(context), async (tx) => {
+    await membershipRepository.remove(membership.id, tx);
+    await audit.recordSuccess({
+      action: "organization.member.removed",
+      organizationId: membership.organizationId,
+      resourceType: "membership",
+      resourceId: membership.id,
+      resourceName: targetUser?.name ?? targetUser?.email ?? undefined,
+      previousState: { status: membership.status, role: membership.role },
+      tx,
+    });
+  });
 
   logger.info("Member removed.", {
     operation: "membership.remove",
@@ -68,9 +83,21 @@ export async function updateMemberStatus(rawInput: unknown): Promise<void> {
     });
   }
 
-  await withTenantContext(tenantInputFor(context), async (tx) =>
-    membershipRepository.updateStatus(membership.id, input.status, tx),
-  );
+  const targetUser = await userRepository.findById(membership.userId);
+
+  await withTenantContext(tenantInputFor(context), async (tx) => {
+    await membershipRepository.updateStatus(membership.id, input.status, tx);
+    await audit.recordSuccess({
+      action: input.status === "SUSPENDED" ? "organization.member.suspended" : "organization.member.reactivated",
+      organizationId: membership.organizationId,
+      resourceType: "membership",
+      resourceId: membership.id,
+      resourceName: targetUser?.name ?? targetUser?.email ?? undefined,
+      previousState: { status: membership.status },
+      newState: { status: input.status },
+      tx,
+    });
+  });
 
   logger.info("Member status changed.", {
     operation: "membership.updateStatus",

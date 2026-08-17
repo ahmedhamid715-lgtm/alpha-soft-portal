@@ -15,6 +15,7 @@ import { requirePermission } from "@/lib/authorization/authorize";
 import { withTenantContext } from "@/lib/tenancy/context";
 import { INITIAL_ONBOARDING_STEP, isOnboardingStep, nextOnboardingStep } from "@/lib/organizations/onboarding";
 import { slugSchema } from "./organization-service";
+import { audit } from "@/lib/audit/service";
 
 /**
  * Module 07 — every authorized, RBAC-integrated, RLS-aware organization
@@ -111,6 +112,16 @@ export async function createOrganization(rawInput: unknown): Promise<CreateOrgan
         tx,
       );
 
+      await audit.recordSuccess({
+        action: "organization.created",
+        organizationId: organization.id,
+        resourceType: "organization",
+        resourceId: organization.id,
+        resourceName: organization.displayName,
+        newState: { name: organization.name, displayName: organization.displayName, slug: organization.slug },
+        tx,
+      });
+
       return { organization, membership: { ...membership, roleId: ownerRole.id } };
     },
   );
@@ -162,9 +173,28 @@ export async function updateOrganizationProfile(rawInput: unknown): Promise<Orga
   }
 
   const { organizationId, ...profile } = input;
+  const before = await organizationRepository.findById(organizationId);
+  if (!before) throw new NotFoundError("Organization");
+
   const updated = await withTenantContext(
     { userId: context.user!.id, organizationId, isPlatformStaff: context.isPlatformStaff },
-    (tx) => organizationRepository.updateProfile(organizationId, profile, tx),
+    async (tx) => {
+      const result = await organizationRepository.updateProfile(organizationId, profile, tx);
+      // Field-level diff, only the fields actually submitted — never a
+      // full-row snapshot (audit-system.md "State-change capture").
+      const changedFields = Object.keys(profile) as (keyof typeof profile)[];
+      await audit.recordSuccess({
+        action: "organization.updated",
+        organizationId,
+        resourceType: "organization",
+        resourceId: organizationId,
+        resourceName: result.displayName,
+        previousState: Object.fromEntries(changedFields.map((field) => [field, (before as unknown as Record<string, unknown>)[field]])),
+        newState: Object.fromEntries(changedFields.map((field) => [field, (result as unknown as Record<string, unknown>)[field]])),
+        tx,
+      });
+      return result;
+    },
   );
 
   logger.info("Organization profile updated.", { operation: "organization.updateProfile", organizationId });
@@ -193,9 +223,25 @@ export async function suspendOrganization(rawInput: unknown): Promise<Organizati
   const input = parseOrThrow(organizationLifecycleSchema, rawInput);
   const context = await requirePermission("organizations.update", input.organizationId);
 
+  const before = await organizationRepository.findById(input.organizationId);
+  if (!before) throw new NotFoundError("Organization");
+
   const updated = await withTenantContext(
     { userId: context.user!.id, organizationId: input.organizationId, isPlatformStaff: context.isPlatformStaff },
-    (tx) => organizationRepository.updateStatus(input.organizationId, "SUSPENDED", tx),
+    async (tx) => {
+      const result = await organizationRepository.updateStatus(input.organizationId, "SUSPENDED", tx);
+      await audit.recordSuccess({
+        action: "organization.suspended",
+        organizationId: input.organizationId,
+        resourceType: "organization",
+        resourceId: input.organizationId,
+        resourceName: result.displayName,
+        previousState: { status: before.status },
+        newState: { status: result.status },
+        tx,
+      });
+      return result;
+    },
   );
 
   logger.info("Organization suspended.", { operation: "organization.suspend", organizationId: input.organizationId });
@@ -214,9 +260,25 @@ export async function reactivateOrganization(rawInput: unknown): Promise<Organiz
   // ("is this caller platform staff" vs. "which row is being written").
   const context = await requirePermission("organizations.reactivate");
 
+  const before = await organizationRepository.findById(input.organizationId);
+  if (!before) throw new NotFoundError("Organization");
+
   const updated = await withTenantContext(
     { userId: context.user!.id, organizationId: input.organizationId, isPlatformStaff: true },
-    (tx) => organizationRepository.updateStatus(input.organizationId, "ACTIVE", tx),
+    async (tx) => {
+      const result = await organizationRepository.updateStatus(input.organizationId, "ACTIVE", tx);
+      await audit.recordSuccess({
+        action: "organization.reactivated",
+        organizationId: input.organizationId,
+        resourceType: "organization",
+        resourceId: input.organizationId,
+        resourceName: result.displayName,
+        previousState: { status: before.status },
+        newState: { status: result.status },
+        tx,
+      });
+      return result;
+    },
   );
 
   logger.info("Organization reactivated.", { operation: "organization.reactivate", organizationId: input.organizationId });
@@ -228,9 +290,25 @@ export async function archiveOrganization(rawInput: unknown): Promise<Organizati
   const input = parseOrThrow(organizationLifecycleSchema, rawInput);
   const context = await requirePermission("organizations.update", input.organizationId);
 
+  const before = await organizationRepository.findById(input.organizationId);
+  if (!before) throw new NotFoundError("Organization");
+
   const updated = await withTenantContext(
     { userId: context.user!.id, organizationId: input.organizationId, isPlatformStaff: context.isPlatformStaff },
-    (tx) => organizationRepository.archive(input.organizationId, tx),
+    async (tx) => {
+      const result = await organizationRepository.archive(input.organizationId, tx);
+      await audit.recordSuccess({
+        action: "organization.archived",
+        organizationId: input.organizationId,
+        resourceType: "organization",
+        resourceId: input.organizationId,
+        resourceName: result.displayName,
+        previousState: { status: before.status },
+        newState: { status: result.status },
+        tx,
+      });
+      return result;
+    },
   );
 
   logger.info("Organization archived.", { operation: "organization.archive", organizationId: input.organizationId });

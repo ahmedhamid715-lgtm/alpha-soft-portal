@@ -20,6 +20,7 @@ import { getCurrentUser } from "@/lib/auth/session-guard";
 import { requirePermission } from "@/lib/authorization/authorize";
 import { withTenantContext } from "@/lib/tenancy/context";
 import { appConfig } from "@/config/app";
+import { audit } from "@/lib/audit/service";
 
 /**
  * Organization invitations (spec sections 11–16) — the enterprise
@@ -106,8 +107,8 @@ export async function createInvitation(rawInput: unknown): Promise<Invitation> {
   const rawTokenValue = generateRawToken();
   const invitation = await withTenantContext(
     { userId: context.user!.id, organizationId: input.organizationId, isPlatformStaff: context.isPlatformStaff },
-    (tx) =>
-      invitationRepository.create(
+    async (tx) => {
+      const created = await invitationRepository.create(
         {
           id: generateId(),
           organizationId: input.organizationId,
@@ -118,7 +119,18 @@ export async function createInvitation(rawInput: unknown): Promise<Invitation> {
           expiresAt: new Date(Date.now() + INVITATION_DURATION_MS),
         },
         tx,
-      ),
+      );
+      await audit.recordSuccess({
+        action: "organization.member.invited",
+        organizationId: input.organizationId,
+        resourceType: "invitation",
+        resourceId: created.id,
+        resourceName: email,
+        newState: { email, roleId: input.roleId },
+        tx,
+      });
+      return created;
+    },
   );
 
   const acceptUrl = `${appConfig.url}/invitations/accept?token=${rawTokenValue}`;
@@ -258,6 +270,24 @@ export async function acceptInvitation(rawInput: unknown): Promise<AcceptInvitat
         await membershipRepository.updateRoleAssignment(membership.id, { role: role.key, roleId: role.id }, tx);
       }
 
+      // Only the winning claim reaches here (the `claimedCount === 0`
+      // race loser returned `null` above already) — exactly one audit
+      // record per invitation, matching the "exactly one membership" the
+      // race-safety guarantee already promises. `knownActor`, not
+      // `getCurrentUser()`: the `isNewAccount` path has no session at
+      // all yet, and even the already-authenticated path's session may
+      // not be visible mid-transaction the same way login's isn't.
+      await audit.recordSuccess({
+        action: "organization.member.invitation.accepted",
+        organizationId: invitation.organizationId,
+        resourceType: "invitation",
+        resourceId: invitation.id,
+        resourceName: invitation.email,
+        newState: { role: role.key },
+        knownActor: { userId: acceptingUserId, displayName: isNewAccount ? (input.name ?? null) : (identity?.user.name ?? null) },
+        tx,
+      });
+
       return { userId: acceptingUserId };
     },
   );
@@ -322,7 +352,17 @@ export async function revokeInvitation(rawInput: unknown): Promise<void> {
 
   await withTenantContext(
     { userId: context.user!.id, organizationId: input.organizationId, isPlatformStaff: context.isPlatformStaff },
-    (tx) => invitationRepository.revoke(invitation.id, tx),
+    async (tx) => {
+      await invitationRepository.revoke(invitation.id, tx);
+      await audit.recordSuccess({
+        action: "organization.member.invitation.revoked",
+        organizationId: input.organizationId,
+        resourceType: "invitation",
+        resourceId: invitation.id,
+        resourceName: invitation.email,
+        tx,
+      });
+    },
   );
 
   logger.info("Invitation revoked.", { operation: "invitation.revoke", organizationId: input.organizationId, invitationId: invitation.id });
@@ -347,11 +387,20 @@ export async function resendInvitation(rawInput: unknown): Promise<void> {
   const rawTokenValue = generateRawToken();
   await withTenantContext(
     { userId: context.user!.id, organizationId: input.organizationId, isPlatformStaff: context.isPlatformStaff },
-    (tx) =>
-      tx.invitation.update({
+    async (tx) => {
+      await tx.invitation.update({
         where: { id: invitation.id },
         data: { tokenHash: hashToken(rawTokenValue), expiresAt: new Date(Date.now() + INVITATION_DURATION_MS) },
-      }),
+      });
+      await audit.recordSuccess({
+        action: "organization.member.invitation.resent",
+        organizationId: input.organizationId,
+        resourceType: "invitation",
+        resourceId: invitation.id,
+        resourceName: invitation.email,
+        tx,
+      });
+    },
   );
 
   const acceptUrl = `${appConfig.url}/invitations/accept?token=${rawTokenValue}`;

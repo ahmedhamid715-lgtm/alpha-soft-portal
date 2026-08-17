@@ -155,6 +155,16 @@ export default async function OrganizationDetailPage({ params }: PageProps<"/org
               </CardContent>
             </Card>
           ) : null}
+          {context.permissions.has("audit.read") ? (
+            <Card>
+              <CardContent>
+                <Link href={`/organizations/${id}/audit`} className="flex flex-col gap-1 hover:underline">
+                  <span className="font-medium">Audit log</span>
+                  <span className="text-sm text-muted-foreground">Who did what, when</span>
+                </Link>
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
       </section>
     </div>
