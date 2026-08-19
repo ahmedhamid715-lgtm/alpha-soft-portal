@@ -1,86 +1,85 @@
-import Link from "next/link";
 import { requireAuthenticatedPage } from "@/lib/auth/session-guard";
 import { resolvePlatformContext } from "@/lib/authorization/context";
-import { Button } from "@/components/ui/button";
-import { appConfig } from "@/config/app";
+import { AppShell } from "@/components/layout/app-shell";
+import type { NavGroup } from "@/components/layout/app-sidebar";
 import { NotificationBell } from "@/components/notifications/notification-bell";
+import { Button } from "@/components/ui/button";
 import { logoutAction } from "./actions";
 
 /**
- * Minimal shared chrome for the three placeholder destinations
- * (`/admin`, `/support`, `/dashboard`) — enough to manually verify the
- * auth boundary and role-aware routing end to end. NOT the real
- * Admin/Support/Customer experience (spec section 43) — those are
- * Modules 09/32/20's job, built on `AppShell` (Module 02) once there's
- * real navigation/business content to put in it.
+ * The real navigational shell for every authenticated page — a
+ * previously plain text-link header, upgraded to the full `AppShell`/
+ * `AppSidebar` (Module 02) once there was enough real navigation to put
+ * in one: found broken by actually logging in (not by inspection) —
+ * `/admin` had zero discoverable path to any of the platform tools
+ * Modules 08–11 already shipped, and the same was true, less severely,
+ * for every self-service page (`/profile`/`/settings/account`/
+ * `/notifications`/`/settings/sessions`), all reachable only by typing
+ * an exact URL. `AppSidebar` was always built role-agnostic — "it has
+ * no knowledge of admin vs. support vs. customer... each role-specific
+ * module supplies its own NavGroup[]" (its own top comment) — this file
+ * is the first real caller, computing ONE shell for every persona
+ * rather than three duplicated ones: the "Platform" group is simply
+ * omitted for a caller who holds none of its permissions, the same
+ * `context.permissions.has(...)` gating every one of those pages
+ * already independently re-checks itself (a sidebar entry is never the
+ * real authorization boundary, only a convenience).
  */
-// See (public)/layout.tsx's comment — a route-group-only layout has no
-// single concrete URL for `next typegen` to key a `LayoutProps<...>` off.
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const { user } = await requireAuthenticatedPage();
-  // Module 10 — cheap platform-permission read, purely to decide whether
-  // the "Users" nav link renders; every real check still lives at
-  // `/admin/users` itself (`resolvePlatformContext()` there, independently
-  // — this is display convenience, never the authorization boundary).
   const platformContext = await resolvePlatformContext();
-  const canViewUserDirectory = platformContext.permissions.has("users.read");
-  // Module 11 — same display-convenience-only reasoning as
-  // `canViewUserDirectory` above; the real gate is `/admin/organizations`
-  // itself.
-  const canViewOrganizationDirectory = platformContext.permissions.has("organizations.read");
+
+  const navGroups: NavGroup[] = [
+    {
+      label: "Workspace",
+      items: [
+        { key: "dashboard", label: "Dashboard", href: "/dashboard", icon: "dashboard" },
+        { key: "organizations", label: "Organizations", href: "/organizations", icon: "organizations" },
+        { key: "notifications", label: "Notifications", href: "/notifications", icon: "notifications" },
+        { key: "sessions", label: "Sessions", href: "/settings/sessions", icon: "sessions" },
+      ],
+    },
+    {
+      label: "Account",
+      items: [
+        { key: "profile", label: "Profile", href: "/profile", icon: "profile" },
+        { key: "account", label: "Account", href: "/settings/account", icon: "account" },
+        { key: "notification-preferences", label: "Notification preferences", href: "/settings/notifications", icon: "settings" },
+      ],
+    },
+  ];
+
+  const platformItems = [
+    { key: "admin-users", label: "Users", href: "/admin/users", icon: "users", permission: "users.read" as const },
+    { key: "admin-organizations", label: "All organizations", href: "/admin/organizations", icon: "organizations", permission: "organizations.read" as const },
+    { key: "admin-audit", label: "Audit log", href: "/admin/audit", icon: "audit", permission: "audit.readPlatform" as const },
+    { key: "admin-notifications", label: "Notification delivery", href: "/admin/notifications", icon: "notifications", permission: "notifications.observability" as const },
+    { key: "admin-roles", label: "Roles & permissions", href: "/admin/roles", icon: "roles", permission: "roles.read" as const },
+  ].filter((item) => platformContext.permissions.has(item.permission));
+
+  if (platformItems.length > 0) {
+    navGroups.push({ label: "Platform", items: platformItems });
+  }
+
+  const roleLabel = platformContext.role?.name ?? "Workspace";
 
   return (
-    <div className="flex min-h-svh flex-col bg-background">
-      <header className="flex items-center justify-between border-b px-6 py-4">
-        <div className="flex items-center gap-6">
-          <span className="text-sm font-semibold">{appConfig.name}</span>
-          {/* Module 07 — plain text links, not the full AppShell/Sidebar
-              (Module 02): that's reserved for the real Admin/Support/
-              Customer experience (Modules 09/32/20), same boundary this
-              layout's own top comment already documents. */}
-          <nav className="hidden items-center gap-4 text-sm text-muted-foreground sm:flex">
-            <Link href="/organizations" className="hover:text-foreground">
-              Organizations
-            </Link>
-            <Link href="/profile" className="hover:text-foreground">
-              Profile
-            </Link>
-            <Link href="/settings/account" className="hover:text-foreground">
-              Account
-            </Link>
-            {/* Module 09 — the notification center's own full page; the
-                bell (below) is the quick-preview surface, not a
-                replacement for a real link into it. */}
-            <Link href="/notifications" className="hover:text-foreground">
-              Notifications
-            </Link>
-            {/* Module 10 — self-service session management, everyone gets this. */}
-            <Link href="/settings/sessions" className="hover:text-foreground">
-              Sessions
-            </Link>
-            {canViewUserDirectory ? (
-              <Link href="/admin/users" className="hover:text-foreground">
-                Users
-              </Link>
-            ) : null}
-            {canViewOrganizationDirectory ? (
-              <Link href="/admin/organizations" className="hover:text-foreground">
-                All organizations
-              </Link>
-            ) : null}
-          </nav>
-        </div>
+    <AppShell
+      roleLabel={roleLabel}
+      navGroups={navGroups}
+      topNavEnd={
         <div className="flex items-center gap-3">
           <NotificationBell />
-          <span className="text-sm text-muted-foreground">{user.email}</span>
+          <span className="hidden text-sm text-muted-foreground sm:inline">{user.email}</span>
           <form action={logoutAction}>
             <Button type="submit" variant="outline" size="sm">
               Sign out
             </Button>
           </form>
         </div>
-      </header>
-      <main className="flex-1 p-8">{children}</main>
-    </div>
+      }
+    >
+      {children}
+    </AppShell>
   );
 }

@@ -15,6 +15,12 @@ import {
   Megaphone,
   ClipboardList,
   Ticket,
+  User,
+  UserCog,
+  Bell,
+  Monitor,
+  ShieldCheck,
+  KeyRound,
   type LucideIcon,
 } from "lucide-react"
 
@@ -42,6 +48,12 @@ export const NAV_ICON_MAP: Record<string, LucideIcon> = {
   marketing: Megaphone,
   reports: ClipboardList,
   tickets: Ticket,
+  profile: User,
+  account: UserCog,
+  notifications: Bell,
+  sessions: Monitor,
+  audit: ShieldCheck,
+  roles: KeyRound,
 }
 
 export function resolveNavIcon(name: string | undefined): LucideIcon | undefined {
