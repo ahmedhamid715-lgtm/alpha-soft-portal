@@ -7,6 +7,7 @@ import { organizationRepository } from "@/server/repositories/organization-repos
 import { membershipRepository } from "@/server/repositories/membership-repository";
 import { roleRepository } from "@/server/repositories/role-repository";
 import { invitationRepository } from "@/server/repositories/invitation-repository";
+import { invitationPolicyRepository } from "@/server/repositories/invitation-policy-repository";
 import { generateRawToken, hashToken } from "@/lib/auth/tokens";
 
 /**
@@ -249,6 +250,105 @@ describe.skipIf(!isDatabaseConfigured)("invitation-service (database integration
 
     const stillPending = await invitationRepository.findById(invitation.id);
     expect(stillPending?.status).toBe("PENDING");
+  });
+
+  // --- Module 12: invitation policy enforcement ---------------------------
+  // `createInvitation()`/`resendInvitation()` are the ONE real chokepoint
+  // `organization-security-service.ts`'s own policy is enforced through
+  // (see that file's top comment) — these tests prove it's actually
+  // wired, not just documented as intended.
+
+  it("requireOwnerForInvitations blocks an admin from inviting, even though admin normally holds members.invite", async () => {
+    const { createInvitation } = await import("@/server/services/invitation-service");
+    const admin = await makeMember(orgAId, "admin", "policy-require-owner-admin@example.com");
+    await invitationPolicyRepository.upsert({ organizationId: orgAId, requireOwnerForInvitations: true, allowedDomains: [], blockedDomains: [], invitationExpiryHours: 168 });
+    actAs(admin.userId, admin.membership);
+
+    await expect(createInvitation({ organizationId: orgAId, email: "blocked-by-policy@example.com", roleId: roleByKey.member.id })).rejects.toMatchObject({
+      code: "VALIDATION_ERROR",
+    });
+  });
+
+  it("requireOwnerForInvitations still allows the owner themself to invite", async () => {
+    const { createInvitation } = await import("@/server/services/invitation-service");
+    const owner = await makeMember(orgAId, "owner", "policy-require-owner-owner@example.com");
+    await invitationPolicyRepository.upsert({ organizationId: orgAId, requireOwnerForInvitations: true, allowedDomains: [], blockedDomains: [], invitationExpiryHours: 168 });
+    actAs(owner.userId, owner.membership);
+
+    await expect(
+      createInvitation({ organizationId: orgAId, email: "allowed-owner-sent@example.com", roleId: roleByKey.member.id }),
+    ).resolves.toMatchObject({ status: "PENDING" });
+  });
+
+  it("a blocked domain rejects the invitation even for the owner", async () => {
+    const { createInvitation } = await import("@/server/services/invitation-service");
+    const owner = await makeMember(orgAId, "owner", "policy-blocked-domain-owner@example.com");
+    await invitationPolicyRepository.upsert({ organizationId: orgAId, requireOwnerForInvitations: false, allowedDomains: [], blockedDomains: ["blocked.example"], invitationExpiryHours: 168 });
+    actAs(owner.userId, owner.membership);
+
+    await expect(createInvitation({ organizationId: orgAId, email: "someone@blocked.example", roleId: roleByKey.member.id })).rejects.toMatchObject({
+      code: "VALIDATION_ERROR",
+    });
+  });
+
+  it("a non-empty allowedDomains list rejects any email outside it", async () => {
+    const { createInvitation } = await import("@/server/services/invitation-service");
+    const owner = await makeMember(orgAId, "owner", "policy-allowed-domain-owner@example.com");
+    await invitationPolicyRepository.upsert({ organizationId: orgAId, requireOwnerForInvitations: false, allowedDomains: ["allowed.example"], blockedDomains: [], invitationExpiryHours: 168 });
+    actAs(owner.userId, owner.membership);
+
+    await expect(createInvitation({ organizationId: orgAId, email: "someone@other.example", roleId: roleByKey.member.id })).rejects.toMatchObject({
+      code: "VALIDATION_ERROR",
+    });
+    await expect(
+      createInvitation({ organizationId: orgAId, email: "someone@allowed.example", roleId: roleByKey.member.id }),
+    ).resolves.toMatchObject({ status: "PENDING" });
+  });
+
+  it("allowedDomains does NOT implicitly match a subdomain of a listed domain", async () => {
+    const { createInvitation } = await import("@/server/services/invitation-service");
+    const owner = await makeMember(orgAId, "owner", "policy-subdomain-owner@example.com");
+    await invitationPolicyRepository.upsert({ organizationId: orgAId, requireOwnerForInvitations: false, allowedDomains: ["example.com"], blockedDomains: [], invitationExpiryHours: 168 });
+    actAs(owner.userId, owner.membership);
+
+    await expect(
+      createInvitation({ organizationId: orgAId, email: "someone@mail.example.com", roleId: roleByKey.member.id }),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+  });
+
+  it("the configured invitationExpiryHours is honored on the created invitation's expiresAt", async () => {
+    const { createInvitation } = await import("@/server/services/invitation-service");
+    const owner = await makeMember(orgAId, "owner", "policy-expiry-owner@example.com");
+    await invitationPolicyRepository.upsert({ organizationId: orgAId, requireOwnerForInvitations: false, allowedDomains: [], blockedDomains: [], invitationExpiryHours: 2 });
+    actAs(owner.userId, owner.membership);
+
+    const before = Date.now();
+    const invitation = await createInvitation({ organizationId: orgAId, email: "expiry-check@example.com", roleId: roleByKey.member.id });
+    const expectedMs = 2 * 60 * 60 * 1000;
+    const actualMs = invitation.expiresAt.getTime() - before;
+    expect(actualMs).toBeGreaterThan(expectedMs - 5_000);
+    expect(actualMs).toBeLessThan(expectedMs + 5_000);
+  });
+
+  it("resendInvitation() re-validates against the CURRENT policy, not the one in effect when originally created — closes the tighten-then-resend back door", async () => {
+    const { createInvitation, resendInvitation } = await import("@/server/services/invitation-service");
+    const owner = await makeMember(orgAId, "owner", "policy-resend-owner@example.com");
+    actAs(owner.userId, owner.membership);
+    const invitation = await createInvitation({ organizationId: orgAId, email: "resend-target@blocked-later.example", roleId: roleByKey.member.id });
+
+    await invitationPolicyRepository.upsert({ organizationId: orgAId, requireOwnerForInvitations: false, allowedDomains: [], blockedDomains: ["blocked-later.example"], invitationExpiryHours: 168 });
+
+    await expect(resendInvitation({ organizationId: orgAId, invitationId: invitation.id })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+  });
+
+  it("an organization with no customized policy behaves exactly as before Module 12 — no policy row, no restriction", async () => {
+    const { createInvitation } = await import("@/server/services/invitation-service");
+    const admin = await makeMember(orgAId, "admin", "policy-no-row-admin@example.com");
+    actAs(admin.userId, admin.membership);
+
+    await expect(
+      createInvitation({ organizationId: orgAId, email: "unrestricted@anywhere.example", roleId: roleByKey.member.id }),
+    ).resolves.toMatchObject({ status: "PENDING" });
   });
 
   // --- Section 45: the mandatory invitation race test ---------------------

@@ -16,11 +16,13 @@ import { organizationRepository } from "@/server/repositories/organization-repos
 import { roleRepository } from "@/server/repositories/role-repository";
 import { membershipRepository } from "@/server/repositories/membership-repository";
 import { userRepository, normalizeEmail } from "@/server/repositories/user-repository";
+import { invitationPolicyRepository } from "@/server/repositories/invitation-policy-repository";
 import { getCurrentUser } from "@/lib/auth/session-guard";
 import { requirePermission } from "@/lib/authorization/authorize";
 import { withTenantContext } from "@/lib/tenancy/context";
 import { appConfig } from "@/config/app";
 import { audit } from "@/lib/audit/service";
+import { emailMatchesDomain } from "@/lib/organizations/domains";
 
 /**
  * Organization invitations (spec sections 11–16) — the enterprise
@@ -35,7 +37,15 @@ import { audit } from "@/lib/audit/service";
  * once, never persisted; only its SHA-256 hash lives in `tokenHash`.
  */
 
-const INVITATION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days — long enough for a real person to see the email, short enough to bound a leaked link's usefulness.
+// 7 days — long enough for a real person to see the email, short enough
+// to bound a leaked link's usefulness. Matches `OrganizationInvitationPolicy
+// .invitationExpiryHours`'s own Prisma-schema default and
+// `organization-security-service.ts`'s constant of the same value —
+// kept in sync manually, see that file's own comment. Both
+// `createInvitation()` and `resendInvitation()` prefer the organization's
+// own configured policy (Module 12) when one exists, falling back to
+// this default when it doesn't.
+const DEFAULT_INVITATION_EXPIRY_HOURS = 168;
 
 const createInvitationSchema = z.object({
   organizationId: z.string().uuid(),
@@ -89,6 +99,32 @@ export async function createInvitation(rawInput: unknown): Promise<Invitation> {
 
   const email = normalizeEmail(input.email);
 
+  // Module 12 — the ONE real enforcement chokepoint for
+  // `OrganizationInvitationPolicy`. Every path that can create an
+  // invitation runs through this function (spec's own "single
+  // chokepoint" precedent, this file's own top comment) — a policy
+  // consulted anywhere else would be a second, bypassable gate.
+  const policy = await invitationPolicyRepository.findByOrganizationId(input.organizationId);
+  const invitationDurationMs = (policy?.invitationExpiryHours ?? DEFAULT_INVITATION_EXPIRY_HOURS) * 60 * 60 * 1000;
+  if (policy?.requireOwnerForInvitations && context.membership?.role !== "owner") {
+    // An ADDITIVE restriction on top of `members.invite` (which
+    // `admin` already holds) — never a replacement for it. See this
+    // permission's own doc comment in `permissions.ts`.
+    throw new ValidationError("This organization requires the owner to send invitations.", {
+      details: { field: "organizationId" },
+    });
+  }
+  if (policy && policy.blockedDomains.some((domain) => emailMatchesDomain(email, domain))) {
+    throw new ValidationError("This email's domain is blocked from receiving invitations to this organization.", {
+      details: { field: "email" },
+    });
+  }
+  if (policy && policy.allowedDomains.length > 0 && !policy.allowedDomains.some((domain) => emailMatchesDomain(email, domain))) {
+    throw new ValidationError("This email's domain is not on this organization's allowed invitation domain list.", {
+      details: { field: "email" },
+    });
+  }
+
   const existingInvitation = await invitationRepository.findPendingByOrganizationAndEmail(input.organizationId, email);
   if (existingInvitation) {
     throw new ConflictError("This email already has a pending invitation to this organization.", {
@@ -116,7 +152,7 @@ export async function createInvitation(rawInput: unknown): Promise<Invitation> {
           roleId: input.roleId,
           invitedByUserId: context.user!.id,
           tokenHash: hashToken(rawTokenValue),
-          expiresAt: new Date(Date.now() + INVITATION_DURATION_MS),
+          expiresAt: new Date(Date.now() + invitationDurationMs),
         },
         tx,
       );
@@ -384,13 +420,36 @@ export async function resendInvitation(rawInput: unknown): Promise<void> {
   const organization = await organizationRepository.findById(input.organizationId);
   if (!organization) throw new NotFoundError("Organization");
 
+  // Resending re-validates against the CURRENT policy, not the one in
+  // effect when the invitation was originally created — an admin who
+  // just turned on `requireOwnerForInvitations`/tightened the domain
+  // list should not be able to keep an already-issued invitation alive
+  // via resend as a back door around it.
+  const policy = await invitationPolicyRepository.findByOrganizationId(input.organizationId);
+  const invitationDurationMs = (policy?.invitationExpiryHours ?? DEFAULT_INVITATION_EXPIRY_HOURS) * 60 * 60 * 1000;
+  if (policy?.requireOwnerForInvitations && context.membership?.role !== "owner") {
+    throw new ValidationError("This organization requires the owner to send invitations.", {
+      details: { field: "organizationId" },
+    });
+  }
+  if (policy && policy.blockedDomains.some((domain) => emailMatchesDomain(invitation.email, domain))) {
+    throw new ValidationError("This email's domain is blocked from receiving invitations to this organization.", {
+      details: { field: "email" },
+    });
+  }
+  if (policy && policy.allowedDomains.length > 0 && !policy.allowedDomains.some((domain) => emailMatchesDomain(invitation.email, domain))) {
+    throw new ValidationError("This email's domain is not on this organization's allowed invitation domain list.", {
+      details: { field: "email" },
+    });
+  }
+
   const rawTokenValue = generateRawToken();
   await withTenantContext(
     { userId: context.user!.id, organizationId: input.organizationId, isPlatformStaff: context.isPlatformStaff },
     async (tx) => {
       await tx.invitation.update({
         where: { id: invitation.id },
-        data: { tokenHash: hashToken(rawTokenValue), expiresAt: new Date(Date.now() + INVITATION_DURATION_MS) },
+        data: { tokenHash: hashToken(rawTokenValue), expiresAt: new Date(Date.now() + invitationDurationMs) },
       });
       await audit.recordSuccess({
         action: "organization.member.invitation.resent",

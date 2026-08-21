@@ -155,6 +155,38 @@ export const PERMISSION_CATALOG = {
     "Reactivate a suspended organization. Platform-staff-only — an organization cannot un-suspend itself.",
   ),
 
+  // --- governance (Module 12) — deliberately its own narrower namespace,
+  // not folded into `organizations.update`. `read` is granted the same
+  // ORGANIZATION_FULL audience as `organizations.update` (owner + admin
+  // both need to SEE the current policy — it materially changes what
+  // members.invite's own holders can actually do); `update` is
+  // OWNER-ONLY — the same `ownership.transfer`-precedent reasoning
+  // `organizations.reactivate`'s own comment already documents ("a new,
+  // narrower permission over broadening an existing one"), applied here
+  // for a real, specific reason: `requireOwnerForInvitations` is a
+  // policy an admin could otherwise use to grant or restrict THEIR OWN
+  // invite capability — letting admins hold `organizations.security.update`
+  // would let them simply turn that restriction back off on themselves,
+  // the exact self-escalation spec section 12 asks this module to
+  // actively test for. See docs/architecture/invitation-policy.md "Why
+  // organizations.security.update is owner-only."
+  "organizations.security.read": permission(
+    "organizations",
+    "read",
+    "ORGANIZATION",
+    "View this organization's invitation/security governance policy.",
+    false,
+    "organizations.security.read",
+  ),
+  "organizations.security.update": permission(
+    "organizations",
+    "update",
+    "ORGANIZATION",
+    "Change this organization's invitation/security governance policy. Owner-only — see this key's own reasoning in roles.ts.",
+    false,
+    "organizations.security.update",
+  ),
+
   // --- members (ORGANIZATION) — this organization's OrganizationMembership rows. Live enforcement point: role-service.ts.
   "members.read": permission("members", "read", "ORGANIZATION", "View this organization's member list."),
   "members.invite": permission("members", "invite", "ORGANIZATION", "Invite a new member to this organization."),

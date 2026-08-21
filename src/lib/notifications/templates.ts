@@ -152,6 +152,25 @@ export const NOTIFICATION_TEMPLATES = {
       actionUrl: "/organizations",
     }),
   }),
+
+  /// Module 12 — reacts to `organization.invitation_policy.updated`
+  /// (`organization-security-service.ts`). Unlike the three lifecycle
+  /// templates above (fan-out to every ACTIVE member), this one's
+  /// recipient set is deliberately narrower — owner + admin only (see
+  /// `subscribers.ts`'s own handler) — a `member`/`viewer` cannot invite
+  /// anyone regardless of this policy, so a change to it is not
+  /// meaningful information for them.
+  "organization.invitation_policy.updated": template({
+    version: 1,
+    active: true,
+    category: "ORGANIZATION_ACTIVITY",
+    severity: "INFO",
+    render: (data: { organizationName: string; changedByName: string }) => ({
+      title: "Invitation policy changed",
+      body: `${data.changedByName} updated ${data.organizationName}'s invitation policy. Review the new rules before inviting anyone.`,
+      actionUrl: "/organizations",
+    }),
+  }),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as const satisfies Record<string, NotificationTemplateDefinition<any>>;
 

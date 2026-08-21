@@ -30,6 +30,13 @@ to the row. The dev seed fixture for "an expired invitation" is exactly a
 `PENDING` row with `expiresAt` set 24 hours in the past — never a fake
 status.
 
+The actual duration used for `expiresAt` defaults to 168 hours (7 days)
+and, as of Module 12, is organization-configurable
+(`OrganizationInvitationPolicy.invitationExpiryHours`, 1–720 hours) — see
+`invitation-policy.md`. Changing it only affects invitations created or
+resent AFTER the change; an already-issued invitation keeps whatever
+expiry it was given at the time.
+
 ## Creating an invitation (spec sections 11–15)
 
 `createInvitation()` (`invitation-service.ts`) is the one chokepoint —
@@ -50,6 +57,13 @@ mirrors `role-service.ts`'s `assignRole()` on purpose (spec section 17:
    depth against a race between the pre-check and the insert, not just an
    application-level check.
 4. **Rate limiting**: `invitationRateLimiter`, per-organization.
+5. **Invitation policy (Module 12)**: `requireOwnerForInvitations` /
+   `allowedDomains` / `blockedDomains` / `invitationExpiryHours`, when
+   the organization has customized any of them — see
+   `invitation-policy.md` for the full model. `resendInvitation()` runs
+   the same five checks again, against whatever the CURRENT policy says
+   at resend time, not the one in effect when the invitation was first
+   issued.
 
 ## Accepting an invitation (spec sections 12–16)
 

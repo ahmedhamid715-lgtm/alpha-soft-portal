@@ -93,6 +93,9 @@ export const AUDIT_CATALOG = {
   "user.reactivated": action("ADMINISTRATION", "Platform staff reactivated a suspended or deactivated user's global account."),
   "user.deactivated": action("ADMINISTRATION", "Platform staff deactivated a user's global account (never a hard delete — see data-modeling.md)."),
 
+  // --- Organization security & governance (Module 12) ---
+  "organization.invitation_policy.updated": action("ORGANIZATION", "An organization's invitation/security governance policy (owner-only invites, allowed/blocked domains, invitation expiry) was changed."),
+
   // --- Compliance / this module's own actions ---
   "audit.export.created": action("COMPLIANCE", "An audit trail export was generated."),
 

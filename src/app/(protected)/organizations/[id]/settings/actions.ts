@@ -9,6 +9,7 @@ import {
   archiveOrganization,
 } from "@/server/services/organization-management-service";
 import { transferOwnership } from "@/server/services/ownership-transfer-service";
+import { updateInvitationPolicy } from "@/server/services/organization-security-service";
 import { toAppError } from "@/lib/errors/app-error";
 import { safeParseResult } from "@/lib/validation/parse";
 
@@ -127,5 +128,47 @@ export async function transferOwnershipAction(
   revalidatePath(`/organizations/${parsed.data.organizationId}/settings`);
   revalidatePath(`/organizations/${parsed.data.organizationId}/members`);
   revalidatePath(`/organizations/${parsed.data.organizationId}`);
+  return { success: true };
+}
+
+/** Splits a textarea's newline/comma-separated lines into a raw string array — normalization/validation itself is `organization-security-service.ts`'s job, not this form's. */
+function splitDomainListInput(raw: FormDataEntryValue | null): string[] {
+  if (typeof raw !== "string") return [];
+  return raw
+    .split(/[\n,]/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+const invitationPolicySchema = z.object({
+  organizationId: z.string().uuid(),
+  requireOwnerForInvitations: z.boolean(),
+  allowedDomains: z.array(z.string()),
+  blockedDomains: z.array(z.string()),
+  invitationExpiryHours: z.coerce.number().int(),
+});
+
+/** Owner-only (`organizations.security.update` — enforced inside `updateInvitationPolicy()`, not here; this form only shapes the submission). */
+export async function updateInvitationPolicyAction(
+  _prevState: SettingsActionState,
+  formData: FormData,
+): Promise<SettingsActionState> {
+  const parsed = safeParseResult(invitationPolicySchema, {
+    organizationId: formData.get("organizationId"),
+    requireOwnerForInvitations: formData.get("requireOwnerForInvitations") === "on",
+    allowedDomains: splitDomainListInput(formData.get("allowedDomains")),
+    blockedDomains: splitDomainListInput(formData.get("blockedDomains")),
+    invitationExpiryHours: formData.get("invitationExpiryHours") || 168,
+  });
+  if (!parsed.success) return { fieldErrors: parsed.fieldErrors };
+
+  try {
+    await updateInvitationPolicy(parsed.data);
+  } catch (error) {
+    const appError = toAppError(error);
+    return { error: appError.message };
+  }
+
+  revalidatePath(`/organizations/${parsed.data.organizationId}/settings`);
   return { success: true };
 }

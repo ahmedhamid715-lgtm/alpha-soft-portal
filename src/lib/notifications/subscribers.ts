@@ -166,6 +166,42 @@ events.on<OrganizationLifecyclePayload>("organization.archived", async (event) =
   await notifyAllActiveMembers(event.payload.organizationId, "organization.archived", "organization.archived");
 });
 
+interface InvitationPolicyUpdatedPayload {
+  organizationId: string;
+  changedByUserId: string;
+}
+
+/**
+ * Module 12 — narrower than `notifyAllActiveMembers()` above on purpose:
+ * only `owner`/`admin` members can act on an invitation policy at all
+ * (`members.invite` is what it gates, and only they hold it — see
+ * `roles.ts`), so only they're notified. Bounded to 500 like its sibling
+ * above, for the same reason.
+ */
+events.on<InvitationPolicyUpdatedPayload>("organization.invitation_policy.updated", async (event) => {
+  const { organizationId, changedByUserId } = event.payload;
+  const organization = await organizationRepository.findById(organizationId);
+  if (!organization) return;
+
+  const [members, changedBy] = await Promise.all([
+    membershipRepository.listForOrganization(organizationId, { page: 1, limit: 500 }, { status: "ACTIVE" }),
+    userRepository.findById(changedByUserId),
+  ]);
+  const recipients = members.items.filter((m) => (m.role === "owner" || m.role === "admin") && m.userId !== changedByUserId);
+  const changedByName = changedBy?.name ?? changedBy?.email ?? "An administrator";
+
+  const inputs: NotifyInput[] = recipients.map((membership) => ({
+    templateKey: "organization.invitation_policy.updated",
+    recipientUserId: membership.userId,
+    organizationId,
+    sourceEventType: "organization.invitation_policy.updated",
+    sourceEntityType: "organization",
+    sourceEntityId: organizationId,
+    templateData: { organizationName: organization.displayName, changedByName },
+  }));
+  await notificationService.notifyMany(inputs);
+});
+
 events.on<PasswordResetCompletedPayload>("PasswordResetCompleted", async (event) => {
   await notificationService.notify({
     templateKey: "account.password_reset",

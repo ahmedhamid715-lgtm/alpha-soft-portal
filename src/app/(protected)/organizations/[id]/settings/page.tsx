@@ -9,9 +9,11 @@ import { ShieldAlert } from "lucide-react";
 import { resolveOrganizationContext } from "@/lib/authorization/context";
 import { organizationRepository } from "@/server/repositories/organization-repository";
 import { membershipRepository } from "@/server/repositories/membership-repository";
+import { getInvitationPolicy } from "@/server/services/organization-security-service";
 import { OrganizationProfileForm } from "./profile-form";
 import { LifecycleControls } from "./lifecycle-controls";
 import { OwnershipTransferDialog } from "./ownership-transfer-dialog";
+import { InvitationPolicyForm } from "./invitation-policy-form";
 
 export const metadata: Metadata = { title: "Organization settings" };
 
@@ -37,6 +39,9 @@ export default async function OrganizationSettingsPage({ params }: PageProps<"/o
 
   const isOwner = context.membership?.role === "owner";
   const canReactivate = context.permissions.has("organizations.reactivate");
+  const canReadSecurity = context.permissions.has("organizations.security.read");
+  const canManageSecurity = context.permissions.has("organizations.security.update");
+  const invitationPolicy = canReadSecurity ? await getInvitationPolicy({ organizationId: id }) : null;
 
   const eligibleMembers = isOwner
     ? (await membershipRepository.listForOrganization(id, { page: 1, limit: 100 }, { status: "ACTIVE" })).items
@@ -82,6 +87,20 @@ export default async function OrganizationSettingsPage({ params }: PageProps<"/o
           </CardContent>
         </Card>
       </section>
+
+      {invitationPolicy ? (
+        <>
+          <Separator />
+          <section className="flex flex-col gap-4">
+            <SectionHeader title="Security" description="Who can invite new members, and from which email domains." />
+            <Card className="max-w-2xl">
+              <CardContent>
+                <InvitationPolicyForm organizationId={id} policy={invitationPolicy} canManage={canManageSecurity} />
+              </CardContent>
+            </Card>
+          </section>
+        </>
+      ) : null}
 
       {isOwner ? (
         <>

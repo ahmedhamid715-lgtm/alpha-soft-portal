@@ -1,12 +1,13 @@
 # Organization security & trust model
 
-The honest accounting of what Module 11 guarantees and how each is
-proven — same discipline `audit-security.md`/`user-security.md` already
-established. Module 11 is additive on top of Module 06/07's own
+The honest accounting of what Modules 11 and 12 guarantee and how each
+is proven — same discipline `audit-security.md`/`user-security.md`
+already established. Both are additive on top of Module 06/07's own
 extensive, already-tested security model (`multi-tenancy.md`,
 `organization-management.md`'s own "Security boundary" section); this
-file covers what Module 11 itself adds or verifies, not a restatement
-of everything those already prove.
+file covers what each module itself adds or verifies, not a restatement
+of everything those already prove. Module 11's own material is below;
+Module 12's is in "Invitation policy (Module 12)" further down.
 
 ## Trust boundaries — never client-supplied
 
@@ -135,6 +136,74 @@ mandatory-IN_APP policy is meant for); a future module can add a
 lighter-weight, non-mandatory category for this if a real need
 emerges.
 
+## Invitation policy (Module 12)
+
+`OrganizationInvitationPolicy` — the one real, enforceable governance
+surface Module 12 adds. Full model and enforcement detail in
+`invitation-policy.md`; this section covers the security reasoning
+specifically.
+
+**Permission split, and why it's split this way.** `organizations.security.read`
+(owner + admin, via `ORGANIZATION_FULL` in `roles.ts`) and
+`organizations.security.update` (owner ONLY — granted directly on the
+`owner` role, deliberately absent from `ORGANIZATION_FULL`). This is the
+one place in the whole codebase an `admin`-held permission set is
+narrower than what `ORGANIZATION_FULL` normally grants, and it's
+deliberate: `requireOwnerForInvitations` is a restriction placed ON
+admins (spec's own concern about who can weaken it). If `admin` could
+hold `organizations.security.update`, an admin could always flip
+`requireOwnerForInvitations` back to `false` the moment it became
+inconvenient — a restriction an admin can unilaterally remove is not a
+real restriction. Proven in `organization-security-service.test.ts`'s
+"an admin (holds organizations.security.read but NOT .update) cannot
+change the policy" test.
+
+**Enforcement is server-side, at the one real chokepoint.** Every path
+that creates or extends an invitation — `createInvitation()` AND
+`resendInvitation()` (`invitation-service.ts`) — consults the policy
+before writing anything. There is no separate, less-checked path (no
+admin API, no bulk-import shortcut) that skips it. `resendInvitation()`
+deliberately re-validates against the CURRENT policy, not the one in
+effect when the invitation was first issued — closing a real "tighten
+the policy, then resend an old invitation as a back door around it" gap,
+proven by its own regression test.
+
+**Domain matching is exact, never implicit-subdomain.** See
+`lib/organizations/domains.ts`'s own top comment for the full reasoning;
+security-relevant summary: an org that allow-lists `example.com`
+trusting only their own corporate domain must not be silently exposed to
+`anything.example.com`, which they may not fully control end to end.
+
+**RLS.** `organization_invitation_policies` — unlike `organizations`
+itself — IS RLS-protected (a 1:1, organization-owned table, same shape
+as `organization_onboarding`): `organization_id =
+tenant_current_organization_id() OR tenant_is_platform_context()`, FORCE
+ROW LEVEL SECURITY, proven directly against the restricted `alpha_os_app`
+role (never a superuser) in `organization-invitation-policy-rls.test.ts`
+— cross-tenant SELECT/UPDATE/DELETE all return zero rows/null, a forged
+cross-tenant INSERT is rejected by its `WITH CHECK`, and no tenant
+context at all also returns zero rows (fails closed, not open).
+
+**Why session/idle-timeout policy is not modeled.** `UserSession`
+(Module 04/10) is a property of a *user*, not of any one organization —
+a person with memberships in three organizations has exactly one session
+record, not three. An org-scoped "require re-auth after 30 minutes"
+setting has no mechanism that could actually enforce it without
+redesigning the session model itself, which is out of this module's
+scope. A governance UI that LOOKS like it does something but silently
+enforces nothing is worse than no UI at all — the exact trap spec
+section 9's "if it cannot be enforced, do not expose it" instruction
+exists to prevent. If a future module redesigns sessions to be
+organization-scoped, that module adds this setting alongside the
+redesign, not before it.
+
+**Why membership governance beyond invitations is not modeled.** Who can
+suspend/remove/reassign a member's role is already fully, correctly
+governed by the existing `members.update`/`members.remove`/`roles.update`
+permissions (Module 05/07). A second, parallel "membership policy"
+toggle governing the exact same decision would only create two competing
+sources of truth for it — worse than the status quo, not better.
+
 ## The 30 adversarial questions (spec section 24)
 
 1. Can Organization A access Organization B? — No; `organizations` has
@@ -250,11 +319,22 @@ emerges.
 
 ## What was evaluated and deliberately not built
 
-- Organization-level security settings — see `organization-settings.md`
-  "SECURITY."
+- Organization-level security settings (pre-Module-12 state) — see
+  `organization-settings.md` "SECURITY," now partially superseded:
+  invitation policy IS built (above); everything else in that section
+  remains not built, for the reasons that section and this module's own
+  "Invitation policy" section above both give.
 - A platform-initiated suspend/archive action — see "Why suspend/
   archive stay self-service-only on the platform view" above.
 - Notifications for profile-update events — see "Notification
   integration" above.
 - `ARCHIVED → ACTIVE` reversal through any UI or service path — see
   `organization-lifecycle.md` "States and valid transitions."
+- Session-duration/idle-timeout organization policy (Module 12) — see
+  "Why session/idle-timeout policy is not modeled" above.
+- Membership governance beyond invitations (Module 12) — see "Why
+  membership governance beyond invitations is not modeled" above.
+- Notification governance / per-organization notification overrides
+  (Module 12) — `NotificationPreference` is deliberately global-per-user
+  (see `organization-settings.md` "NOTIFICATIONS"); an org-level override
+  would contradict that design, not extend it.

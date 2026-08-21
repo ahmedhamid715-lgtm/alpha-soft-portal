@@ -73,6 +73,11 @@ const PLATFORM_FULL: PermissionKey[] = [
 
 const ORGANIZATION_FULL: PermissionKey[] = [
   "organizations.update",
+  // Module 12 — read only. `organizations.security.update` is
+  // deliberately NOT here (owner-only, granted directly on the `owner`
+  // role below) — see that permission's own doc comment
+  // (`permissions.ts`) for the self-escalation reasoning.
+  "organizations.security.read",
   "audit.read",
   "audit.export",
   "members.read",
@@ -148,7 +153,7 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     name: "Organization Owner",
     description: "Ultimate control over this organization, including billing. Protected by last-owner rules.",
     scope: "ORGANIZATION",
-    permissions: [...ORGANIZATION_FULL, "billing.manage", "ownership.transfer"],
+    permissions: [...ORGANIZATION_FULL, "billing.manage", "ownership.transfer", "organizations.security.update"],
   },
   admin: {
     key: "admin",

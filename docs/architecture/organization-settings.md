@@ -58,14 +58,28 @@ here only to record that this was evaluated, not overlooked.
 
 ## SECURITY
 
-Evaluated, not built. No organization-level security setting exists
-today (an MFA requirement toggle, an IP allowlist, a session-duration
-override) — none of these have a real implementation to expose a
-setting FOR; adding a toggle with no enforcement behind it would be
-exactly the "invent settings merely to look enterprise" spec section 9
-explicitly forbids. A future module implementing any such control adds
-its own setting alongside its own enforcement, not a placeholder here
-first.
+**Invitation policy — built, Module 12.** The one organization-level
+security setting with a real, server-enforced mechanism behind it:
+`OrganizationInvitationPolicy` (owner-editable, admin-readable — see
+`organization-security.md` "Invitation policy" for the full model,
+permission split, and enforcement chokepoint). Rendered as the Security
+section on this same settings page, right below Lifecycle.
+
+**Everything else — still evaluated, still not built**, same standard
+this section already held before Module 12: an MFA requirement toggle,
+an IP allowlist, a session-duration/idle-timeout override. None of these
+have a real implementation to expose a setting FOR — see
+`organization-security.md` "Why session/idle-timeout policy is not
+modeled" for the session case specifically (it isn't a missing feature,
+it's architecturally incoherent with the current global-per-user session
+model). Adding a toggle with no enforcement behind it would be exactly
+the "invent settings merely to look enterprise" spec section 9 explicitly
+forbids — the same reasoning that gated invitation policy itself: it was
+built BECAUSE `invitation-service.ts`'s `createInvitation()` is a real,
+single, already-existing chokepoint capable of enforcing it, not the
+other way around. A future module implementing any of the remaining
+controls adds its own setting alongside its own enforcement, not a
+placeholder here first.
 
 ## NOTIFICATIONS
 

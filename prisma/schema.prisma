@@ -112,6 +112,8 @@ model Organization {
   invitations Invitation[]
   /// Module 07 — this organization's onboarding progress, if it has any (see OrganizationOnboarding).
   onboarding  OrganizationOnboarding?
+  /// Module 12 — this organization's invitation governance policy, if it has customized one (see OrganizationInvitationPolicy — lazily created, most organizations have none).
+  invitationPolicy OrganizationInvitationPolicy?
   /// Module 08 — this organization's audit trail. `SetNull`, never
   /// `Cascade` (see tenancy-foundation.md "Audit foundation" — an audit
   /// trail that disappears when the thing it describes is deleted has
@@ -590,6 +592,67 @@ model OrganizationOnboarding {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("organization_onboarding")
+}
+
+// =============================================================================
+// OrganizationInvitationPolicy — Module 12 (Organization Security, Settings & Governance)
+// =============================================================================
+
+/// One row per organization, created lazily (on first read/write, not at
+/// organization-creation time — see `invitation-policy-repository.ts`'s
+/// `findOrDefault()`) rather than in `createOrganization()`'s own
+/// transaction: unlike `OrganizationOnboarding` (every org genuinely
+/// starts onboarding), most organizations never customize their
+/// invitation policy at all, and `createInvitation()` (the enforcement
+/// point — see `docs/architecture/invitation-policy.md`) needs a
+/// well-defined default behavior for the common "no row yet" case
+/// regardless, so forcing a row to exist earlier buys nothing.
+///
+/// This is Module 12's ONLY new table — see
+/// `docs/architecture/organization-governance.md` "Why one narrow table,
+/// not a generic OrganizationSettings" for why session/membership/
+/// notification policy did NOT get columns here: none of them have real,
+/// enforceable behavior behind them yet (spec's own explicit "do not
+/// create settings that are not enforceable" — GENERAL settings already
+/// live on `Organization` itself, unchanged).
+model OrganizationInvitationPolicy {
+  id             String @id @db.Uuid
+  organizationId String @unique @map("organization_id") @db.Uuid
+
+  /// When true, `createInvitation()` requires the caller's own
+  /// membership `role` to be exactly `"owner"` — narrower than the
+  /// `members.invite` permission check every invitation already passes
+  /// (which admins also hold). A deliberate, narrow, ADDITIVE
+  /// restriction on top of the existing RBAC check, never a
+  /// replacement for it — see `invitation-policy.md` "Why this is a
+  /// policy layer on top of RBAC, not inside it."
+  requireOwnerForInvitations Boolean @default(false) @map("require_owner_for_invitations")
+
+  /// Canonical, lowercase, bare domains only (see
+  /// `lib/organizations/domains.ts:normalizeDomain()`) — e.g.
+  /// `"example.com"`, never `"Example.COM"`, `"user@example.com"`, or
+  /// `"https://example.com"`. Empty array means "no allow-list
+  /// configured" (every domain permitted, subject to `blockedDomains`
+  /// below) — this is NOT the same as "block everything," a real
+  /// footgun this module's own validation explicitly guards against
+  /// (see the service layer's own comment).
+  allowedDomains String[] @default([]) @map("allowed_domains")
+  /// Same normalization as `allowedDomains`. Checked AFTER
+  /// `allowedDomains` — see `invitation-policy.md` "Evaluation order."
+  blockedDomains String[] @default([]) @map("blocked_domains")
+
+  /// Overrides `invitation-service.ts`'s own hardcoded 7-day
+  /// (`INVITATION_DURATION_MS`) default — bounded 1–720 hours (30 days)
+  /// at the validation layer (`updateInvitationPolicy()`'s own Zod
+  /// schema), never unbounded.
+  invitationExpiryHours Int @default(168) @map("invitation_expiry_hours")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("organization_invitation_policies")
 }
 
 // =============================================================================
