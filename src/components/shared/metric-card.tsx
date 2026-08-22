@@ -1,3 +1,4 @@
+import type { ReactNode } from "react"
 import type { LucideIcon } from "lucide-react"
 import { ArrowDown, ArrowUp } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -11,6 +12,8 @@ export interface MetricCardProps {
   change?: string
   trend?: "up" | "down" | "neutral"
   icon?: LucideIcon
+  /** An optional small affordance rendered next to the label — e.g. an info-icon tooltip explaining exactly what this metric measures (Module 15's own `MetricInfo`). Renders nothing extra when omitted, so every existing caller is unaffected. */
+  info?: ReactNode
   className?: string
 }
 
@@ -28,11 +31,14 @@ export interface MetricCardProps {
  * `trend="down"` there for the correct color even though the arrow still
  * points up via `change` text.
  */
-export function MetricCard({ label, value, change, trend = "neutral", icon: Icon, className }: MetricCardProps) {
+export function MetricCard({ label, value, change, trend = "neutral", icon: Icon, info, className }: MetricCardProps) {
   return (
     <Card className={cn("gap-3", className)}>
       <CardHeader className="flex-row items-center justify-between gap-2 space-y-0 pb-0">
-        <span className="text-sm text-muted-foreground">{label}</span>
+        <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
+          {label}
+          {info}
+        </span>
         {Icon ? <Icon className="size-4 text-muted-foreground" aria-hidden="true" /> : null}
       </CardHeader>
       <CardContent>

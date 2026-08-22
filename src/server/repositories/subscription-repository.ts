@@ -1,8 +1,10 @@
 import "server-only";
-import type { Subscription, SubscriptionItem, SubscriptionStatus } from "@/generated/prisma/client";
+import type { Subscription, SubscriptionItem, SubscriptionStatus, PlanPrice } from "@/generated/prisma/client";
 import { db } from "@/lib/db/client";
 import { withDbErrorTranslation } from "@/lib/db/errors";
 import type { TransactionClient } from "@/lib/db/transaction";
+
+export type SubscriptionWithPricedItems = Subscription & { items: (SubscriptionItem & { planPrice: PlanPrice })[] };
 
 /** Data access for `Subscription`/`SubscriptionItem` — RLS-protected (organization-owned / transitively organization-owned); every call must run inside `withTenantContext()`. */
 export const subscriptionRepository = {
@@ -106,6 +108,32 @@ export const subscriptionRepository = {
   async setCancelAtPeriodEnd(id: string, cancelAtPeriodEnd: boolean, tx: TransactionClient | typeof db = db): Promise<Subscription> {
     return withDbErrorTranslation(() => tx.subscription.update({ where: { id }, data: { cancelAtPeriodEnd } }));
   },
+
+  /**
+   * Module 15 — every subscription (ANY status, ANY organization) with
+   * its items and each item's own `PlanPrice`, the one shape both the
+   * MRR engine (`lib/billing/reporting/mrr.ts`, which itself filters to
+   * the included statuses) and the MRR movement engine (`.../
+   * movement.ts`, which needs canceled/historical rows too) need. Scoped
+   * either to one organization (the org-level report) or platform-wide
+   * (`scope: "platform"` — the caller must have already resolved
+   * `resolvePlatformContext()` and opened `withTenantContext()` with
+   * `isPlatformStaff: true`, exactly like every other platform-wide
+   * read in this codebase — this repository method itself does no
+   * authorization of its own). No status filter here — a bounded set by
+   * NATURE (this platform's own live+historical subscription count, not
+   * an ever-growing event log — see billing-intelligence.md
+   * "Performance").
+   */
+  async listWithPricedItems(scope: { organizationId: string } | { platform: true }, tx: TransactionClient | typeof db = db): Promise<SubscriptionWithPricedItems[]> {
+    return withDbErrorTranslation(() =>
+      tx.subscription.findMany({
+        where: "organizationId" in scope ? { organizationId: scope.organizationId } : {},
+        include: { items: { include: { planPrice: true } } },
+        orderBy: { createdAt: "asc" },
+      }),
+    );
+  },
 };
 
 export const subscriptionItemRepository = {
@@ -133,6 +161,28 @@ export const subscriptionItemRepository = {
         },
       }),
     );
+  },
+
+  /**
+   * Module 15 fix — an in-place Stripe item modification (e.g.
+   * `changeSubscriptionPlan()`'s `stripe.subscriptions.update()` with an
+   * explicit `items: [{ id: existingItemId, price: newPriceId }]`, per
+   * Stripe's own "modify an existing item" shape) keeps the SAME
+   * `providerItemId` — only `price`/`quantity` change. Before this fix,
+   * `billing-webhook-service.ts`'s reconciliation loop treated any
+   * already-linked `providerItemId` as fully settled and never called
+   * this method at all, so a plan change's resulting webhook silently
+   * left the local row pointing at the OLD `planPriceId` forever (a real
+   * bug discovered while building Module 15's MRR engine, which reads
+   * exactly this column — see billing-intelligence.md's own "bugs found"
+   * section).
+   */
+  async update(
+    id: string,
+    input: { planPriceId?: string; quantity?: number },
+    tx: TransactionClient | typeof db = db,
+  ): Promise<SubscriptionItem> {
+    return withDbErrorTranslation(() => tx.subscriptionItem.update({ where: { id }, data: input }));
   },
 
   async deleteById(id: string, tx: TransactionClient | typeof db = db): Promise<void> {

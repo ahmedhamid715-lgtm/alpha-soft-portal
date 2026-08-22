@@ -290,6 +290,38 @@ export const PERMISSION_CATALOG = {
     "billing.credit.manage",
   ),
 
+  // --- billing, platform financial intelligence (Module 15, new —
+  // THREE platform-scope keys, not one broad "billing.finance," the
+  // same tiered-risk split Module 13's own readPlatform/plan.manage/
+  // refund three-way split already established. See
+  // billing-reporting-security.md "Permission set" for the full
+  // reasoning, including why anomaly/reconciliation diagnostics were
+  // folded INTO `billing.controls.read` rather than given a fourth key.
+  "billing.analytics.read": permission(
+    "billing",
+    "read",
+    "PLATFORM",
+    "View platform-wide financial intelligence — MRR/ARR, revenue reporting, AR aging, financial health, trends. Never payment credentials.",
+    false,
+    "billing.analytics.read",
+  ),
+  "billing.reports.export": permission(
+    "billing",
+    "export",
+    "PLATFORM",
+    "Export raw financial report data (invoices, payments, refunds, credits, AR aging, MRR) as CSV. Narrower than billing.analytics.read — a CSV is portable/exfiltratable in a way an on-screen dashboard isn't, the same read-vs-export risk split audit.export/audit.exportPlatform already established.",
+    false,
+    "billing.reports.export",
+  ),
+  "billing.controls.read": permission(
+    "billing",
+    "read",
+    "PLATFORM",
+    "View the billing operational control center — reconciliation/webhook health, data-consistency diagnostics, and deterministic anomaly detection. Diagnostic only; every underlying mutation it can link out to (refund, credit, plan change) is independently gated by its own existing permission.",
+    false,
+    "billing.controls.read",
+  ),
+
   // --- analytics (ORGANIZATION, reserved — future analytics module)
   "analytics.read": permission("analytics", "read", "ORGANIZATION", "View organization analytics/dashboards.", true),
 

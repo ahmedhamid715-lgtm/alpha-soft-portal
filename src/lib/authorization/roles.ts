@@ -130,7 +130,18 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     // CUSTOMER organization's billing — platform_owner holds all three
     // plus Module 14's `billing.credit.manage`; see platform_admin/
     // support_admin below for why they don't all hold everything.
-    permissions: [...PLATFORM_FULL, "billing.read", "billing.manage", "billing.readPlatform", "billing.plan.manage", "billing.refund", "billing.credit.manage"],
+    permissions: [
+      ...PLATFORM_FULL,
+      "billing.read",
+      "billing.manage",
+      "billing.readPlatform",
+      "billing.plan.manage",
+      "billing.refund",
+      "billing.credit.manage",
+      "billing.analytics.read",
+      "billing.reports.export",
+      "billing.controls.read",
+    ],
   },
   platform_admin: {
     key: "platform_admin",
@@ -147,8 +158,12 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     // billing-security.md. `billing.credit.manage` (Module 14) IS
     // granted here — a credit is reversible, a proportionate grant for
     // this role (see that permission's own doc comment in
-    // permissions.ts).
-    permissions: [...PLATFORM_FULL, "billing.readPlatform", "billing.plan.manage", "billing.credit.manage"],
+    // permissions.ts). Module 15 — `billing.analytics.read`/
+    // `billing.controls.read` (day-to-day financial visibility and
+    // diagnostics) are granted; `billing.reports.export` is NOT — a raw
+    // CSV export is a distinct, narrower-held risk tier, reserved for
+    // platform_owner alone (see that permission's own doc comment).
+    permissions: [...PLATFORM_FULL, "billing.readPlatform", "billing.plan.manage", "billing.credit.manage", "billing.analytics.read", "billing.controls.read"],
   },
   support_admin: {
     key: "support_admin",
@@ -158,7 +173,26 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     // Module 13 — `billing.readPlatform` only: enough for support
     // triage ("is this customer's payment failing?") without any
     // ability to change a plan, touch the catalog, or move money.
-    permissions: ["users.read", "organizations.read", "roles.read", "analytics.read", "audit.readPlatform", "notifications.observability", "reports.read", "billing.readPlatform"],
+    // Module 15 — `billing.analytics.read`/`billing.controls.read` are
+    // ALSO granted here: both are strictly READ, platform-wide
+    // financial visibility, the same risk tier `billing.readPlatform`
+    // already established for this role — an aggregate MRR number or a
+    // reconciliation-health signal reveals LESS about any one customer
+    // than the per-organization billing detail support already sees.
+    // `billing.reports.export` is deliberately withheld (see
+    // platform_admin's own comment above).
+    permissions: [
+      "users.read",
+      "organizations.read",
+      "roles.read",
+      "analytics.read",
+      "audit.readPlatform",
+      "notifications.observability",
+      "reports.read",
+      "billing.readPlatform",
+      "billing.analytics.read",
+      "billing.controls.read",
+    ],
   },
   support_agent: {
     key: "support_agent",

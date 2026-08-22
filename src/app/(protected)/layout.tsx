@@ -55,7 +55,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     { key: "admin-audit", label: "Audit log", href: "/admin/audit", icon: "audit", permission: "audit.readPlatform" as const },
     { key: "admin-notifications", label: "Notification delivery", href: "/admin/notifications", icon: "notifications", permission: "notifications.observability" as const },
     { key: "admin-roles", label: "Roles & permissions", href: "/admin/roles", icon: "roles", permission: "roles.read" as const },
-    { key: "admin-billing", label: "Billing", href: "/admin/billing", icon: "billing", permission: "billing.readPlatform" as const },
+    { key: "admin-billing", label: "Billing", href: "/admin/billing", icon: "billing", permission: "billing.analytics.read" as const },
     { key: "admin-plans", label: "Plans", href: "/admin/plans", icon: "plans", permission: "billing.plan.manage" as const },
   ].filter((item) => platformContext.permissions.has(item.permission));
 

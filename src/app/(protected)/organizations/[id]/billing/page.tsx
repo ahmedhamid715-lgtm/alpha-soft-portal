@@ -14,6 +14,7 @@ import { getBillingAccount } from "@/server/services/billing-account-service";
 import { getCurrentSubscriptionDetail } from "@/server/services/subscription-service";
 import { listActivePlans } from "@/server/services/plan-service";
 import { getCreditBalance } from "@/server/services/credit-service";
+import { getOrganizationAgingReport } from "@/server/services/revenue-reporting-service";
 import { formatMoney } from "@/lib/utils/money";
 import { PlanPicker } from "./plan-picker";
 import { SubscriptionControls } from "./subscription-controls";
@@ -68,11 +69,12 @@ export default async function BillingPage({ params }: PageProps<"/organizations/
 
   const canManage = context.permissions.has("billing.manage");
 
-  const [billingAccount, subscriptionDetail, creditBalance, activePlans] = await Promise.all([
+  const [billingAccount, subscriptionDetail, creditBalance, activePlans, aging] = await Promise.all([
     getBillingAccount({ organizationId: id }),
     getCurrentSubscriptionDetail({ organizationId: id }),
     getCreditBalance({ organizationId: id }),
     listActivePlans({ organizationId: id }),
+    getOrganizationAgingReport({ organizationId: id }),
   ]);
 
   const { subscription, planName, planPriceId, unitAmount, currency, interval } = subscriptionDetail;
@@ -168,11 +170,33 @@ export default async function BillingPage({ params }: PageProps<"/organizations/
         </section>
       ) : null}
 
+      {aging.totalOutstandingByCurrency.length > 0 ? (
+        <section className="flex flex-col gap-2">
+          <SectionHeader title="Outstanding balance" description="Open invoices not yet paid." />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {aging.totalOutstandingByCurrency.map((row) => (
+              <MetricCard key={row.currency} label={`Outstanding (${row.currency})`} value={formatMoney(row.amount, row.currency)} className="max-w-xs" />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <section className="flex flex-col gap-2">
         <SectionHeader title="Invoices" />
         <Button asChild variant="outline" className="w-fit">
           <Link href={`/organizations/${id}/billing/invoices`}>View invoice history</Link>
         </Button>
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <SectionHeader title="Export your data" description="CSV downloads of your own organization's billing history." />
+        <div className="flex flex-wrap gap-2">
+          {["invoices", "payments", "refunds", "credits"].map((type) => (
+            <Button key={type} asChild variant="outline" size="sm">
+              <a href={`/organizations/${id}/billing/export/${type}`}>{type[0]!.toUpperCase() + type.slice(1)}</a>
+            </Button>
+          ))}
+        </div>
       </section>
     </div>
   );

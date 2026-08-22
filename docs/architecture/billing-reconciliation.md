@@ -64,6 +64,19 @@ different to whoever reads the report:
    than treated as "no divergence"). Reported as a `status` divergence
    with `remote: "(not found)"`.
 
+## Audit trail (Module 15)
+
+A REAL divergence (either of the two genuine cases above) now records
+`billing.reconciliation.divergence_detected` (`lib/audit/catalog.ts`),
+attributed to the platform-staff caller who ran the check. A routine "no
+divergence found" result is deliberately NOT audited — the same "audit
+the specific outcome, not every routine read" discipline
+`billing.webhook.processed`'s own reserved catalog entry already
+establishes elsewhere in this codebase. Both branches (audited and
+silent) are directly proven by `billing-reconciliation-service.test.ts`,
+which asserts an audit-event count of exactly 1 for each real-divergence
+case and exactly 0 for the matching-state case.
+
 ## Where this surfaces
 
 `/admin/billing/organizations/[id]` — a "Run reconciliation check"

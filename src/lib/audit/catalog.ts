@@ -131,6 +131,8 @@ export const AUDIT_CATALOG = {
   "billing.trial.extended": action("BILLING", "A subscription's trial period was extended by platform staff."),
   "billing.payment.retry_requested": action("BILLING", "A retry of a failed invoice payment was requested — records the request; the actual outcome (succeeded/failed again) arrives via the normal invoice.paid/payment_failed webhook, same as every other provider-mediated mutation in this module."),
   "billing.webhook.failed": action("BILLING", "A billing webhook event failed to process (see BillingWebhookEvent.error for the safe, sanitized reason)."),
+  "billing.report.exported": action("BILLING", "A platform financial report (invoices, payments, refunds, credits, AR aging, or MRR) was exported as CSV."),
+  "billing.reconciliation.divergence_detected": action("BILLING", "A manual reconciliation check found a real divergence between Alpha OS and the provider for an organization's subscription. Deliberately NOT recorded for a routine 'no divergence' check — see billing-reconciliation.md, the same 'audit the specific outcome, not every routine read' discipline billing.webhook.processed's own reserved entry already establishes."),
   // `billing.webhook.processed` is deliberately `reserved` — a
   // SUCCESSFUL webhook's real effect is already captured by whichever
   // specific action it produced (`billing.subscription.updated`,

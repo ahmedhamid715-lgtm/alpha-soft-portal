@@ -8,6 +8,7 @@ import { membershipRepository } from "@/server/repositories/membership-repositor
 import { roleRepository } from "@/server/repositories/role-repository";
 import { billingAccountRepository } from "@/server/repositories/billing-account-repository";
 import { subscriptionRepository } from "@/server/repositories/subscription-repository";
+import { auditEventRepository } from "@/server/repositories/audit-event-repository";
 import { withTenantContext } from "@/lib/tenancy/context";
 
 /**
@@ -157,6 +158,14 @@ describe.skipIf(!isDatabaseConfigured)("billing-reconciliation-service (database
     // Read-only — the local row must be untouched.
     const stillLocal = await withTenantContext({ userId: null, organizationId: orgAId, isPlatformStaff: true }, (tx) => subscriptionRepository.findCurrentForOrganization(orgAId, tx));
     expect(stillLocal?.status).toBe("ACTIVE");
+
+    // A routine "no divergence" check is deliberately NOT audited (see
+    // the `billing.reconciliation.divergence_detected` catalog entry's
+    // own reasoning) — only a REAL divergence is.
+    const events = await withTenantContext({ userId: null, organizationId: orgAId, isPlatformStaff: true }, (tx) =>
+      auditEventRepository.list({ limit: 10 }, { organizationId: orgAId, action: "billing.reconciliation.divergence_detected" }, tx),
+    );
+    expect(events.items).toHaveLength(0);
   });
 
   it("a status divergence (local ACTIVE, remote PAST_DUE) is reported field-by-field", async () => {
@@ -190,6 +199,14 @@ describe.skipIf(!isDatabaseConfigured)("billing-reconciliation-service (database
     // write it (spec §39's "detect, never silently auto-repair").
     const stillLocal = await withTenantContext({ userId: null, organizationId: orgAId, isPlatformStaff: true }, (tx) => subscriptionRepository.findCurrentForOrganization(orgAId, tx));
     expect(stillLocal?.status).toBe("ACTIVE");
+
+    // The real divergence itself IS audited, attributed to the caller.
+    const events = await withTenantContext({ userId: null, organizationId: orgAId, isPlatformStaff: true }, (tx) =>
+      auditEventRepository.list({ limit: 10 }, { organizationId: orgAId, action: "billing.reconciliation.divergence_detected" }, tx),
+    );
+    expect(events.items).toHaveLength(1);
+    expect(events.items[0]?.actorUserId).toBe(platformOwner.userId);
+    expect(events.items[0]?.resourceId).toBe(sub.id);
   });
 
   it("a local subscription with no matching remote Stripe object is a genuine, reported divergence", async () => {
@@ -211,6 +228,11 @@ describe.skipIf(!isDatabaseConfigured)("billing-reconciliation-service (database
     const result = await reconcileOrganizationBilling({ organizationId: orgAId });
     expect(result.hasRemoteSubscription).toBe(false);
     expect(result.divergences).toEqual([{ field: "status", local: "ACTIVE", remote: "(not found)" }]);
+
+    const events = await withTenantContext({ userId: null, organizationId: orgAId, isPlatformStaff: true }, (tx) =>
+      auditEventRepository.list({ limit: 10 }, { organizationId: orgAId, action: "billing.reconciliation.divergence_detected" }, tx),
+    );
+    expect(events.items).toHaveLength(1);
   });
 
   it("a forged organizationId with no billing history at all is safe (no throw, just an empty result) — not an IDOR since billing.readPlatform is a platform-wide permission", async () => {

@@ -9,13 +9,20 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { resolvePlatformContext } from "@/lib/authorization/context";
 import { getOrganizationBillingForPlatform } from "@/server/services/billing-platform-service";
+import { getOrganizationMrrSummaryForPlatform } from "@/server/services/mrr-service";
+import { getOrganizationAgingReportForPlatform } from "@/server/services/revenue-reporting-service";
+import { getOrganizationFinancialHealthForPlatform } from "@/server/services/financial-health-service";
 import { organizationRepository } from "@/server/repositories/organization-repository";
 import { formatMoney } from "@/lib/utils/money";
+import { AGING_BUCKET_LABELS } from "@/lib/billing/reporting/aging";
+import { FINANCIAL_HEALTH_LABELS, FINANCIAL_HEALTH_TONE } from "@/lib/billing/reporting/financial-health";
 import { BillingAccountInvalidError } from "@/lib/billing/errors";
 import { RefundButton } from "./refund-button";
 import { CreditIssueForm } from "./credit-issue-form";
 import { TrialExtendForm } from "./trial-extend-form";
 import { ReconcileButton } from "./reconcile-button";
+import { MetricInfo } from "../../metric-info";
+import { MetricCard } from "@/components/shared/metric-card";
 
 export const metadata: Metadata = { title: "Organization billing" };
 
@@ -67,9 +74,70 @@ export default async function AdminOrganizationBillingPage({ params }: PageProps
   const canRefund = context.permissions.has("billing.refund");
   const canManageCredit = context.permissions.has("billing.credit.manage");
 
+  const [mrr, aging, health] = await Promise.all([
+    getOrganizationMrrSummaryForPlatform({ organizationId: id }),
+    getOrganizationAgingReportForPlatform({ organizationId: id }),
+    getOrganizationFinancialHealthForPlatform({ organizationId: id }),
+  ]);
+
   return (
     <div className="flex flex-col gap-8">
       <PageHeader title={organization.displayName} description="Billing" breadcrumbs={[{ label: "Billing", href: "/admin/billing" }, { label: organization.displayName }]} />
+
+      <section className="flex flex-col gap-4">
+        <SectionHeader title="Financial health" description="A transparent, deterministic classification — every result names its exact reasons, never a black-box score." />
+        <Card className="max-w-2xl">
+          <CardContent className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <StatusBadge status={FINANCIAL_HEALTH_TONE[health.classification]}>{FINANCIAL_HEALTH_LABELS[health.classification]}</StatusBadge>
+            </div>
+            <ul className="list-inside list-disc text-sm text-muted-foreground">
+              {health.reasons.map((reason, i) => <li key={i}>{reason}</li>)}
+            </ul>
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="flex flex-col gap-4">
+        <SectionHeader title="Recurring revenue" />
+        {mrr.byCurrency.length === 0 ? (
+          <EmptyState title="No recurring revenue" description="No ACTIVE or PAST_DUE subscription." />
+        ) : (
+          mrr.byCurrency.map((row) => (
+            <div key={row.currency} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <MetricCard
+                label={`MRR (${row.currency})`}
+                value={formatMoney(row.mrr, row.currency)}
+                info={<MetricInfo definition="Monthly Recurring Revenue from this organization's current ACTIVE/PAST_DUE subscription(s)." />}
+              />
+              <MetricCard label={`ARR (${row.currency})`} value={formatMoney(row.arr, row.currency)} info={<MetricInfo definition="MRR × 12." />} />
+            </div>
+          ))
+        )}
+      </section>
+
+      {aging.totalOutstandingByCurrency.length > 0 ? (
+        <section className="flex flex-col gap-4">
+          <SectionHeader title="Accounts receivable aging" />
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <Table>
+              <TableHeader>
+                <TableRow><TableHead>Bucket</TableHead><TableHead>Currency</TableHead><TableHead className="text-right">Amount</TableHead><TableHead className="text-right">Invoices</TableHead></TableRow>
+              </TableHeader>
+              <TableBody>
+                {aging.buckets.map((bucket, i) => (
+                  <TableRow key={i}>
+                    <TableCell>{AGING_BUCKET_LABELS[bucket.bucket]}</TableCell>
+                    <TableCell>{bucket.currency}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatMoney(bucket.amount, bucket.currency)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{bucket.invoiceCount}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </section>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
         <Card>

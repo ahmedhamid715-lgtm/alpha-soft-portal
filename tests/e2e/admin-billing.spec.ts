@@ -40,9 +40,12 @@ async function orgIdBySlug(slug: string): Promise<string> {
 base.describe("Billing (platform administration)", () => {
   base("platform_owner sees the platform billing directory including Acme Corp's ACTIVE subscription", async ({ page }) => {
     await loginAs(page, "platform-owner@alpha-os.test");
-    await page.goto("/admin/billing");
+    // Module 15 — `/admin/billing` itself is now the financial
+    // intelligence dashboard; the per-organization directory this test
+    // is actually about moved one level down.
+    await page.goto("/admin/billing/organizations");
 
-    await expect(page.getByRole("heading", { name: "Billing" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Billing organizations" })).toBeVisible();
     await expect(page.getByText("Acme Corp")).toBeVisible();
   });
 
@@ -55,8 +58,11 @@ base.describe("Billing (platform administration)", () => {
     await expect(page.getByRole("button", { name: "Refund" })).toHaveCount(0);
   });
 
-  base("a customer organization's own owner cannot reach the platform billing directory", async ({ page }) => {
+  base("a customer organization's own owner cannot reach the platform billing directory, nor the financial dashboard", async ({ page }) => {
     await loginAs(page, "owner-a@alpha-os.test");
+    await page.goto("/admin/billing/organizations");
+    await expect(page.getByText("You don't have access to this page")).toBeVisible();
+
     await page.goto("/admin/billing");
     await expect(page.getByText("You don't have access to this page")).toBeVisible();
   });

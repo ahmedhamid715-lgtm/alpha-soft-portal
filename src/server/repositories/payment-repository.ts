@@ -97,6 +97,102 @@ export const paymentRepository = {
   ): Promise<Payment> {
     return withDbErrorTranslation(() => tx.payment.update({ where: { id }, data: input }));
   },
+
+  /** Module 15 — "collected" totals grouped by currency: SUCCEEDED payments within `[period.start, period.end)`, by `paidAt` (falls back to `createdAt` — a payment marked SUCCEEDED always has `paidAt` set by the webhook reconciliation path in practice, but the fallback keeps this honest for any row that somehow doesn't). */
+  async sumCollectedByCurrency(
+    scope: { organizationId: string } | { platform: true },
+    period: { start: Date; end: Date },
+    tx: TransactionClient | typeof db = db,
+  ): Promise<{ currency: string; amount: number; paymentCount: number }[]> {
+    const rows = await withDbErrorTranslation(() =>
+      tx.payment.groupBy({
+        by: ["currency"],
+        where: {
+          status: "SUCCEEDED",
+          paidAt: { gte: period.start, lt: period.end },
+          ...("organizationId" in scope ? { organizationId: scope.organizationId } : {}),
+        },
+        _sum: { amount: true },
+        _count: { _all: true },
+      }),
+    );
+    return rows.map((row) => ({ currency: row.currency, amount: row._sum.amount ?? 0, paymentCount: row._count._all }));
+  },
+
+  /** Module 15 — count of FAILED payments per organization within a trailing window, the raw input to the financial-health engine's `failedPaymentsLast30Days` signal. */
+  async countFailedByOrganization(
+    scope: { organizationId: string } | { platform: true },
+    since: Date,
+    tx: TransactionClient | typeof db = db,
+  ): Promise<{ organizationId: string; count: number }[]> {
+    const rows = await withDbErrorTranslation(() =>
+      tx.payment.groupBy({
+        by: ["organizationId"],
+        where: { status: "FAILED", createdAt: { gte: since }, ...("organizationId" in scope ? { organizationId: scope.organizationId } : {}) },
+        _count: { _all: true },
+      }),
+    );
+    return rows.map((row) => ({ organizationId: row.organizationId, count: row._count._all }));
+  },
+
+  /** Module 15 — every SUCCEEDED payment's own amount + total refunded, for the "refund exceeds payment" defense-in-depth anomaly check. Refund totals are computed here (a raw aggregate join), not by fetching every `Refund` row into the caller. */
+  async listSucceededWithRefundTotals(
+    scope: { organizationId: string } | { platform: true },
+    tx: TransactionClient,
+  ): Promise<{ paymentId: string; organizationId: string; amount: number; totalRefunded: number }[]> {
+    type Row = { payment_id: string; organization_id: string; amount: number; total_refunded: bigint | null };
+    const rows = await withDbErrorTranslation(() =>
+      "organizationId" in scope
+        ? tx.$queryRaw<Row[]>`
+            SELECT p.id AS payment_id, p.organization_id, p.amount,
+                   COALESCE(SUM(r.amount) FILTER (WHERE r.status IN ('SUCCEEDED', 'PENDING')), 0) AS total_refunded
+            FROM payments p
+            LEFT JOIN refunds r ON r.payment_id = p.id
+            WHERE p.status IN ('SUCCEEDED', 'PARTIALLY_REFUNDED', 'REFUNDED') AND p.organization_id = ${scope.organizationId}::uuid
+            GROUP BY p.id, p.organization_id, p.amount
+          `
+        : tx.$queryRaw<Row[]>`
+            SELECT p.id AS payment_id, p.organization_id, p.amount,
+                   COALESCE(SUM(r.amount) FILTER (WHERE r.status IN ('SUCCEEDED', 'PENDING')), 0) AS total_refunded
+            FROM payments p
+            LEFT JOIN refunds r ON r.payment_id = p.id
+            WHERE p.status IN ('SUCCEEDED', 'PARTIALLY_REFUNDED', 'REFUNDED')
+            GROUP BY p.id, p.organization_id, p.amount
+          `,
+    );
+    return rows.map((row) => ({ paymentId: row.payment_id, organizationId: row.organization_id, amount: row.amount, totalRefunded: Number(row.total_refunded ?? 0) }));
+  },
+
+  /** Module 15 — every SUCCEEDED payment created since `since`, platform-wide or org-scoped — the control center's own bounded, recent-window input to `checkDuplicateLookingPayments()`. */
+  async listRecentSucceeded(scope: { organizationId: string } | { platform: true }, since: Date, tx: TransactionClient | typeof db = db): Promise<Payment[]> {
+    return withDbErrorTranslation(() =>
+      tx.payment.findMany({ where: { status: "SUCCEEDED", createdAt: { gte: since }, ...("organizationId" in scope ? { organizationId: scope.organizationId } : {}) } }),
+    );
+  },
+
+  /** Module 15 — cursor-paginated, for the payment CSV export. */
+  async listForExport(
+    scope: { organizationId: string } | { platform: true },
+    filter: { periodStart?: Date; periodEnd?: Date; status?: PaymentStatus },
+    params: CursorPaginationParams,
+    tx: TransactionClient | typeof db = db,
+  ): Promise<CursorPaginatedResult<Payment>> {
+    const rows = await withDbErrorTranslation(() =>
+      tx.payment.findMany({
+        where: {
+          ...("organizationId" in scope ? { organizationId: scope.organizationId } : {}),
+          ...(filter.status ? { status: filter.status } : {}),
+          ...(filter.periodStart || filter.periodEnd
+            ? { createdAt: { ...(filter.periodStart ? { gte: filter.periodStart } : {}), ...(filter.periodEnd ? { lt: filter.periodEnd } : {}) } }
+            : {}),
+        },
+        orderBy: { id: "asc" },
+        take: params.limit + 1,
+        ...(params.cursor ? { cursor: { id: params.cursor }, skip: 1 } : {}),
+      }),
+    );
+    return toCursorPaginatedResult(rows, params.limit, (item) => item.id);
+  },
 };
 
 export const refundRepository = {
@@ -141,5 +237,57 @@ export const refundRepository = {
 
   async updateStatus(id: string, status: "PENDING" | "SUCCEEDED" | "FAILED" | "CANCELED", tx: TransactionClient | typeof db = db): Promise<Refund> {
     return withDbErrorTranslation(() => tx.refund.update({ where: { id }, data: { status } }));
+  },
+
+  /**
+   * Module 15 — SUCCEEDED refunds within `[period.start, period.end)`,
+   * grouped by currency. `Refund` has no `organizationId` column of its
+   * own (transitively owned through `paymentId` — see the model's own
+   * schema comment); scoping and currency grouping both happen here via
+   * a join through `payment`, in JS (`addMoney()`), rather than a
+   * Prisma `groupBy` through a relation (not reliably supported) — a
+   * platform's refund volume is naturally small relative to payments,
+   * so fetching the raw rows for one period is a safe, simple choice,
+   * not a performance risk.
+   */
+  async listSucceededInPeriod(
+    scope: { organizationId: string } | { platform: true },
+    period: { start: Date; end: Date },
+    tx: TransactionClient | typeof db = db,
+  ): Promise<(Refund & { payment: { organizationId: string; currency: string } })[]> {
+    return withDbErrorTranslation(() =>
+      tx.refund.findMany({
+        where: {
+          status: "SUCCEEDED",
+          createdAt: { gte: period.start, lt: period.end },
+          ...("organizationId" in scope ? { payment: { organizationId: scope.organizationId } } : {}),
+        },
+        include: { payment: { select: { organizationId: true, currency: true } } },
+      }),
+    );
+  },
+
+  /** Module 15 — cursor-paginated, for the refund CSV export. Joins `payment` only for the export's own `organizationId`/`currency` columns (a `Refund` row has neither directly). */
+  async listForExport(
+    scope: { organizationId: string } | { platform: true },
+    filter: { periodStart?: Date; periodEnd?: Date },
+    params: CursorPaginationParams,
+    tx: TransactionClient | typeof db = db,
+  ): Promise<CursorPaginatedResult<Refund & { payment: { organizationId: string } }>> {
+    const rows = await withDbErrorTranslation(() =>
+      tx.refund.findMany({
+        where: {
+          ...("organizationId" in scope ? { payment: { organizationId: scope.organizationId } } : {}),
+          ...(filter.periodStart || filter.periodEnd
+            ? { createdAt: { ...(filter.periodStart ? { gte: filter.periodStart } : {}), ...(filter.periodEnd ? { lt: filter.periodEnd } : {}) } }
+            : {}),
+        },
+        include: { payment: { select: { organizationId: true } } },
+        orderBy: { id: "asc" },
+        take: params.limit + 1,
+        ...(params.cursor ? { cursor: { id: params.cursor }, skip: 1 } : {}),
+      }),
+    );
+    return toCursorPaginatedResult(rows, params.limit, (item) => item.id);
   },
 };

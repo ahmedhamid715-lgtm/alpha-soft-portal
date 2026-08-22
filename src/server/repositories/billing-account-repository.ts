@@ -45,4 +45,9 @@ export const billingAccountRepository = {
   async updateStatus(id: string, status: BillingAccountStatus, tx: TransactionClient | typeof db = db): Promise<BillingAccount> {
     return withDbErrorTranslation(() => tx.billingAccount.update({ where: { id }, data: { status } }));
   },
+
+  /** Module 15 — every `BillingAccount`, platform-wide (the roster `listAtRiskOrganizations()`/anomaly checks iterate). Bounded by the platform's real customer count, not an unbounded event log. */
+  async listAllForPlatform(tx: TransactionClient | typeof db = db): Promise<BillingAccount[]> {
+    return withDbErrorTranslation(() => tx.billingAccount.findMany());
+  },
 };

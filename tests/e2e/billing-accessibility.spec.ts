@@ -143,8 +143,8 @@ base.describe("Billing accessibility", () => {
 
     for (const scheme of SCHEMES) {
       await page.emulateMedia({ colorScheme: scheme });
-      await page.goto("/admin/billing");
-      await expect(page.getByRole("heading", { name: "Billing" })).toBeVisible();
+      await page.goto("/admin/billing/organizations");
+      await expect(page.getByRole("heading", { name: "Billing organizations" })).toBeVisible();
       await scan(page, `platform billing directory (${scheme})`, violations);
     }
 

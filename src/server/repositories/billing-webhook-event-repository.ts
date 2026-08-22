@@ -60,4 +60,17 @@ export const billingWebhookEventRepository = {
       tx.billingWebhookEvent.findMany({ where: filter, orderBy: { receivedAt: "desc" }, take: limit }),
     );
   },
+
+  /** Module 15 — counts per status, the control center's own "N failed, N pending" tiles. Cheap (a single indexed aggregate over a table this codebase already keeps bounded via normal operation, not a full scan of unbounded history — see billing-financial-controls.md "Performance"). */
+  async countByStatus(tx: TransactionClient | typeof db = db): Promise<Record<BillingWebhookEventStatus, number>> {
+    const rows = await withDbErrorTranslation(() => tx.billingWebhookEvent.groupBy({ by: ["status"], _count: { _all: true } }));
+    const counts: Record<BillingWebhookEventStatus, number> = { PENDING: 0, PROCESSED: 0, FAILED: 0, IGNORED: 0 };
+    for (const row of rows) counts[row.status] = row._count._all;
+    return counts;
+  },
+
+  /** Module 15 — the single most recent event of ANY status, regardless of `filter` — the "last webhook received: N minutes ago" freshness signal the control center uses as a cheap, local proxy for "is Stripe actually reaching us," without making a live provider API call. */
+  async findMostRecent(tx: TransactionClient | typeof db = db): Promise<BillingWebhookEvent | null> {
+    return withDbErrorTranslation(() => tx.billingWebhookEvent.findFirst({ orderBy: { receivedAt: "desc" } }));
+  },
 };

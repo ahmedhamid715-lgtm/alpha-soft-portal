@@ -103,14 +103,21 @@ async function handleSubscriptionEvent(event: Stripe.Event): Promise<void> {
           return subscriptionRepository.applyProviderState(created.id, providerState, tx);
         })();
 
-    // Reconcile items — only NEW items are added (spec's own scope:
-    // single-item subscriptions are this module's primary supported
-    // case; a quantity/price CHANGE on an existing item arrives as a
-    // new `providerItemId` from Stripe in practice for a plan swap via
-    // Checkout, which this branch already handles as "new item").
+    // Reconcile items. A genuinely NEW `providerItemId` (a new checkout,
+    // or Stripe assigning a fresh item rather than modifying one) is
+    // created. An ALREADY-LINKED `providerItemId` whose price/quantity
+    // now DIFFERS is UPDATED in place — this is the real shape an
+    // in-place plan change takes (`changeSubscriptionPlan()`'s own
+    // `stripe.subscriptions.update()` call passes the EXISTING item's
+    // id with a new price, per Stripe's own "modify an item" contract —
+    // the item id does not change, only what it points at). Skipping
+    // this case entirely (this reconciliation loop's original Module 13
+    // shape) left the local row silently stale after every plan change —
+    // a real bug found while building Module 15's MRR engine, which
+    // reads this exact column; see `subscription-repository.ts`'s
+    // `subscriptionItemRepository.update()` for the fix and
+    // `billing-intelligence.md` for the full writeup.
     for (const item of extractStripeSubscriptionItems(subscription)) {
-      const alreadyLinked = await subscriptionItemRepository.findByProviderItemId("STRIPE", item.providerItemId, tx);
-      if (alreadyLinked) continue;
       const planPrice = await planPriceRepository.findByProviderPriceId("STRIPE", item.providerPriceId, tx);
       if (!planPrice) {
         logger.warn("Webhook subscription item references an unknown PlanPrice — skipped.", {
@@ -120,10 +127,18 @@ async function handleSubscriptionEvent(event: Stripe.Event): Promise<void> {
         });
         continue;
       }
-      await subscriptionItemRepository.create(
-        { id: generateId(), subscriptionId: row.id, planPriceId: planPrice.id, quantity: item.quantity, provider: "STRIPE", providerItemId: item.providerItemId },
-        tx,
-      );
+
+      const alreadyLinked = await subscriptionItemRepository.findByProviderItemId("STRIPE", item.providerItemId, tx);
+      if (!alreadyLinked) {
+        await subscriptionItemRepository.create(
+          { id: generateId(), subscriptionId: row.id, planPriceId: planPrice.id, quantity: item.quantity, provider: "STRIPE", providerItemId: item.providerItemId },
+          tx,
+        );
+        continue;
+      }
+      if (alreadyLinked.planPriceId !== planPrice.id || alreadyLinked.quantity !== item.quantity) {
+        await subscriptionItemRepository.update(alreadyLinked.id, { planPriceId: planPrice.id, quantity: item.quantity }, tx);
+      }
     }
 
     await audit.recordSuccess({
@@ -131,6 +146,16 @@ async function handleSubscriptionEvent(event: Stripe.Event): Promise<void> {
       organizationId: account.organizationId,
       resourceType: "subscription",
       resourceId: row.id,
+      // `previousState.status` (Module 15) — a real, queryable status
+      // transition record. Added specifically because MRR movement
+      // classification (billing-intelligence.md) needs to detect a
+      // TRIALING → ACTIVE conversion as NEW recurring revenue and a
+      // subscription reaching CANCELED as CHURN, from the audit trail
+      // itself rather than a fabricated/inferred history — this is the
+      // one place that transition is ever recorded. `existing` (not
+      // `previousStatus` computed below) is used directly since it's
+      // already the exact pre-write row.
+      previousState: existing ? { status: existing.status } : undefined,
       newState: { status: row.status, cancelAtPeriodEnd: row.cancelAtPeriodEnd },
       tx,
     });

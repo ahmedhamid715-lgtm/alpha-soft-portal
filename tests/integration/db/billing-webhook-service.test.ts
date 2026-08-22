@@ -5,8 +5,9 @@ import { isDatabaseConfigured } from "@/config/environment";
 import { generateId } from "@/lib/utils/id";
 import { organizationRepository } from "@/server/repositories/organization-repository";
 import { billingAccountRepository } from "@/server/repositories/billing-account-repository";
-import { subscriptionRepository } from "@/server/repositories/subscription-repository";
+import { subscriptionRepository, subscriptionItemRepository } from "@/server/repositories/subscription-repository";
 import { invoiceRepository } from "@/server/repositories/invoice-repository";
+import { planRepository, planPriceRepository } from "@/server/repositories/plan-repository";
 import { withTenantContext } from "@/lib/tenancy/context";
 
 // `billing-webhook-service.ts` calls `audit.recordSuccess()`, which
@@ -34,6 +35,7 @@ vi.mock("@/lib/auth/session-guard", () => ({
  */
 describe.skipIf(!isDatabaseConfigured)("billing-webhook-service (database integration)", () => {
   const orgIds: string[] = [];
+  const planIds: string[] = [];
   let orgAId: string;
   let customerId: string;
 
@@ -52,8 +54,14 @@ describe.skipIf(!isDatabaseConfigured)("billing-webhook-service (database integr
   });
 
   afterEach(async () => {
+    // Organizations first — cascades away Subscription/SubscriptionItem
+    // before a Plan's own Restrict-guarded PlanPrice is deleted (same
+    // FK-ordering discipline every other billing test file in this repo
+    // follows — see subscription-concurrency.test.ts's own comment).
     if (orgIds.length) await db.organization.deleteMany({ where: { id: { in: orgIds } } });
+    if (planIds.length) await db.plan.deleteMany({ where: { id: { in: planIds } } });
     orgIds.length = 0;
+    planIds.length = 0;
     vi.restoreAllMocks();
   });
 
@@ -65,6 +73,7 @@ describe.skipIf(!isDatabaseConfigured)("billing-webhook-service (database integr
     created?: number;
     cancelAtPeriodEnd?: boolean;
     canceledAt?: number | null;
+    items?: Array<{ id: string; priceId: string; quantity?: number }>;
   }): Stripe.Event {
     return {
       id: overrides.id ?? `evt_${generateId()}`,
@@ -79,7 +88,18 @@ describe.skipIf(!isDatabaseConfigured)("billing-webhook-service (database integr
           canceled_at: overrides.canceledAt ?? null,
           trial_start: null,
           trial_end: null,
-          items: { data: [] },
+          items: {
+            data: (overrides.items ?? []).map((item) => ({
+              id: item.id,
+              price: { id: item.priceId },
+              quantity: item.quantity ?? 1,
+              // This Stripe API version carries the current period on
+              // each ITEM, not the subscription object itself — see
+              // `extractStripeCurrentPeriod()`'s own comment.
+              current_period_start: overrides.created ?? Math.floor(Date.now() / 1000),
+              current_period_end: (overrides.created ?? Math.floor(Date.now() / 1000)) + 30 * 24 * 60 * 60,
+            })),
+          },
         },
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -119,6 +139,55 @@ describe.skipIf(!isDatabaseConfigured)("billing-webhook-service (database integr
       subscriptionRepository.listForOrganization(orgAId, tx),
     );
     expect(subs.filter((s) => s.providerSubscriptionId === providerSubscriptionId)).toHaveLength(1);
+  });
+
+  it("an in-place Stripe item price change (SAME providerItemId, new price — exactly what changeSubscriptionPlan()'s own stripe.subscriptions.update() produces) updates the local SubscriptionItem's planPriceId, rather than leaving it silently stale (Module 15 regression — see billing-webhook-service.ts's own comment)", async () => {
+    const plan = await planRepository.create({ id: generateId(), key: `webhook_item_update_plan_${generateId().replace(/-/g, "_")}`.slice(0, 40), name: "Webhook Item Update Plan" });
+    planIds.push(plan.id);
+    const priceA = await planPriceRepository.create({ id: generateId(), planId: plan.id, currency: "USD", unitAmount: 1000, interval: "MONTH", provider: "STRIPE", providerPriceId: `price_wh_a_${generateId()}` });
+    const priceB = await planPriceRepository.create({ id: generateId(), planId: plan.id, currency: "USD", unitAmount: 2000, interval: "MONTH", provider: "STRIPE", providerPriceId: `price_wh_b_${generateId()}` });
+
+    const { processStripeWebhookEvent } = await import("@/server/services/billing-webhook-service");
+    const providerSubscriptionId = `sub_item_update_test_${generateId()}`;
+    const providerItemId = `si_item_update_test_${generateId()}`;
+
+    // First event: subscription created on price A.
+    const created = subscriptionEvent({
+      type: "customer.subscription.created",
+      subscriptionId: providerSubscriptionId,
+      status: "active",
+      created: Math.floor(Date.now() / 1000),
+      items: [{ id: providerItemId, priceId: priceA.providerPriceId! }],
+    });
+    await processStripeWebhookEvent(created);
+
+    const subscription = await withTenantContext({ userId: null, organizationId: orgAId, isPlatformStaff: true }, (tx) =>
+      subscriptionRepository.findByProviderSubscriptionId("STRIPE", providerSubscriptionId, tx),
+    );
+    const itemsAfterCreate = await withTenantContext({ userId: null, organizationId: orgAId, isPlatformStaff: true }, (tx) =>
+      subscriptionItemRepository.listForSubscription(subscription!.id, tx),
+    );
+    expect(itemsAfterCreate).toHaveLength(1);
+    expect(itemsAfterCreate[0]?.planPriceId).toBe(priceA.id);
+
+    // Second event, one second later (never out-of-order-guarded away):
+    // the SAME provider item id, now pointing at price B — exactly what
+    // an in-place Stripe item modification reports.
+    const updated = subscriptionEvent({
+      type: "customer.subscription.updated",
+      subscriptionId: providerSubscriptionId,
+      status: "active",
+      created: Math.floor(Date.now() / 1000) + 1,
+      items: [{ id: providerItemId, priceId: priceB.providerPriceId! }],
+    });
+    await processStripeWebhookEvent(updated);
+
+    const itemsAfterUpdate = await withTenantContext({ userId: null, organizationId: orgAId, isPlatformStaff: true }, (tx) =>
+      subscriptionItemRepository.listForSubscription(subscription!.id, tx),
+    );
+    expect(itemsAfterUpdate).toHaveLength(1); // still exactly one row — an UPDATE, never a second item
+    expect(itemsAfterUpdate[0]?.id).toBe(itemsAfterCreate[0]?.id); // same row, in place
+    expect(itemsAfterUpdate[0]?.planPriceId).toBe(priceB.id); // and it now reflects the real, current price
   });
 
   it("two CONCURRENT deliveries of the same event.id: exactly one processes, the other is a duplicate — proven under real concurrency, not just sequentially", async () => {

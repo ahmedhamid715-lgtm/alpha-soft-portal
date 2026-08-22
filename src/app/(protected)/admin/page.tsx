@@ -14,7 +14,7 @@ const TOOLS = [
   { href: "/admin/audit", label: "Audit log", description: "Platform-wide security and administrative events.", icon: ShieldCheck, permission: "audit.readPlatform" as const },
   { href: "/admin/notifications", label: "Notification delivery", description: "Delivery status and failures across every organization.", icon: Bell, permission: "notifications.observability" as const },
   { href: "/admin/roles", label: "Roles & permissions", description: "Platform system roles and what each one grants.", icon: KeyRound, permission: "roles.read" as const },
-  { href: "/admin/billing", label: "Billing", description: "Every organization's billing status, platform-wide.", icon: CreditCard, permission: "billing.readPlatform" as const },
+  { href: "/admin/billing", label: "Billing", description: "Platform-wide financial intelligence — MRR, revenue, receivables, financial health.", icon: CreditCard, permission: "billing.analytics.read" as const },
   { href: "/admin/plans", label: "Plans", description: "The platform-wide plan catalog.", icon: Tags, permission: "billing.plan.manage" as const },
 ];
 

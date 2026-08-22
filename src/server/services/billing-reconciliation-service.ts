@@ -4,9 +4,11 @@ import { parseOrThrow } from "@/lib/validation/parse";
 import { requirePermission } from "@/lib/authorization/authorize";
 import { withTenantContext } from "@/lib/tenancy/context";
 import { logger } from "@/lib/logging";
+import { audit } from "@/lib/audit/service";
 import { billingAccountRepository } from "@/server/repositories/billing-account-repository";
 import { subscriptionRepository } from "@/server/repositories/subscription-repository";
 import { stripeBillingProvider } from "@/lib/billing/provider/stripe/provider";
+import type { AuthorizationContext } from "@/lib/authorization/context";
 
 /**
  * Reconciliation (spec §39) — the foundation for DETECTING divergence
@@ -39,6 +41,27 @@ export interface OrganizationReconciliationResult {
 const orgIdSchema = z.object({ organizationId: z.string().uuid() });
 
 /**
+ * Records `billing.reconciliation.divergence_detected` — deliberately
+ * only for a REAL divergence, never a routine "no divergence" check
+ * (see the catalog entry's own reasoning, mirroring
+ * `billing.webhook.processed`'s reserved-entry discipline). Best-effort:
+ * a logging failure here must never turn a successful reconciliation
+ * read into a thrown error for the caller.
+ */
+async function auditDivergence(context: AuthorizationContext, organizationId: string, subscriptionId: string, fields: string[]): Promise<void> {
+  await audit
+    .recordSuccess({
+      action: "billing.reconciliation.divergence_detected",
+      organizationId,
+      resourceType: "subscription",
+      resourceId: subscriptionId,
+      metadata: { fields },
+      knownActor: context.user ? { userId: context.user.id, displayName: context.user.name } : undefined,
+    })
+    .catch((error) => console.error("[audit] failed to record billing.reconciliation.divergence_detected", error));
+}
+
+/**
  * `billing.readPlatform` — read-only, platform-wide diagnostic. Never
  * mutates `Subscription`/`BillingAccount`; a divergence is reported,
  * not resolved (spec §39: "if automatic repair is implemented, require
@@ -46,7 +69,7 @@ const orgIdSchema = z.object({ organizationId: z.string().uuid() });
  */
 export async function reconcileOrganizationBilling(rawInput: unknown): Promise<OrganizationReconciliationResult> {
   const input = parseOrThrow(orgIdSchema, rawInput);
-  await requirePermission("billing.readPlatform");
+  const context = await requirePermission("billing.readPlatform");
 
   const account = await withTenantContext({ userId: null, organizationId: input.organizationId, isPlatformStaff: true }, (tx) =>
     billingAccountRepository.findByOrganizationId(input.organizationId, tx),
@@ -75,6 +98,7 @@ export async function reconcileOrganizationBilling(rawInput: unknown): Promise<O
       subscriptionId: localSubscription.id,
       providerSubscriptionId: localSubscription.providerSubscriptionId,
     });
+    await auditDivergence(context, input.organizationId, localSubscription.id, ["status"]);
     return {
       organizationId: input.organizationId,
       checkedAt: new Date(),
@@ -103,12 +127,14 @@ export async function reconcileOrganizationBilling(rawInput: unknown): Promise<O
   }
 
   if (divergences.length > 0) {
+    const fields = divergences.map((d) => d.field);
     logger.warn("Reconciliation: divergence detected between Alpha OS and Stripe.", {
       operation: "billing.reconciliation.divergence",
       organizationId: input.organizationId,
       subscriptionId: localSubscription.id,
-      fields: divergences.map((d) => d.field),
+      fields,
     });
+    await auditDivergence(context, input.organizationId, localSubscription.id, fields);
   }
 
   return {
