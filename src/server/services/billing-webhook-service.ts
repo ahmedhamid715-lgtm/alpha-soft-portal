@@ -425,6 +425,28 @@ async function handleChargeRefunded(event: Stripe.Event): Promise<void> {
   });
 }
 
+/**
+ * `customer.subscription.trial_will_end` (Module 14 spec §19/§29's
+ * "trial ending" notification) — Stripe itself fires this automatically
+ * 3 days before a trial ends; Alpha OS never runs its own scheduled
+ * job to detect it (spec's own "do not create a fake retry/scheduling
+ * engine if the provider already manages it"). No local state changes
+ * — this is purely a notification trigger.
+ */
+async function handleTrialWillEnd(event: Stripe.Event): Promise<void> {
+  const subscription = event.data.object as Stripe.Subscription;
+  const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
+  const account = await resolveBillingAccountByCustomerId(customerId);
+  if (!account) throw new Error(`No BillingAccount found for Stripe customer ${customerId}.`);
+
+  const local = await withTenantContext({ userId: null, organizationId: account.organizationId, isPlatformStaff: true }, (tx) =>
+    subscriptionRepository.findByProviderSubscriptionId("STRIPE", subscription.id, tx),
+  );
+  if (!local) return; // the subscription.created reconciliation hasn't landed yet — nothing to notify about yet
+
+  await events.emit("billing.trial.ending", { organizationId: account.organizationId, subscriptionId: local.id });
+}
+
 /** Event types this module deliberately does not act on (spec §19: "document intentionally unsupported events") — see billing-webhooks.md for the full reasoning per event. */
 const IGNORED_EVENT_TYPES = new Set<string>([
   "customer.created",
@@ -454,6 +476,9 @@ async function dispatch(event: Stripe.Event): Promise<"processed" | "ignored"> {
       return "processed";
     case "charge.refunded":
       await handleChargeRefunded(event);
+      return "processed";
+    case "customer.subscription.trial_will_end":
+      await handleTrialWillEnd(event);
       return "processed";
     default:
       if (!IGNORED_EVENT_TYPES.has(event.type)) {
@@ -496,6 +521,13 @@ export async function processStripeWebhookEvent(event: Stripe.Event): Promise<{ 
     const message = error instanceof Error ? error.message : "Unknown error";
     await billingWebhookEventRepository.markFailed(inserted.id, message);
     logger.error("Stripe webhook event processing failed.", { operation: "billing.webhook.process_failed", eventId: event.id, eventType: event.type, error: message });
+    // Best-effort, outside any transaction (there may not be one open
+    // at this point — the failure could have happened before one was
+    // even started) — an audit-write failure here must never mask the
+    // real webhook failure being re-thrown below.
+    await audit
+      .recordFailure({ action: "billing.webhook.failed", resourceType: "billing_webhook_event", resourceId: inserted.id, resourceName: event.type, metadata: { eventId: event.id, eventType: event.type } })
+      .catch((auditError) => logger.error("Failed to record billing.webhook.failed audit event.", { eventId: event.id, error: String(auditError) }));
     throw error; // the route handler returns 5xx, so Stripe retries — see billing-webhooks.md "Failure handling"
   }
 }

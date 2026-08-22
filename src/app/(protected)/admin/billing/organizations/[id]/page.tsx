@@ -13,6 +13,9 @@ import { organizationRepository } from "@/server/repositories/organization-repos
 import { formatMoney } from "@/lib/utils/money";
 import { BillingAccountInvalidError } from "@/lib/billing/errors";
 import { RefundButton } from "./refund-button";
+import { CreditIssueForm } from "./credit-issue-form";
+import { TrialExtendForm } from "./trial-extend-form";
+import { ReconcileButton } from "./reconcile-button";
 
 export const metadata: Metadata = { title: "Organization billing" };
 
@@ -62,12 +65,13 @@ export default async function AdminOrganizationBillingPage({ params }: PageProps
   }
 
   const canRefund = context.permissions.has("billing.refund");
+  const canManageCredit = context.permissions.has("billing.credit.manage");
 
   return (
     <div className="flex flex-col gap-8">
       <PageHeader title={organization.displayName} description="Billing" breadcrumbs={[{ label: "Billing", href: "/admin/billing" }, { label: organization.displayName }]} />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
         <Card>
           <CardContent className="flex flex-col gap-1">
             <span className="text-sm text-muted-foreground">Billing account</span>
@@ -77,7 +81,14 @@ export default async function AdminOrganizationBillingPage({ params }: PageProps
         <Card>
           <CardContent className="flex flex-col gap-1">
             <span className="text-sm text-muted-foreground">Subscription</span>
-            {detail.subscription ? <StatusBadge status={SUBSCRIPTION_STATUS_TONE[detail.subscription.status] ?? "neutral"}>{detail.subscription.status}</StatusBadge> : <span className="text-sm">None</span>}
+            {detail.subscription ? (
+              <div className="flex items-center gap-2">
+                <StatusBadge status={SUBSCRIPTION_STATUS_TONE[detail.subscription.status] ?? "neutral"}>{detail.subscription.status}</StatusBadge>
+                {detail.subscription.cancelAtPeriodEnd ? <span className="text-xs text-warning">ends {detail.subscription.currentPeriodEnd ? new Date(detail.subscription.currentPeriodEnd).toLocaleDateString() : "soon"}</span> : null}
+              </div>
+            ) : (
+              <span className="text-sm">None</span>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -86,7 +97,18 @@ export default async function AdminOrganizationBillingPage({ params }: PageProps
             <span className="font-medium">{detail.billingAccount.currency}</span>
           </CardContent>
         </Card>
+        <Card>
+          <CardContent className="flex flex-col gap-1">
+            <span className="text-sm text-muted-foreground">Credit balance</span>
+            <span className="font-medium">{formatMoney(detail.creditBalance, detail.billingAccount.currency)}</span>
+          </CardContent>
+        </Card>
       </div>
+
+      <section className="flex flex-col gap-4">
+        <SectionHeader title="Reconciliation" description="Compares Alpha OS's own subscription record against Stripe's live state." />
+        <ReconcileButton organizationId={id} />
+      </section>
 
       <section className="flex flex-col gap-4">
         <SectionHeader title="Recent invoices" description="Most recent 10." />
@@ -144,6 +166,42 @@ export default async function AdminOrganizationBillingPage({ params }: PageProps
           </div>
         )}
       </section>
+
+      {canManageCredit ? (
+        <section className="flex flex-col gap-4">
+          <SectionHeader title="Credit" description="Applied automatically to the customer's next invoice. Reversible — never a delete, only an offsetting compensating entry." />
+          <Card className="max-w-xl">
+            <CardContent className="flex flex-col gap-4">
+              <CreditIssueForm organizationId={id} currency={detail.billingAccount.currency} />
+              {detail.recentCreditEntries.length > 0 ? (
+                <div className="flex flex-col gap-2 border-t border-border pt-3">
+                  <span className="text-sm text-muted-foreground">Recent activity</span>
+                  {detail.recentCreditEntries.map((entry) => (
+                    <div key={entry.id} className="flex items-center justify-between text-sm">
+                      <span>{entry.reason}</span>
+                      <span className={entry.type === "CREDIT" ? "text-success tabular-nums" : "text-muted-foreground tabular-nums"}>
+                        {entry.type === "CREDIT" ? "+" : "−"}
+                        {formatMoney(entry.amount, entry.currency)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+        </section>
+      ) : null}
+
+      {canManageCredit && detail.subscription?.status === "TRIALING" ? (
+        <section className="flex flex-col gap-4">
+          <SectionHeader title="Trial" description="Extends the current trial period. Only available while the subscription is trialing." />
+          <Card className="max-w-xl">
+            <CardContent>
+              <TrialExtendForm organizationId={id} />
+            </CardContent>
+          </Card>
+        </section>
+      ) : null}
     </div>
   );
 }

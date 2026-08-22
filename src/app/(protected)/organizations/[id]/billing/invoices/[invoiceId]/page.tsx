@@ -12,6 +12,7 @@ import { resolveOrganizationContext } from "@/lib/authorization/context";
 import { getInvoiceForOrganization } from "@/server/services/invoice-service";
 import { NotFoundError } from "@/lib/errors/app-error";
 import { formatMoney } from "@/lib/utils/money";
+import { RetryPaymentButton } from "./retry-payment-button";
 
 export const metadata: Metadata = { title: "Invoice" };
 
@@ -89,6 +90,12 @@ export default async function InvoiceDetailPage({ params }: PageProps<"/organiza
           </CardContent>
         </Card>
       </div>
+
+      {invoice.status === "OPEN" && context.permissions.has("billing.manage") ? (
+        <div className="flex justify-end">
+          <RetryPaymentButton organizationId={id} invoiceId={invoice.id} />
+        </div>
+      ) : null}
 
       <section className="flex flex-col gap-4">
         <SectionHeader title="Line items" />

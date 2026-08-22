@@ -13,10 +13,12 @@ import { resolveOrganizationContext } from "@/lib/authorization/context";
 import { getBillingAccount } from "@/server/services/billing-account-service";
 import { getCurrentSubscriptionDetail } from "@/server/services/subscription-service";
 import { listActivePlans } from "@/server/services/plan-service";
+import { getCreditBalance } from "@/server/services/credit-service";
 import { formatMoney } from "@/lib/utils/money";
 import { PlanPicker } from "./plan-picker";
 import { SubscriptionControls } from "./subscription-controls";
 import { OpenBillingPortalButton } from "./open-billing-portal-button";
+import { ChangePlanControl } from "./change-plan-control";
 
 export const metadata: Metadata = { title: "Billing" };
 
@@ -66,12 +68,14 @@ export default async function BillingPage({ params }: PageProps<"/organizations/
 
   const canManage = context.permissions.has("billing.manage");
 
-  const [billingAccount, subscriptionDetail] = await Promise.all([
+  const [billingAccount, subscriptionDetail, creditBalance, activePlans] = await Promise.all([
     getBillingAccount({ organizationId: id }),
     getCurrentSubscriptionDetail({ organizationId: id }),
+    getCreditBalance({ organizationId: id }),
+    listActivePlans({ organizationId: id }),
   ]);
 
-  const { subscription, planName, unitAmount, currency, interval } = subscriptionDetail;
+  const { subscription, planName, planPriceId, unitAmount, currency, interval } = subscriptionDetail;
   const hasActiveSubscription = subscription && subscription.status !== "CANCELED" && subscription.status !== "INCOMPLETE_EXPIRED";
 
   return (
@@ -121,9 +125,12 @@ export default async function BillingPage({ params }: PageProps<"/organizations/
                 <span className="text-sm text-muted-foreground">Status</span>
                 <StatusBadge status={SUBSCRIPTION_STATUS_TONE[subscription.status] ?? "neutral"}>{subscription.status}</StatusBadge>
               </div>
+              {subscription.status === "TRIALING" && subscription.trialEnd ? (
+                <p className="text-sm text-info">Trial ends {new Date(subscription.trialEnd).toLocaleDateString()}.</p>
+              ) : null}
               {subscription.cancelAtPeriodEnd ? (
                 <p className="text-sm text-warning">
-                  This subscription is scheduled to cancel at the end of the current period.
+                  This subscription is scheduled to cancel on {subscription.currentPeriodEnd ? new Date(subscription.currentPeriodEnd).toLocaleDateString() : "the end of the current period"}.
                 </p>
               ) : null}
               <div className="flex flex-wrap gap-2 pt-1">
@@ -134,6 +141,7 @@ export default async function BillingPage({ params }: PageProps<"/organizations/
                   </>
                 ) : null}
               </div>
+              {canManage ? <ChangePlanControl organizationId={id} currentPlanPriceId={planPriceId} plans={activePlans} /> : null}
               {!canManage ? <p className="text-xs text-muted-foreground">Changing your plan or payment method requires the organization owner.</p> : null}
             </CardContent>
           </Card>
@@ -142,7 +150,7 @@ export default async function BillingPage({ params }: PageProps<"/organizations/
         <section className="flex flex-col gap-4">
           <SectionHeader title="Choose a plan" description="No active subscription yet." />
           {canManage ? (
-            <PlanPicker organizationId={id} plans={await listActivePlans({ organizationId: id })} />
+            <PlanPicker organizationId={id} plans={activePlans} />
           ) : (
             <EmptyState
               icon={CreditCard}
@@ -152,6 +160,13 @@ export default async function BillingPage({ params }: PageProps<"/organizations/
           )}
         </section>
       )}
+
+      {creditBalance.balance !== 0 ? (
+        <section className="flex flex-col gap-2">
+          <SectionHeader title="Account credit" description="Applied automatically to your next invoice." />
+          <MetricCard label="Credit balance" value={formatMoney(creditBalance.balance, creditBalance.currency ?? currency ?? "USD")} className="max-w-xs" />
+        </section>
+      ) : null}
 
       <section className="flex flex-col gap-2">
         <SectionHeader title="Invoices" />

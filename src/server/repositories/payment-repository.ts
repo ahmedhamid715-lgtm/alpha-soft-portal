@@ -15,6 +15,22 @@ export const paymentRepository = {
     return withDbErrorTranslation(() => tx.payment.findUnique({ where: { provider_providerPaymentId: { provider, providerPaymentId } } }));
   },
 
+  /**
+   * Row-locked read (Module 14 spec §10/§17: "two simultaneous refund
+   * requests must not create an over-refund... concurrency protection
+   * is mandatory"). MUST be called inside a transaction. Closes a real
+   * race Module 13's own `issueRefund()` left open: two concurrent
+   * requests could both read "$0 already refunded" before either
+   * commits its own refund row, both compute the full amount as
+   * "remaining," and both succeed — an over-refund. See
+   * `refund-concurrency.test.ts`.
+   */
+  async findByIdLocked(id: string, tx: TransactionClient): Promise<Payment | null> {
+    const locked = await withDbErrorTranslation(() => tx.$queryRaw<{ id: string }[]>`SELECT id FROM payments WHERE id = ${id}::uuid FOR UPDATE`);
+    if (!locked[0]) return null;
+    return withDbErrorTranslation(() => tx.payment.findUnique({ where: { id: locked[0]!.id } }));
+  },
+
   async listForOrganization(
     organizationId: string,
     params: CursorPaginationParams,

@@ -240,6 +240,48 @@ export const NOTIFICATION_TEMPLATES = {
     }),
   }),
 
+  /// Module 14 — reacts to `customer.subscription.trial_will_end`
+  /// (Stripe's own 3-day-out signal, see `billing-webhook-service.ts`).
+  "billing.trial.ending": template({
+    version: 1,
+    active: true,
+    category: "BILLING",
+    severity: "WARNING",
+    render: (data: { organizationName: string }) => ({
+      title: "Trial ending soon",
+      body: `${data.organizationName}'s trial ends in a few days. Add a payment method to continue without interruption.`,
+      actionUrl: "/organizations",
+    }),
+  }),
+
+  /// Reacts to `billing.subscription.updated` transitioning OUT of
+  /// TRIALING (converted to paid, or lapsed) — see `subscribers.ts`'s
+  /// own filter for why one template covers both outcomes.
+  "billing.trial.ended": template({
+    version: 1,
+    active: true,
+    category: "BILLING",
+    severity: "INFO",
+    render: (data: { organizationName: string }) => ({
+      title: "Trial ended",
+      body: `${data.organizationName}'s trial has ended.`,
+      actionUrl: "/organizations",
+    }),
+  }),
+
+  /// Reacts to `billing.credit.issued` (`credit-service.ts`).
+  "billing.credit.issued": template({
+    version: 1,
+    active: true,
+    category: "BILLING",
+    severity: "INFO",
+    render: (data: { organizationName: string; amountFormatted: string }) => ({
+      title: "Credit issued",
+      body: `A credit of ${data.amountFormatted} was added to ${data.organizationName}'s account.`,
+      actionUrl: "/organizations",
+    }),
+  }),
+
   /// Module 12 — reacts to `organization.invitation_policy.updated`
   /// (`organization-security-service.ts`). Unlike the three lifecycle
   /// templates above (fan-out to every ACTIVE member), this one's

@@ -47,7 +47,12 @@ base.describe("Billing (customer)", () => {
     await page.goto(`/organizations/${orgAId}/billing`);
 
     await expect(page.getByRole("heading", { name: "Billing" })).toBeVisible();
-    await expect(page.getByText("Growth")).toBeVisible();
+    // `{ exact: true }` (Module 14) — the "change plan" dropdown added
+    // to this page also lists "Growth" as an option label (with its
+    // price suffix), which a loose substring match against "Growth"
+    // now also resolves to; the current-plan metric card's text is
+    // exactly "Growth" with nothing else, so exact match disambiguates.
+    await expect(page.getByText("Growth", { exact: true })).toBeVisible();
     await expect(page.getByText("ACTIVE")).toBeVisible();
     await expect(page.getByRole("button", { name: "Manage payment method" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Cancel subscription" })).toBeVisible();

@@ -127,9 +127,10 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     // one — unchanged since Module 05. `billing.readPlatform`/
     // `billing.plan.manage`/`billing.refund` (Module 13, PLATFORM-scope)
     // are the genuinely different capability of administering EVERY
-    // CUSTOMER organization's billing — platform_owner holds all three;
-    // see platform_admin/support_admin below for why they don't.
-    permissions: [...PLATFORM_FULL, "billing.read", "billing.manage", "billing.readPlatform", "billing.plan.manage", "billing.refund"],
+    // CUSTOMER organization's billing — platform_owner holds all three
+    // plus Module 14's `billing.credit.manage`; see platform_admin/
+    // support_admin below for why they don't all hold everything.
+    permissions: [...PLATFORM_FULL, "billing.read", "billing.manage", "billing.readPlatform", "billing.plan.manage", "billing.refund", "billing.credit.manage"],
   },
   platform_admin: {
     key: "platform_admin",
@@ -143,8 +144,11 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     // the same owner-only-for-irreversible-action precedent
     // `ownership.transfer`/`organizations.security.update`/
     // `billing.manage` itself already establish. See
-    // billing-security.md.
-    permissions: [...PLATFORM_FULL, "billing.readPlatform", "billing.plan.manage"],
+    // billing-security.md. `billing.credit.manage` (Module 14) IS
+    // granted here — a credit is reversible, a proportionate grant for
+    // this role (see that permission's own doc comment in
+    // permissions.ts).
+    permissions: [...PLATFORM_FULL, "billing.readPlatform", "billing.plan.manage", "billing.credit.manage"],
   },
   support_admin: {
     key: "support_admin",

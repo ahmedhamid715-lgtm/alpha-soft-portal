@@ -6,6 +6,10 @@ import type { TransactionClient } from "@/lib/db/transaction";
 
 /** Data access for `CreditLedgerEntry` — RLS-protected, append-only (no update/delete method exists here at all — see the model's own doc comment and this table's RLS migration, which has no UPDATE/DELETE policy). */
 export const creditLedgerRepository = {
+  async findById(id: string, tx: TransactionClient | typeof db = db): Promise<CreditLedgerEntry | null> {
+    return withDbErrorTranslation(() => tx.creditLedgerEntry.findUnique({ where: { id } }));
+  },
+
   async listForOrganization(organizationId: string, tx: TransactionClient | typeof db = db): Promise<CreditLedgerEntry[]> {
     return withDbErrorTranslation(() => tx.creditLedgerEntry.findMany({ where: { organizationId }, orderBy: { createdAt: "asc" } }));
   },
@@ -21,6 +25,8 @@ export const creditLedgerRepository = {
       reason: string;
       relatedInvoiceId?: string | null;
       relatedPaymentId?: string | null;
+      relatedEntryId?: string | null;
+      initiatedByUserId?: string | null;
     },
     tx: TransactionClient | typeof db = db,
   ): Promise<CreditLedgerEntry> {
@@ -36,6 +42,8 @@ export const creditLedgerRepository = {
           reason: input.reason,
           relatedInvoiceId: input.relatedInvoiceId ?? null,
           relatedPaymentId: input.relatedPaymentId ?? null,
+          relatedEntryId: input.relatedEntryId ?? null,
+          initiatedByUserId: input.initiatedByUserId ?? null,
         },
       }),
     );

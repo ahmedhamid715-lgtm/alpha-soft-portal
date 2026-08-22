@@ -6,16 +6,22 @@ import { logger } from "@/lib/logging";
 import type { BillingProviderAdapter } from "../interface";
 import type {
   CancelSubscriptionInput,
+  ChangeSubscriptionInput,
   CreateBillingPortalSessionInput,
   CreateBillingPortalSessionResult,
   CreateCheckoutSessionInput,
   CreateCheckoutSessionResult,
   CreateProviderCustomerInput,
   CreateProviderCustomerResult,
+  ExtendTrialInput,
+  GetSubscriptionResult,
   IssueRefundInput,
   IssueRefundResult,
+  PreviewSubscriptionChangeResult,
   ResumeSubscriptionInput,
+  RetryInvoicePaymentInput,
 } from "../types";
+import { mapStripeSubscriptionStatus } from "./mapper";
 
 /**
  * The Stripe implementation of `BillingProviderAdapter` (spec §16) — the
@@ -122,6 +128,87 @@ export const stripeBillingProvider: BillingProviderAdapter = {
         ...(input.reason ? { reason: mapRefundReason(input.reason) } : {}),
       });
       return { providerRefundId: refund.id, status: refund.status ?? "pending" };
+    });
+  },
+
+  async previewSubscriptionChange(input: ChangeSubscriptionInput): Promise<PreviewSubscriptionChangeResult> {
+    // Deliberately NOT `withStripeErrorMapping()` (unlike every other
+    // method here) — a preview is a best-effort convenience (spec §5:
+    // "where the provider cannot guarantee a preview, explicitly
+    // indicate that"), so nothing in this method may ever re-throw as
+    // `ExternalServiceError`; the caller (`subscription-service.ts`'s
+    // `previewPlanChange()`) surfaces `available: false` and the UI
+    // shows an honest "not available" state instead of a number.
+    // `getStripeClient()` itself is INSIDE this try (not called ahead of
+    // it, the way every other method does) — it throws synchronously
+    // when Stripe isn't configured at all, which is just as much a
+    // "can't preview right now" case as a mid-call API failure, and must
+    // be caught here for the same reason.
+    try {
+      const stripe = getStripeClient();
+      const preview = await stripe.invoices.createPreview({
+        subscription: input.providerSubscriptionId,
+        subscription_details: {
+          items: [{ id: input.providerItemId, price: input.providerPriceId, quantity: input.quantity }],
+          proration_behavior: "create_prorations",
+        },
+      });
+      return {
+        available: true,
+        currency: preview.currency.toUpperCase(),
+        immediateChangeAmount: preview.amount_due,
+        totalAmount: preview.total,
+        effectiveAt: Math.floor(Date.now() / 1000),
+      };
+    } catch (error) {
+      logger.warn("Stripe subscription-change preview unavailable — continuing without one.", {
+        operation: "previewSubscriptionChange",
+        stripeErrorType: error instanceof Stripe.errors.StripeError ? error.type : undefined,
+      });
+      return { available: false, currency: "", immediateChangeAmount: 0, totalAmount: 0, effectiveAt: Math.floor(Date.now() / 1000) };
+    }
+  },
+
+  async changeSubscription(input: ChangeSubscriptionInput): Promise<void> {
+    await withStripeErrorMapping("changeSubscription", async () => {
+      const stripe = getStripeClient();
+      await stripe.subscriptions.update(input.providerSubscriptionId, {
+        items: [{ id: input.providerItemId, price: input.providerPriceId, quantity: input.quantity }],
+        proration_behavior: "create_prorations",
+      });
+    });
+  },
+
+  async getSubscription(providerSubscriptionId: string): Promise<GetSubscriptionResult | null> {
+    return withStripeErrorMapping("getSubscription", async () => {
+      const stripe = getStripeClient();
+      try {
+        const subscription = await stripe.subscriptions.retrieve(providerSubscriptionId);
+        return {
+          providerSubscriptionId: subscription.id,
+          status: mapStripeSubscriptionStatus(subscription.status),
+          cancelAtPeriodEnd: subscription.cancel_at_period_end,
+          currentPeriodStart: subscription.items.data[0]?.current_period_start ?? null,
+          currentPeriodEnd: subscription.items.data[0]?.current_period_end ?? null,
+        };
+      } catch (error) {
+        if (error instanceof Stripe.errors.StripeInvalidRequestError && error.code === "resource_missing") return null;
+        throw error;
+      }
+    });
+  },
+
+  async extendTrial(input: ExtendTrialInput): Promise<void> {
+    await withStripeErrorMapping("extendTrial", async () => {
+      const stripe = getStripeClient();
+      await stripe.subscriptions.update(input.providerSubscriptionId, { trial_end: input.newTrialEndUnixSeconds, proration_behavior: "none" });
+    });
+  },
+
+  async retryInvoicePayment(input: RetryInvoicePaymentInput): Promise<void> {
+    await withStripeErrorMapping("retryInvoicePayment", async () => {
+      const stripe = getStripeClient();
+      await stripe.invoices.pay(input.providerInvoiceId);
     });
   },
 };

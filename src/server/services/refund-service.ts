@@ -35,37 +35,55 @@ const issueRefundSchema = z.object({
  * `payment.amount` (spec §55 Q22: "Can refund amounts exceed the
  * original payment?"). The original `Payment.amount` is never modified
  * — a refund is its own row, its own financial event (spec §13).
+ *
+ * Module 14 — the read-check-write sequence now happens INSIDE ONE
+ * transaction, behind `paymentRepository.findByIdLocked()`'s row lock.
+ * Two simultaneous calls for the SAME payment serialize on that lock:
+ * the second transaction's own `SELECT ... FOR UPDATE` blocks until the
+ * first commits, so it always re-reads the FIRST refund's already-
+ * written amount before computing its own remaining balance — an
+ * over-refund is now structurally impossible, not just unlikely.
+ * Proven under real concurrency, not just reasoned about — see
+ * `refund-concurrency.test.ts`. This closes a genuine race Module 13's
+ * own version of this function left open (read payment, read existing
+ * refunds, call Stripe, THEN write — all as separate, unlocked steps).
  */
 export async function issueRefund(rawInput: unknown): Promise<Refund> {
   const input = parseOrThrow(issueRefundSchema, rawInput);
   const context = await requirePermission("billing.refund");
 
-  const payment = await withTenantContext({ userId: null, organizationId: null, isPlatformStaff: true }, (tx) => paymentRepository.findById(input.paymentId, tx));
-  if (!payment || payment.organizationId !== input.organizationId) throw new NotFoundError("Payment");
-  if (payment.status !== "SUCCEEDED" && payment.status !== "PARTIALLY_REFUNDED") {
-    throw new ValidationError("Only a successful payment can be refunded.");
-  }
-
-  const existingRefunds = await withTenantContext({ userId: null, organizationId: null, isPlatformStaff: true }, (tx) =>
-    refundRepository.listForPayment(input.paymentId, tx),
-  );
-  const alreadyRefunded = existingRefunds.filter((r) => r.status === "SUCCEEDED" || r.status === "PENDING").reduce((sum, r) => sum + r.amount, 0);
-  const remaining = payment.amount - alreadyRefunded;
-  const requestedAmount = input.amount ?? remaining;
-
-  if (requestedAmount <= 0 || requestedAmount > remaining) {
-    throw new ValidationError(`This payment has ${remaining} minor units left to refund; ${requestedAmount} was requested.`, {
-      details: { field: "amount" },
-    });
-  }
-
-  const providerResult = await stripeBillingProvider.issueRefund({
-    providerPaymentId: payment.providerPaymentId,
-    amount: requestedAmount,
-    reason: input.reason,
-  });
-
   const refund = await withTenantContext({ userId: null, organizationId: null, isPlatformStaff: true }, async (tx) => {
+    const payment = await paymentRepository.findByIdLocked(input.paymentId, tx);
+    if (!payment || payment.organizationId !== input.organizationId) throw new NotFoundError("Payment");
+    if (payment.status !== "SUCCEEDED" && payment.status !== "PARTIALLY_REFUNDED") {
+      throw new ValidationError("Only a successful payment can be refunded.");
+    }
+
+    const existingRefunds = await refundRepository.listForPayment(input.paymentId, tx);
+    const alreadyRefunded = existingRefunds.filter((r) => r.status === "SUCCEEDED" || r.status === "PENDING").reduce((sum, r) => sum + r.amount, 0);
+    const remaining = payment.amount - alreadyRefunded;
+    const requestedAmount = input.amount ?? remaining;
+
+    if (requestedAmount <= 0 || requestedAmount > remaining) {
+      throw new ValidationError(`This payment has ${remaining} minor units left to refund; ${requestedAmount} was requested.`, {
+        details: { field: "amount" },
+      });
+    }
+
+    // The Stripe call happens WHILE the payment row's lock is held
+    // (spec's own §17 tradeoff, made deliberately, not accidentally —
+    // see this function's own doc comment): holding the lock through a
+    // sub-second external API call is what actually prevents the race;
+    // releasing it first would just move the same window one step
+    // later. A hung/slow Stripe response blocks a second refund
+    // attempt on the SAME payment only — never unrelated payments,
+    // never unrelated organizations.
+    const providerResult = await stripeBillingProvider.issueRefund({
+      providerPaymentId: payment.providerPaymentId,
+      amount: requestedAmount,
+      reason: input.reason,
+    });
+
     const row = await refundRepository.create(
       {
         id: generateId(),
@@ -80,10 +98,6 @@ export async function issueRefund(rawInput: unknown): Promise<Refund> {
       },
       tx,
     );
-    // The Payment's own status reflects whether it's now fully or
-    // partially refunded — read back the full picture rather than
-    // guessing from this one new row alone (a second concurrent refund
-    // could also be in flight).
     const totalRefunded = alreadyRefunded + requestedAmount;
     await paymentRepository.updateStatus(payment.id, { status: totalRefunded >= payment.amount ? "REFUNDED" : "PARTIALLY_REFUNDED" }, tx);
     await audit.recordSuccess({
@@ -95,17 +109,23 @@ export async function issueRefund(rawInput: unknown): Promise<Refund> {
       newState: { amount: row.amount, currency: row.currency, status: row.status, reason: row.reason },
       tx,
     });
-    return row;
+
+    return { row, paymentId: payment.id, requestedAmount };
   });
 
   logger.info("Refund issued.", {
     operation: "billing.refund.create",
     organizationId: input.organizationId,
-    paymentId: payment.id,
-    refundId: refund.id,
-    amount: requestedAmount,
+    paymentId: refund.paymentId,
+    refundId: refund.row.id,
+    amount: refund.requestedAmount,
     issuedByUserId: context.user!.id,
   });
-  await events.emit("billing.refund.created", { organizationId: input.organizationId, paymentId: payment.id, refundId: refund.id, amount: requestedAmount });
-  return refund;
+  // Emitted AFTER the transaction commits, deliberately — never while
+  // still holding the payment row's lock (see this function's own
+  // "Stripe call happens while the lock is held" comment for the ONE
+  // deliberate exception to that discipline; a notification write is
+  // not it).
+  await events.emit("billing.refund.created", { organizationId: input.organizationId, paymentId: refund.paymentId, refundId: refund.row.id, amount: refund.requestedAmount });
+  return refund.row;
 }

@@ -272,6 +272,23 @@ export const PERMISSION_CATALOG = {
     false,
     "billing.refund",
   ),
+  // Module 14 — issuing/adjusting a credit and extending a trial are
+  // BOTH "platform staff extends the customer something outside the
+  // normal paid flow," the same risk class, so one permission gates
+  // both (see credit-service.ts's own `extendTrial()`) rather than
+  // sprawling a third near-identical platform key. Deliberately NOT
+  // owner-only like `billing.refund` — a credit is reversible (a
+  // compensating entry, spec §11), never real money leaving the bank
+  // the way a refund is, so `platform_admin` holding it too is a
+  // proportionate, not an escalated, grant. See billing-security.md.
+  "billing.credit.manage": permission(
+    "billing",
+    "manage",
+    "PLATFORM",
+    "Issue or adjust an organization's credit ledger; extend a subscription's trial period.",
+    false,
+    "billing.credit.manage",
+  ),
 
   // --- analytics (ORGANIZATION, reserved — future analytics module)
   "analytics.read": permission("analytics", "read", "ORGANIZATION", "View organization analytics/dashboards.", true),

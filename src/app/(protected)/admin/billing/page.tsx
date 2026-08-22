@@ -60,7 +60,15 @@ export default async function AdminBillingPage({ searchParams }: { searchParams:
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Billing" description="Every organization's billing status, platform-wide." />
+      <PageHeader
+        title="Billing"
+        description="Every organization's billing status, platform-wide."
+        actions={
+          <Button asChild variant="outline">
+            <Link href="/admin/billing/webhooks">Webhooks</Link>
+          </Button>
+        }
+      />
 
       <form method="get" className="flex flex-wrap items-end gap-2">
         <div className="flex flex-col gap-1">

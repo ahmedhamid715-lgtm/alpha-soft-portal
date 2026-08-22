@@ -6,6 +6,7 @@ import { membershipRepository } from "@/server/repositories/membership-repositor
 import { subscriptionItemRepository } from "@/server/repositories/subscription-repository";
 import { planRepository, planPriceRepository } from "@/server/repositories/plan-repository";
 import { invoiceRepository } from "@/server/repositories/invoice-repository";
+import { formatMoney } from "@/lib/utils/money";
 import type { NotifyInput } from "./service";
 import { notificationService } from "./service";
 import type { NotificationTemplateKey } from "./templates";
@@ -290,6 +291,14 @@ events.on<BillingSubscriptionEventPayload>("billing.subscription.updated", async
     await notifyBillingRecipients(organizationId, "billing.subscription.past_due", "billing.subscription.updated", "subscription", subscriptionId, {});
   } else if (status === "CANCELED") {
     await notifyBillingRecipients(organizationId, "billing.subscription.canceled", "billing.subscription.updated", "subscription", subscriptionId, {});
+  } else if (previousStatus === "TRIALING") {
+    // Module 14 — leaving TRIALING for any other status is "the trial
+    // ended," regardless of whether it converted to a paying
+    // subscription (→ ACTIVE) or lapsed (→ anything else) — one
+    // template covers both, since the ACTIVE-vs-not distinction is
+    // already visible from the billing dashboard itself the moment the
+    // customer opens it.
+    await notifyBillingRecipients(organizationId, "billing.trial.ended", "billing.subscription.updated", "subscription", subscriptionId, {});
   }
 });
 
@@ -318,4 +327,28 @@ events.on<BillingPaymentEventPayload>("billing.payment.succeeded", async (event)
 
 events.on<BillingPaymentEventPayload>("billing.payment.failed", async (event) => {
   await notifyBillingRecipients(event.payload.organizationId, "billing.payment.failed", "billing.payment.failed", "payment", event.payload.invoiceId ?? event.payload.organizationId, {});
+});
+
+interface BillingTrialEndingPayload {
+  organizationId: string;
+  subscriptionId: string;
+}
+
+/** Reacts to `customer.subscription.trial_will_end` (`billing-webhook-service.ts`) — Stripe's own 3-day-out signal; Alpha OS runs no scheduling of its own to detect this (see that handler's own comment). */
+events.on<BillingTrialEndingPayload>("billing.trial.ending", async (event) => {
+  await notifyBillingRecipients(event.payload.organizationId, "billing.trial.ending", "billing.trial.ending", "subscription", event.payload.subscriptionId, {});
+});
+
+interface BillingCreditEventPayload {
+  organizationId: string;
+  entryId: string;
+  amount: number;
+  currency: string;
+}
+
+events.on<BillingCreditEventPayload>("billing.credit.issued", async (event) => {
+  const { organizationId, entryId, amount, currency } = event.payload;
+  await notifyBillingRecipients(organizationId, "billing.credit.issued", "billing.credit.issued", "credit_ledger_entry", entryId, {
+    amountFormatted: formatMoney(amount, currency),
+  });
 });

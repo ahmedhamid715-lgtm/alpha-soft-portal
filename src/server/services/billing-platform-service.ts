@@ -1,6 +1,6 @@
 import "server-only";
 import { z } from "zod";
-import type { BillingAccount, Invoice, Payment, Subscription } from "@/generated/prisma/client";
+import type { BillingAccount, CreditLedgerEntry, Invoice, Payment, Subscription } from "@/generated/prisma/client";
 import { parseOrThrow, optionalFromQueryParam } from "@/lib/validation/parse";
 import { requirePermission } from "@/lib/authorization/authorize";
 import { withTenantContext } from "@/lib/tenancy/context";
@@ -10,7 +10,9 @@ import { billingAccountRepository } from "@/server/repositories/billing-account-
 import { subscriptionRepository } from "@/server/repositories/subscription-repository";
 import { invoiceRepository } from "@/server/repositories/invoice-repository";
 import { paymentRepository } from "@/server/repositories/payment-repository";
+import { creditLedgerRepository } from "@/server/repositories/credit-ledger-repository";
 import { billingWebhookEventRepository } from "@/server/repositories/billing-webhook-event-repository";
+import { computeCreditBalance } from "@/lib/billing/ledger";
 import { BillingAccountInvalidError } from "@/lib/billing/errors";
 
 /**
@@ -75,9 +77,11 @@ export interface PlatformBillingDetail {
   subscription: Subscription | null;
   recentInvoices: Invoice[];
   recentPayments: Payment[];
+  creditBalance: number;
+  recentCreditEntries: CreditLedgerEntry[];
 }
 
-/** One organization's billing detail — `billing.readPlatform`. */
+/** One organization's billing detail — `billing.readPlatform`. Credit balance (Module 14) is computed fresh from the ledger here too — same "never a cached balance" discipline `getCreditBalance()` establishes for the customer-facing view; this is the platform-context sibling, needed because `billing.read` (what `getCreditBalance()` itself requires) is ORGANIZATION-scoped and platform staff have no membership in an arbitrary customer org. */
 export async function getOrganizationBillingForPlatform(rawInput: unknown): Promise<PlatformBillingDetail> {
   const input = parseOrThrow(orgIdSchema, rawInput);
   await requirePermission("billing.readPlatform");
@@ -86,13 +90,24 @@ export async function getOrganizationBillingForPlatform(rawInput: unknown): Prom
     const billingAccount = await billingAccountRepository.findByOrganizationId(input.organizationId, tx);
     if (!billingAccount) throw new BillingAccountInvalidError("This organization has no billing account.");
 
-    const [subscription, invoicesPage, paymentsPage] = await Promise.all([
+    const [subscription, invoicesPage, paymentsPage, creditEntries] = await Promise.all([
       subscriptionRepository.findCurrentForOrganization(input.organizationId, tx),
       invoiceRepository.listForOrganization(input.organizationId, { limit: 10 }, {}, tx),
       paymentRepository.listForOrganization(input.organizationId, { limit: 10 }, tx),
+      creditLedgerRepository.listForOrganization(input.organizationId, tx),
     ]);
 
-    return { billingAccount, subscription, recentInvoices: invoicesPage.items, recentPayments: paymentsPage.items };
+    return {
+      billingAccount,
+      subscription,
+      recentInvoices: invoicesPage.items,
+      recentPayments: paymentsPage.items,
+      creditBalance: computeCreditBalance(creditEntries),
+      // `listForOrganization` orders oldest-first (the natural order for
+      // summing a balance correctly) — reversed here purely for this
+      // "most recent activity" display.
+      recentCreditEntries: creditEntries.slice(-10).reverse(),
+    };
   });
 }
 

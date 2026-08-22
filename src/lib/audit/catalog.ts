@@ -110,7 +110,13 @@ export const AUDIT_CATALOG = {
   "billing.subscription.created": action("BILLING", "A subscription was created for an organization."),
   "billing.subscription.updated": action("BILLING", "A subscription's plan, items, or period changed."),
   "billing.subscription.canceled": action("BILLING", "A subscription was canceled (at period end or immediately)."),
-  "billing.subscription.resumed": action("BILLING", "A subscription scheduled for cancellation was resumed."),
+  "billing.subscription.resumed": action("BILLING", "A subscription scheduled for cancellation was resumed — Alpha OS's own name for what Module 14's spec calls \"reactivated\"; see subscription-lifecycle.md for why CANCELED→ACTIVE is never the same operation as undoing a still-pending CANCEL_AT_PERIOD_END."),
+  // Module 14 — was `reserved: true` in Module 13 (no live call site);
+  // now real, from `changeSubscriptionPlan()`'s in-place upgrade/
+  // downgrade (never the earlier module's own "always a fresh Checkout
+  // Session" path, which would double-subscribe an existing customer —
+  // see subscription-lifecycle.md "The in-place change bug Module 13
+  // left behind").
   "billing.plan.changed": action("BILLING", "An organization's subscription plan/price changed."),
   "billing.plan.catalog_updated": action("BILLING", "A platform administrator created, edited, or deactivated a plan/price in the catalog."),
   "billing.payment_method.updated": action("BILLING", "An organization's payment method changed.", true),
@@ -118,6 +124,24 @@ export const AUDIT_CATALOG = {
   "billing.payment.succeeded": action("BILLING", "A payment succeeded."),
   "billing.payment.failed": action("BILLING", "A payment attempt failed."),
   "billing.refund.created": action("BILLING", "A refund was issued on a payment."),
+
+  // --- Billing operations (Module 14) ---
+  "billing.credit.issued": action("BILLING", "A credit was issued to an organization's ledger."),
+  "billing.credit.adjusted": action("BILLING", "A compensating (reversal/correction) entry was recorded against an earlier credit ledger entry — never a mutation of the original."),
+  "billing.trial.extended": action("BILLING", "A subscription's trial period was extended by platform staff."),
+  "billing.payment.retry_requested": action("BILLING", "A retry of a failed invoice payment was requested — records the request; the actual outcome (succeeded/failed again) arrives via the normal invoice.paid/payment_failed webhook, same as every other provider-mediated mutation in this module."),
+  "billing.webhook.failed": action("BILLING", "A billing webhook event failed to process (see BillingWebhookEvent.error for the safe, sanitized reason)."),
+  // `billing.webhook.processed` is deliberately `reserved` — a
+  // SUCCESSFUL webhook's real effect is already captured by whichever
+  // specific action it produced (`billing.subscription.updated`,
+  // `billing.invoice.created`, `billing.payment.succeeded`, ...); a
+  // second, generic "a webhook happened" entry for every one of those
+  // would be pure duplication, not a new signal — the same "no audit
+  // events for redundant/meaningless entries" restraint Module 09's own
+  // catalog comment already documents for mark-read events. Seeded so a
+  // future module with a genuine use for a raw processed-count signal
+  // has a real key to reference.
+  "billing.webhook.processed": action("BILLING", "A billing webhook event was processed (see the specific domain action it produced for the real effect).", true),
 
   // --- Compliance / this module's own actions ---
   "audit.export.created": action("COMPLIANCE", "An audit trail export was generated."),

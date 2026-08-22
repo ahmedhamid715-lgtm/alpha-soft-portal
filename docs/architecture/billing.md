@@ -5,7 +5,12 @@ internal billing domain, independent of any specific payment provider
 (spec §2). See `billing-provider.md` for the provider abstraction,
 `billing-data-model.md` for the full schema/ownership classification,
 `billing-webhooks.md` for reconciliation, and `billing-security.md` for
-the full trust model and adversarial review.
+the full trust model and adversarial review. Module 14 (Billing
+Operations, Subscription Lifecycle & Revenue Management) builds directly
+on this foundation — see `billing-operations.md` for the day-to-day
+operational surface (plan changes, credits, trials, cancellation),
+`subscription-lifecycle.md` for the subscription state machine, and
+`billing-reconciliation.md` for how divergence from Stripe is detected.
 
 ## Billing ownership
 

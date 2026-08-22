@@ -9,6 +9,21 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
     <div
       data-slot="table-container"
       className="relative w-full overflow-x-auto"
+      // A wide table genuinely scrolls horizontally on narrow
+      // viewports — axe-core's `scrollable-region-focusable` rule
+      // (WCAG 2.1.1) correctly requires a scrollable region to be
+      // keyboard-reachable itself, not just its focusable descendants
+      // (found via Module 14's own webhooks table, the first table in
+      // the app wide enough to actually overflow at the tested
+      // viewport — every other table wrapper had this same latent gap,
+      // just never wide enough to trigger it). No fixed `aria-label`
+      // here deliberately — a page with more than one table (e.g. the
+      // platform billing org detail page's invoices + payments tables)
+      // would otherwise get two identically-labeled regions, itself a
+      // new axe violation; a bare focusable container with no
+      // competing name is the safe, page-agnostic fix for every table
+      // in the app.
+      tabIndex={0}
     >
       <table
         data-slot="table"

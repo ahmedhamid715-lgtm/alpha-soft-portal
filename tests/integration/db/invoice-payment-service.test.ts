@@ -31,6 +31,21 @@ vi.mock("@/lib/auth/session-guard", () => ({
   }),
 }));
 
+const mockProvider = {
+  createCustomer: vi.fn(),
+  createCheckoutSession: vi.fn(),
+  createBillingPortalSession: vi.fn(),
+  cancelSubscription: vi.fn(),
+  resumeSubscription: vi.fn(),
+  issueRefund: vi.fn(),
+  previewSubscriptionChange: vi.fn(),
+  changeSubscription: vi.fn(),
+  getSubscription: vi.fn(),
+  extendTrial: vi.fn(),
+  retryInvoicePayment: vi.fn(async () => undefined),
+};
+vi.mock("@/lib/billing/provider/stripe/provider", () => ({ stripeBillingProvider: mockProvider }));
+
 describe.skipIf(!isDatabaseConfigured)("invoice-service / payment-service (database integration)", () => {
   const userIds: string[] = [];
   const orgIds: string[] = [];
@@ -42,6 +57,8 @@ describe.skipIf(!isDatabaseConfigured)("invoice-service / payment-service (datab
   beforeEach(async () => {
     mockUser = null;
     mockMembershipsByOrg = new Map();
+    vi.clearAllMocks();
+    mockProvider.retryInvoicePayment.mockResolvedValue(undefined);
 
     orgAId = generateId();
     await organizationRepository.create({ id: orgAId, name: "Invoice Test Org A", displayName: "Invoice Test Org A", slug: `invoice-org-a-${orgAId}` });
@@ -105,6 +122,85 @@ describe.skipIf(!isDatabaseConfigured)("invoice-service / payment-service (datab
       ),
     );
   }
+
+  async function seedOpenInvoice(organizationId: string, billingAccountId: string, providerInvoiceId: string | null = `in_retry_test_${generateId()}`) {
+    const invoiceNumber = await nextInvoiceNumber();
+    return withTenantContext({ userId: null, organizationId, isPlatformStaff: true }, (tx) =>
+      invoiceRepository.create(
+        {
+          id: generateId(),
+          organizationId,
+          billingAccountId,
+          invoiceNumber,
+          status: "OPEN",
+          currency: "USD",
+          subtotal: 4900,
+          discountTotal: 0,
+          taxTotal: 0,
+          total: 4900,
+          amountPaid: 0,
+          amountDue: 4900,
+          issueDate: new Date(),
+          provider: "STRIPE",
+          providerInvoiceId,
+        },
+        tx,
+      ),
+    );
+  }
+
+  it("owner can retry payment on an OPEN invoice (billing.manage) — the provider is called and the request is audited", async () => {
+    const owner = await makeMember(orgAId, "owner", "retry-owner@example.com");
+    const invoice = await seedOpenInvoice(orgAId, accountA.id);
+    actAs(owner.userId, owner.membership);
+
+    const { retryInvoicePayment } = await import("@/server/services/invoice-service");
+    await retryInvoicePayment({ organizationId: orgAId, invoiceId: invoice.id });
+    expect(mockProvider.retryInvoicePayment).toHaveBeenCalledWith({ providerInvoiceId: invoice.providerInvoiceId });
+
+    const auditEvent = await db.auditEvent.findFirst({ where: { organizationId: orgAId, action: "billing.payment.retry_requested" } });
+    expect(auditEvent).not.toBeNull();
+  });
+
+  it("a member with billing.read only (no billing.manage) cannot retry payment", async () => {
+    const member = await makeMember(orgAId, "member", "retry-member@example.com");
+    const invoice = await seedOpenInvoice(orgAId, accountA.id);
+    actAs(member.userId, member.membership);
+
+    const { retryInvoicePayment } = await import("@/server/services/invoice-service");
+    await expect(retryInvoicePayment({ organizationId: orgAId, invoiceId: invoice.id })).rejects.toMatchObject({ code: "AUTHORIZATION_ERROR" });
+    expect(mockProvider.retryInvoicePayment).not.toHaveBeenCalled();
+  });
+
+  it("a PAID invoice cannot be retried", async () => {
+    const owner = await makeMember(orgAId, "owner", "retry-paid-owner@example.com");
+    const invoice = await seedInvoice(orgAId, accountA.id); // status: PAID
+    actAs(owner.userId, owner.membership);
+
+    const { retryInvoicePayment } = await import("@/server/services/invoice-service");
+    await expect(retryInvoicePayment({ organizationId: orgAId, invoiceId: invoice.id })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(mockProvider.retryInvoicePayment).not.toHaveBeenCalled();
+  });
+
+  it("an invoice with no provider invoice id cannot be retried", async () => {
+    const owner = await makeMember(orgAId, "owner", "retry-no-provider-owner@example.com");
+    const invoice = await seedOpenInvoice(orgAId, accountA.id, null);
+    actAs(owner.userId, owner.membership);
+
+    const { retryInvoicePayment } = await import("@/server/services/invoice-service");
+    await expect(retryInvoicePayment({ organizationId: orgAId, invoiceId: invoice.id })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(mockProvider.retryInvoicePayment).not.toHaveBeenCalled();
+  });
+
+  it("Org B's owner cannot retry payment on Org A's invoice via a forged organizationId (cross-tenant IDOR)", async () => {
+    const invoice = await seedOpenInvoice(orgAId, accountA.id);
+    const ownerB = await makeMember(orgBId, "owner", "retry-cross-owner-b@example.com");
+    actAs(ownerB.userId, ownerB.membership);
+
+    const { retryInvoicePayment } = await import("@/server/services/invoice-service");
+    await expect(retryInvoicePayment({ organizationId: orgBId, invoiceId: invoice.id })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(mockProvider.retryInvoicePayment).not.toHaveBeenCalled();
+  });
 
   it("owner can list their organization's invoices (billing.read), cursor-paginated", async () => {
     const owner = await makeMember(orgAId, "owner", "invoice-list-owner@example.com");

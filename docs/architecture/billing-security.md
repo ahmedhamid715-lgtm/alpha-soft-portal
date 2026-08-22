@@ -1,4 +1,4 @@
-# Billing security & trust model (Module 13)
+# Billing security & trust model (Module 13, extended by Module 14)
 
 The honest accounting of what this module guarantees and how each is
 proven — same discipline `audit-security.md`/`user-security.md`/
@@ -31,6 +31,19 @@ permission set required."
 - `billing.refund` — `platform_owner` ONLY. Issue a refund on any
   organization's payment — the single most financially consequential
   action this module exposes.
+- `billing.credit.manage` (Module 14) — `platform_admin`, `platform_owner`.
+  Issue/adjust an organization's credit ledger, and extend a subscription's
+  trial period. Deliberately grouped as ONE permission for two actions,
+  not two — both are "platform staff extends the customer something
+  outside the normal paid flow," the same risk tier, and both are fully
+  reversible/self-correcting (a credit can be offset by a compensating
+  entry; a trial extension only ever moves a date forward, never touches
+  money that already moved). Deliberately NOT owner-only like
+  `billing.refund` — a refund moves real money that already changed
+  hands and can't be un-sent short of a second manual transfer; a credit
+  is a promise applied to a FUTURE invoice, reversible by construction.
+  `platform_admin` holding it (unlike `billing.refund`) reflects that
+  real difference in blast radius, not an oversight.
 
 **Evaluated and rejected**: `billing.invoice.read`/`billing.invoice.manage`/
 `billing.payment_method.manage` — no capability exists at the
@@ -43,12 +56,12 @@ delegated to the Stripe Billing Portal, gated by the same
 
 ### The three-tier platform reasoning
 
-| Role | `billing.readPlatform` | `billing.plan.manage` | `billing.refund` |
-|---|---|---|---|
-| `support_admin` | ✓ | | |
-| `support_agent` | | | |
-| `platform_admin` | ✓ | ✓ | |
-| `platform_owner` | ✓ | ✓ | ✓ |
+| Role | `billing.readPlatform` | `billing.plan.manage` | `billing.credit.manage` | `billing.refund` |
+|---|---|---|---|---|
+| `support_admin` | ✓ | | | |
+| `support_agent` | | | | |
+| `platform_admin` | ✓ | ✓ | ✓ | |
+| `platform_owner` | ✓ | ✓ | ✓ | ✓ |
 
 `support_agent` deliberately holds NONE of these — its own role
 description ("minimal platform-wide visibility only") already excludes
@@ -113,6 +126,36 @@ layers, both proven, not just one relied on silently:
   (invoice + line items, payment + status update, refund + payment
   status update, subscription + items) — no partially-created financial
   record is possible; a failure rolls back the whole write.
+
+## Concurrency safety (Module 14)
+
+Module 13 left one real gap: every mutating subscription/refund function
+did a plain read, then acted, with no lock in between — two simultaneous
+requests could both read the same "not yet refunded"/"not yet canceled"
+state and both proceed. Module 14 closes it with TWO different
+mechanisms, chosen deliberately per table, not one applied uniformly:
+
+- **Row-level locking** (`Subscription`, `Payment`) —
+  `findCurrentForOrganizationLocked()`/`findByIdLocked()`, a
+  `SELECT ... FOR UPDATE` inside the SAME `withTenantContext()`
+  transaction that then validates and writes. The Stripe call happens
+  WHILE the lock is held — a deliberate tradeoff (correctness over
+  minimizing lock hold time; a sub-second external call is an acceptable
+  serialization cost for financial correctness, and this codebase has no
+  queue/job infrastructure to defer it to).
+- **A real Postgres `UNIQUE` constraint** (`CreditLedgerEntry`) —
+  `@@unique([relatedEntryId])` on the compensating-entry link, not a
+  lock. Chosen because `credit_ledger_entries` has NO RLS UPDATE policy
+  at all (append-only table, spec §14/§37) — row-locking semantics under
+  RLS with no UPDATE policy were an untested assumption this module
+  wasn't willing to rely on; a genuine database constraint has no such
+  ambiguity. The loser of a race gets a clean `ConflictError`, translated
+  from the raw `P2002`.
+
+Every one of these is proven under REAL concurrency (`Promise.all`, not
+sequential awaits that would naturally serialize and hide the race), not
+just reasoned about — see `subscription-concurrency.test.ts`,
+`refund-concurrency.test.ts`, `credit-concurrency.test.ts`.
 
 ## Sensitive-data handling
 
@@ -266,6 +309,91 @@ prose — file names are exact.
     side effect of a failed provider call, proven live in this exact
     environment (no Stripe key configured) — see
     `admin-billing.spec.ts`'s dedicated test.
+
+### Module 14 additions (31+)
+
+31. **Can two simultaneous requests double-cancel/double-resume a
+    subscription?** No — row-locked, state-machine-validated; exactly one
+    succeeds, the provider is called exactly once for the winner
+    (`subscription-concurrency.test.ts`).
+32. **Can two simultaneous requests double-refund the same payment?** No
+    — row-locked; the second sees the first's already-recorded refund and
+    is rejected before ever reaching the provider
+    (`refund-concurrency.test.ts` "exactly one succeeds — never an
+    over-refund").
+33. **Can two simultaneous PARTIAL refunds together exceed the payment
+    amount?** No — same lock; the combination that would over-refund is
+    rejected, proven with amounts chosen specifically to sum past the
+    total (`refund-concurrency.test.ts`).
+34. **Can two simultaneous credit adjustments double-compensate the same
+    entry?** No — the real `UNIQUE(relatedEntryId)` constraint; exactly
+    one compensating entry is ever recorded, the loser gets `ConflictError`
+    (`credit-concurrency.test.ts`).
+35. **Can a credit be issued in a currency that doesn't match the
+    organization's billing currency?** No — `issueCredit()` independently
+    validates against `BillingAccount.currency` before writing
+    (`credit-service.test.ts`).
+36. **Can a platform admin adjust an already-adjusted credit entry
+    (sequential, not racing)?** No — `adjustCredit()` checks for an
+    existing `relatedEntryId` pointing at the target before writing, and
+    rejects adjusting a compensating entry itself
+    (`credit-service.test.ts`, two dedicated tests).
+37. **Can a forged `entryId` from another organization be adjusted
+    (cross-tenant IDOR)?** No — `adjustCredit()` re-reads the entry
+    scoped to the caller's own `organizationId`; a forged id from a
+    different org resolves to `NotFoundError`, never another org's row
+    (`credit-service.test.ts`).
+38. **Can a subscription be extended a trial while NOT actually
+    trialing?** No — `extendTrial()` independently re-checks
+    `status === "TRIALING"` and that a `trialEnd` exists, server-side,
+    regardless of what the UI last rendered (`credit-service.test.ts`).
+39. **Can an organization change its own subscription plan to a price
+    with no live provider price id (an unpurchasable/catalog-draft
+    price)?** No — `resolvePlanChangeInputs()` (shared by preview AND
+    apply) rejects it before ever calling the provider — proven live in
+    this exact dev environment, where EVERY seeded price genuinely has no
+    `providerPriceId` (`billing-lifecycle.spec.ts`).
+40. **Can changing to the SAME plan price the subscription is already on
+    succeed (a no-op that would still call the provider and audit a
+    change that didn't happen)?** No — explicitly rejected
+    (`subscription-plan-change.test.ts`).
+41. **Can two simultaneous plan-change requests to the SAME target price
+    race the provider call itself (interleaved, not serialized)?** No —
+    proven with a deliberately slow mocked provider call and a strict
+    ordering assertion (`subscription-concurrency.test.ts` "the provider
+    is called strictly one at a time").
+42. **Can a preview (`previewPlanChange()`) ever mutate anything?** No —
+    read-only; no lock is taken, no write occurs, proven by asserting the
+    provider's mutating method is never called
+    (`subscription-plan-change.test.ts`).
+43. **Can a support_admin (billing.readPlatform only) issue a credit or
+    extend a trial?** No — both require `billing.credit.manage`, which
+    `support_admin` doesn't hold (`credit-service.test.ts`,
+    `billing-lifecycle.spec.ts`).
+44. **Can an organization's own owner issue themselves a credit
+    (self-service)?** No — `billing.credit.manage` is PLATFORM-scope
+    only; an organization owner has no path to it regardless of their
+    own role (`credit-service.test.ts`).
+45. **Can reconciliation (`reconcileOrganizationBilling()`) mutate
+    `Subscription`/`BillingAccount`?** No — read-only by construction; a
+    real regression test asserts the local row is byte-identical before
+    and after running reconciliation, even when a genuine divergence WAS
+    found (`billing-reconciliation-service.test.ts`).
+46. **Can a forged `organizationId` with no billing history at all crash
+    reconciliation?** No — returns a plain, honest
+    `hasBillingAccount: false` result rather than throwing
+    (`billing-reconciliation-service.test.ts`).
+47. **Can a member (billing.read only) retry a payment?** No —
+    `retryInvoicePayment()` requires `billing.manage`
+    (`invoice-payment-service.test.ts`).
+48. **Can a PAID (or otherwise non-OPEN) invoice be retried?** No —
+    explicitly rejected before the provider is ever called
+    (`invoice-payment-service.test.ts`).
+49. **Can a forged `invoiceId`/`organizationId` combination retry another
+    organization's invoice (cross-tenant IDOR)?** No — same
+    `organizationId !== invoice.organizationId` check every other
+    resource-level function in this module uses, resolves to
+    `NotFoundError` (`invoice-payment-service.test.ts`).
 
 ## What was evaluated and deliberately not built
 

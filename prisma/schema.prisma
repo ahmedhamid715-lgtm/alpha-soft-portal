@@ -232,6 +232,10 @@ model User {
   /// financial evidence and must survive independent of whether the
   /// staff account does (same reasoning as `auditEvents` above).
   refundsInitiated Refund[]
+  /// Module 14 — credit ledger entries this platform-staff user
+  /// personally issued/adjusted. Same `SetNull` reasoning as
+  /// `refundsInitiated` above.
+  creditLedgerEntriesInitiated CreditLedgerEntry[]
 
   @@index([status])
   @@map("users")
@@ -1536,14 +1540,50 @@ model CreditLedgerEntry {
 
   relatedInvoiceId String? @map("related_invoice_id") @db.Uuid
   relatedPaymentId String? @map("related_payment_id") @db.Uuid
+  /// Module 14 — self-reference for a COMPENSATING entry (spec §11: "a
+  /// correction happens through a compensating entry, never an UPDATE").
+  /// Set only on the reversal/adjustment entry, pointing back at the
+  /// original it corrects — never set on the original itself, and never
+  /// retroactively backfilled onto it (that would be a mutation of an
+  /// already-written row, exactly what this table's own RLS migration
+  /// already structurally forbids — see billing-rls's own "no UPDATE
+  /// policy" note). `onDelete: Restrict`, matching `Role`'s own
+  /// deletion-safety precedent — a corrected entry can never be
+  /// removed out from under its own correction.
+  relatedEntryId String? @map("related_entry_id") @db.Uuid
+  /// Module 14 — the platform-staff actor who issued/adjusted this
+  /// entry, if any. Null for a webhook-driven or system-originated
+  /// entry (none exist yet in this module — see credit-service.ts's own
+  /// top comment) and for `seed-billing.ts`'s dev fixtures. `Refund`
+  /// already carries the identical field for the identical reason (spec
+  /// §44's "capture WHO").
+  initiatedByUserId String? @map("initiated_by_user_id") @db.Uuid
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  billingAccount BillingAccount @relation(fields: [billingAccountId], references: [id], onDelete: Cascade)
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  billingAccount BillingAccount      @relation(fields: [billingAccountId], references: [id], onDelete: Cascade)
+  relatedEntry   CreditLedgerEntry?  @relation("CreditLedgerEntryCorrection", fields: [relatedEntryId], references: [id], onDelete: Restrict)
+  corrections    CreditLedgerEntry[] @relation("CreditLedgerEntryCorrection")
+  initiatedBy    User?               @relation(fields: [initiatedByUserId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([billingAccountId])
+  /// Module 14 — AT MOST ONE compensating entry per original (Postgres
+  /// unique constraints allow unlimited NULLs but enforce uniqueness
+  /// among non-null values — exactly "most rows don't correct anything,
+  /// and the ones that do, do so exactly once"). This IS
+  /// `adjustCredit()`'s real concurrency guarantee (spec §17: "credit
+  /// adjustments racing") — preferred over `SELECT ... FOR UPDATE` row
+  /// locking specifically because this table's own RLS has no UPDATE
+  /// policy at all (append-only); a real database constraint is both
+  /// simpler and avoids ever depending on how Postgres RLS interacts
+  /// with locking reads on a table with no UPDATE policy. Two
+  /// concurrent adjustment attempts against the same original entry:
+  /// exactly one INSERT succeeds, the other fails this constraint —
+  /// proven under real concurrency, not just reasoned about, in
+  /// `credit-concurrency.test.ts`.
+  @@unique([relatedEntryId])
   @@map("credit_ledger_entries")
 }
 

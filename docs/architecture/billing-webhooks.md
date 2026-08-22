@@ -178,3 +178,42 @@ logs the same plus the safe error message (`billing.webhook.process_failed`)
 ...})` (Module 01's existing request-id-scoped logging, via
 `createRouteHandler`) carries the request id through automatically, the
 same as every other route handler in this codebase.
+
+A genuine processing failure ALSO best-effort audits
+`billing.webhook.failed` (Module 14) — wrapped in its own `.catch()`
+inside `processStripeWebhookEvent()`'s own catch block, placed before
+the re-throw, so a failure to WRITE the audit row (e.g. the database
+itself is unreachable, the same failure that likely caused the webhook
+processing to fail in the first place) never masks or replaces the
+original error the route handler needs to return the correct status
+code for. This is deliberately NOT a duplicate of the specific domain
+action each SUCCESSFUL webhook already produces (`billing.subscription.
+updated`, `billing.payment.succeeded`, etc.) — those remain the audit
+trail for "what changed"; `billing.webhook.failed` exists ONLY for "an
+event failed to process at all," a case those other actions structurally
+can't represent since no domain mutation happened. `/admin/billing/
+webhooks` (Module 14, `billing.readPlatform`) is the operator-facing view
+of this same `BillingWebhookEvent` list `listRecentWebhookEventsForPlatform()`
+already exposed at the service layer since Module 13 — this module adds
+the missing UI, not new backend surface.
+
+## Module 14 additions
+
+- **`customer.subscription.trial_will_end`** — Stripe's own advance-
+  warning event (fires ~3 days before a trial ends, per Stripe's default
+  configuration). Handled (`handleTrialWillEnd()`), but deliberately
+  WRITES NOTHING — it only emits `billing.trial.ending` for
+  `lib/notifications/subscribers.ts` to turn into a customer-facing
+  notification. There is no local `Subscription` field this event would
+  even change (`trialEnd` is already known from the original
+  `customer.subscription.created`/`.updated` event); its only purpose is
+  the advance-warning notification itself.
+- **Trial ended → converted vs. expired** — Module 14 doesn't add a new
+  webhook handler for this distinction at all. It's derived from the
+  EXISTING `customer.subscription.updated` handler's own before/after
+  comparison: when the previous status was `TRIALING` and the new status
+  is `ACTIVE`, that's a conversion (`billing.trial.ended`, positive
+  framing); when it becomes anything else (`CANCELED`,
+  `INCOMPLETE_EXPIRED`), that's an expiration. One handler, one
+  comparison, not two competing sources of truth for the same
+  transition.

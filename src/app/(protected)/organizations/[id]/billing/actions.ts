@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { startCheckoutForPlanPrice, cancelSubscription, resumeSubscription } from "@/server/services/subscription-service";
+import { startCheckoutForPlanPrice, cancelSubscription, resumeSubscription, previewPlanChange, changeSubscriptionPlan, type PlanChangePreview } from "@/server/services/subscription-service";
 import { createBillingPortalSession } from "@/server/services/billing-portal-service";
 import { toAppError } from "@/lib/errors/app-error";
 import { safeParseResult } from "@/lib/validation/parse";
@@ -79,6 +79,47 @@ export async function resumeSubscriptionAction(_prevState: BillingActionState, f
 
   try {
     await resumeSubscription(parsed.data);
+  } catch (error) {
+    return { error: toAppError(error).message };
+  }
+
+  revalidatePath(`/organizations/${parsed.data.organizationId}/billing`);
+  return { success: true };
+}
+
+const changePlanSchema = z.object({ organizationId: z.string().uuid(), planPriceId: z.string().uuid() });
+
+export interface PlanChangePreviewState {
+  error?: string;
+  preview?: PlanChangePreview;
+}
+
+/**
+ * Called directly (awaited), not through `useActionState` — the caller
+ * needs the returned NUMBERS to render into a confirm dialog before
+ * anything is applied (spec §5: "show the customer exact numbers before
+ * they confirm"), not just an error/success flag.
+ * `previewPlanChange()` is read-only; nothing here mutates.
+ */
+export async function previewPlanChangeAction(input: unknown): Promise<PlanChangePreviewState> {
+  const parsed = safeParseResult(changePlanSchema, input);
+  if (!parsed.success) return { error: "Invalid plan selection." };
+
+  try {
+    const preview = await previewPlanChange(parsed.data);
+    return { preview };
+  } catch (error) {
+    return { error: toAppError(error).message };
+  }
+}
+
+/** Applies the change previewed above — re-validates and re-locks independently server-side (spec §4/§17: never trust that the preview the client saw still holds). */
+export async function changeSubscriptionPlanAction(_prevState: BillingActionState, formData: FormData): Promise<BillingActionState> {
+  const parsed = safeParseResult(changePlanSchema, { organizationId: formData.get("organizationId"), planPriceId: formData.get("planPriceId") });
+  if (!parsed.success) return { error: "Invalid plan selection." };
+
+  try {
+    await changeSubscriptionPlan(parsed.data);
   } catch (error) {
     return { error: toAppError(error).message };
   }

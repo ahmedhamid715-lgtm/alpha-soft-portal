@@ -116,11 +116,11 @@ describe.skipIf(!isDatabaseConfigured)("billing-account-service (database integr
   });
 
   it("Org B's owner cannot read Org A's billing account (cross-tenant IDOR via forged organizationId)", async () => {
-    const ownerA = await makeMember(orgAId, "owner", "cross-owner-a@example.com");
+    const ownerA = await makeMember(orgAId, "owner", "billing-cross-owner-a@example.com");
     const { getOrCreateBillingAccount, getBillingAccount } = await import("@/server/services/billing-account-service");
     await getOrCreateBillingAccount(orgAId, ownerA.userId, false);
 
-    const ownerB = await makeMember(orgBId, "owner", "cross-owner-b@example.com");
+    const ownerB = await makeMember(orgBId, "owner", "billing-cross-owner-b@example.com");
     actAs(ownerB.userId, ownerB.membership);
     await expect(getBillingAccount({ organizationId: orgAId })).rejects.toMatchObject({ code: "AUTHORIZATION_ERROR" });
   });

@@ -8,6 +8,7 @@ import { membershipRepository } from "@/server/repositories/membership-repositor
 import { roleRepository } from "@/server/repositories/role-repository";
 import { sessionRepository } from "@/server/repositories/session-repository";
 import { emailProvider } from "@/lib/mail/mailer";
+import { NotFoundError } from "@/lib/errors/app-error";
 
 /**
  * `user-management-service.ts` (Module 10) — real Postgres, real
@@ -212,12 +213,27 @@ describe.skipIf(!isDatabaseConfigured)("user management service (database integr
     // membership first. Restored in `finally`, unconditionally, so a
     // failed assertion never leaves the shared dev database's own
     // platform-owner fixture suspended for every later test/session.
+    //
+    // Because this org is shared across every test FILE (Vitest runs
+    // files concurrently — see this repo's own established hazard),
+    // another file's platform_owner fixture can legitimately be deleted
+    // (its own `afterEach`'s `user.deleteMany`, cascading) WHILE this
+    // test holds it suspended. Both the suspend and restore loops are
+    // tolerant of that: a row that's vanished out from under us isn't a
+    // bug to propagate, it just has nothing left to restore.
     const otherActiveOwners = await db.organizationMembership.findMany({
       where: { organizationId: platformOrgId, role: "platform_owner", status: "ACTIVE", id: { not: membership.id } },
     });
+    async function setStatusTolerantly(id: string, status: "ACTIVE" | "SUSPENDED") {
+      try {
+        await membershipRepository.updateStatus(id, status);
+      } catch (error) {
+        if (!(error instanceof NotFoundError)) throw error;
+      }
+    }
     try {
       for (const other of otherActiveOwners) {
-        await membershipRepository.updateStatus(other.id, "SUSPENDED");
+        await setStatusTolerantly(other.id, "SUSPENDED");
       }
 
       await expect(suspendUser({ userId: ownerId })).rejects.toMatchObject({ code: "CONFLICT" });
@@ -225,7 +241,7 @@ describe.skipIf(!isDatabaseConfigured)("user management service (database integr
       expect(stillActive?.status).toBe("ACTIVE");
     } finally {
       for (const other of otherActiveOwners) {
-        await membershipRepository.updateStatus(other.id, "ACTIVE");
+        await setStatusTolerantly(other.id, "ACTIVE");
       }
     }
   });
