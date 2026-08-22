@@ -153,6 +153,93 @@ export const NOTIFICATION_TEMPLATES = {
     }),
   }),
 
+  /// Module 13 — reacts to `billing.subscription.created`
+  /// (`billing-webhook-service.ts`, confirmed by Stripe, never the
+  /// user-initiated checkout request itself — see that service's own
+  /// top comment on why).
+  "billing.subscription.created": template({
+    version: 1,
+    active: true,
+    category: "BILLING",
+    severity: "INFO",
+    render: (data: { organizationName: string; planName: string }) => ({
+      title: "Subscription active",
+      body: `${data.organizationName}'s subscription to ${data.planName} is now active.`,
+      actionUrl: "/organizations",
+    }),
+  }),
+
+  /// Reacts to `billing.subscription.updated` when the transition is
+  /// TO `PAST_DUE` specifically — see `subscribers.ts`'s own filter for
+  /// why not every raw `customer.subscription.updated` webhook (which
+  /// fires on routine period renewals too) reaches this template.
+  "billing.subscription.past_due": template({
+    version: 1,
+    active: true,
+    category: "BILLING",
+    severity: "WARNING",
+    render: (data: { organizationName: string }) => ({
+      title: "Payment past due",
+      body: `${data.organizationName}'s most recent payment failed. Update the payment method to avoid a service interruption.`,
+      actionUrl: "/organizations",
+    }),
+  }),
+
+  /// Reacts to `billing.subscription.updated` when the transition is TO
+  /// `CANCELED` (the webhook-confirmed cancellation, not the moment a
+  /// cancel-at-period-end request was merely submitted).
+  "billing.subscription.canceled": template({
+    version: 1,
+    active: true,
+    category: "BILLING",
+    severity: "WARNING",
+    render: (data: { organizationName: string }) => ({
+      title: "Subscription canceled",
+      body: `${data.organizationName}'s subscription has ended.`,
+      actionUrl: "/organizations",
+    }),
+  }),
+
+  /// Reacts to `billing.invoice.created`.
+  "billing.invoice.created": template({
+    version: 1,
+    active: true,
+    category: "BILLING",
+    severity: "INFO",
+    render: (data: { organizationName: string; invoiceNumber: string }) => ({
+      title: "New invoice available",
+      body: `Invoice ${data.invoiceNumber} is available for ${data.organizationName}.`,
+      actionUrl: "/organizations",
+    }),
+  }),
+
+  /// Reacts to `billing.payment.succeeded` (both the invoice-driven and
+  /// direct-PaymentIntent paths — see `billing-webhook-service.ts`).
+  "billing.payment.succeeded": template({
+    version: 1,
+    active: true,
+    category: "BILLING",
+    severity: "INFO",
+    render: (data: { organizationName: string }) => ({
+      title: "Payment received",
+      body: `A payment for ${data.organizationName} was processed successfully.`,
+      actionUrl: "/organizations",
+    }),
+  }),
+
+  /// Reacts to `billing.payment.failed`.
+  "billing.payment.failed": template({
+    version: 1,
+    active: true,
+    category: "BILLING",
+    severity: "CRITICAL",
+    render: (data: { organizationName: string }) => ({
+      title: "Payment failed",
+      body: `A payment for ${data.organizationName} could not be processed. Update the payment method to avoid a service interruption.`,
+      actionUrl: "/organizations",
+    }),
+  }),
+
   /// Module 12 — reacts to `organization.invitation_policy.updated`
   /// (`organization-security-service.ts`). Unlike the three lifecycle
   /// templates above (fan-out to every ACTIVE member), this one's

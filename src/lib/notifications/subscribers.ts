@@ -3,6 +3,9 @@ import { events } from "@/lib/platform/events";
 import { organizationRepository } from "@/server/repositories/organization-repository";
 import { userRepository } from "@/server/repositories/user-repository";
 import { membershipRepository } from "@/server/repositories/membership-repository";
+import { subscriptionItemRepository } from "@/server/repositories/subscription-repository";
+import { planRepository, planPriceRepository } from "@/server/repositories/plan-repository";
+import { invoiceRepository } from "@/server/repositories/invoice-repository";
 import type { NotifyInput } from "./service";
 import { notificationService } from "./service";
 import type { NotificationTemplateKey } from "./templates";
@@ -212,4 +215,107 @@ events.on<PasswordResetCompletedPayload>("PasswordResetCompleted", async (event)
     sourceEntityId: event.payload.userId,
     templateData: {},
   });
+});
+
+// --- Module 13 — billing (spec §29: "only implement notifications with
+// actual business value. Do not spam users."). Recipients are owner +
+// admin only — the same audience `billing.read`/`billing.manage` are
+// granted to (`ORGANIZATION_FULL`/`owner` in `roles.ts`); a `member`/
+// `viewer` cannot see billing at all, so a billing notification isn't
+// meaningful to them.
+
+async function notifyBillingRecipients(
+  organizationId: string,
+  templateKey: NotificationTemplateKey,
+  sourceEventType: string,
+  sourceEntityType: string,
+  sourceEntityId: string,
+  templateData: Record<string, unknown>,
+): Promise<void> {
+  const [organization, members] = await Promise.all([
+    organizationRepository.findById(organizationId),
+    membershipRepository.listForOrganization(organizationId, { page: 1, limit: 500 }, { status: "ACTIVE" }),
+  ]);
+  if (!organization) return;
+  const recipients = members.items.filter((m) => m.role === "owner" || m.role === "admin");
+
+  const inputs: NotifyInput[] = recipients.map((membership) => ({
+    templateKey,
+    recipientUserId: membership.userId,
+    organizationId,
+    sourceEventType,
+    sourceEntityType,
+    sourceEntityId,
+    templateData: { organizationName: organization.displayName, ...templateData },
+  }));
+  await notificationService.notifyMany(inputs);
+}
+
+interface BillingSubscriptionEventPayload {
+  organizationId: string;
+  subscriptionId: string;
+  status: string;
+  previousStatus?: string | null;
+}
+
+async function resolveSubscriptionPlanName(subscriptionId: string): Promise<string> {
+  const items = await subscriptionItemRepository.listForSubscription(subscriptionId);
+  const firstItem = items[0];
+  if (!firstItem) return "your plan";
+  const price = await planPriceRepository.findById(firstItem.planPriceId);
+  if (!price) return "your plan";
+  const plan = await planRepository.findById(price.planId);
+  return plan?.name ?? "your plan";
+}
+
+events.on<BillingSubscriptionEventPayload>("billing.subscription.created", async (event) => {
+  const { organizationId, subscriptionId } = event.payload;
+  const planName = await resolveSubscriptionPlanName(subscriptionId);
+  await notifyBillingRecipients(organizationId, "billing.subscription.created", "billing.subscription.created", "subscription", subscriptionId, { planName });
+});
+
+/**
+ * `billing.subscription.updated` fires on EVERY reconciled Stripe
+ * subscription change — including routine period renewals that keep
+ * `status` unchanged. Only two transitions are notification-worthy
+ * (spec §29): newly PAST_DUE, and newly CANCELED. Every other update
+ * (a renewal, an item reconciliation with no status change) is a
+ * silent no-op here, by design.
+ */
+events.on<BillingSubscriptionEventPayload>("billing.subscription.updated", async (event) => {
+  const { organizationId, subscriptionId, status, previousStatus } = event.payload;
+  if (status === previousStatus) return;
+
+  if (status === "PAST_DUE") {
+    await notifyBillingRecipients(organizationId, "billing.subscription.past_due", "billing.subscription.updated", "subscription", subscriptionId, {});
+  } else if (status === "CANCELED") {
+    await notifyBillingRecipients(organizationId, "billing.subscription.canceled", "billing.subscription.updated", "subscription", subscriptionId, {});
+  }
+});
+
+interface BillingInvoiceEventPayload {
+  organizationId: string;
+  invoiceId: string;
+}
+
+events.on<BillingInvoiceEventPayload>("billing.invoice.created", async (event) => {
+  const { organizationId, invoiceId } = event.payload;
+  const invoice = await invoiceRepository.findById(invoiceId);
+  if (!invoice) return;
+  await notifyBillingRecipients(organizationId, "billing.invoice.created", "billing.invoice.created", "invoice", invoiceId, {
+    invoiceNumber: invoice.invoiceNumber,
+  });
+});
+
+interface BillingPaymentEventPayload {
+  organizationId: string;
+  invoiceId?: string;
+}
+
+events.on<BillingPaymentEventPayload>("billing.payment.succeeded", async (event) => {
+  await notifyBillingRecipients(event.payload.organizationId, "billing.payment.succeeded", "billing.payment.succeeded", "payment", event.payload.invoiceId ?? event.payload.organizationId, {});
+});
+
+events.on<BillingPaymentEventPayload>("billing.payment.failed", async (event) => {
+  await notifyBillingRecipients(event.payload.organizationId, "billing.payment.failed", "billing.payment.failed", "payment", event.payload.invoiceId ?? event.payload.organizationId, {});
 });

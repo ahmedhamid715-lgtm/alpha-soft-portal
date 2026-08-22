@@ -111,6 +111,25 @@
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
   --color-destructive: var(--destructive);
+  /* Module 13 — missing since this token block was first written; every
+     OTHER semantic status color (success/warning/info below) already
+     has its own `-foreground` mapping, but `destructive` never did.
+     Without this line, `text-destructive-foreground`/
+     `dark:text-destructive-foreground` are not real, generated Tailwind
+     utilities at all — the class silently compiles to nothing, so
+     `Button`'s "destructive" variant's `dark:text-destructive-foreground`
+     (button.tsx) never took effect, leaving dark mode's solid-fill
+     destructive button with `text-destructive` (unprefixed) as its only
+     applied text-color rule — which under `.dark` resolves to the SAME
+     tone `--destructive` itself was just redefined to for the
+     background, making the button's own label functionally invisible
+     (contrast ~1:1, axe: "serious," 1.87 measured against a
+     neighboring element in the same dialog). Found by this module's own
+     accessibility testing of an open, dark-mode ConfirmDialog — the
+     first test in this codebase to axe-scan that specific state — not
+     by inspection.
+  */
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);

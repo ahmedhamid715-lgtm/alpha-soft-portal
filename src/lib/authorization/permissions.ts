@@ -227,9 +227,51 @@ export const PERMISSION_CATALOG = {
   "projects.update": permission("projects", "update", "ORGANIZATION", "Edit a project.", true),
   "projects.delete": permission("projects", "delete", "ORGANIZATION", "Delete a project.", true),
 
-  // --- billing (ORGANIZATION, reserved — future billing module)
-  "billing.read": permission("billing", "read", "ORGANIZATION", "View this organization's billing/subscription.", true),
-  "billing.manage": permission("billing", "manage", "ORGANIZATION", "Change plan, payment method, or cancel.", true),
+  // --- billing (Module 13) — `read`/`manage` were reserved by Module 05
+  // and are now live. Deliberately minimal (spec §22: "determine the
+  // minimum permission set required," not "add every candidate key") —
+  // evaluated and rejected: `billing.invoice.read`/`billing.invoice.manage`/
+  // `billing.payment_method.manage` (no capability exists at the
+  // ORGANIZATION level that `billing.read`/`billing.manage` don't
+  // already cover — invoices/payment-method are read/managed as part of
+  // "this organization's billing," never as an independently gated
+  // sub-capability with a different holder); see billing-security.md
+  // "Permission set — what was added, and what wasn't" for the full
+  // reasoning, mirroring `organization-governance.md`'s identical
+  // discipline for Module 12.
+  "billing.read": permission("billing", "read", "ORGANIZATION", "View this organization's billing account, subscription, and invoices."),
+  "billing.manage": permission("billing", "manage", "ORGANIZATION", "Change plan, payment method, or cancel — owner-only, see roles.ts."),
+
+  // --- billing, platform administration (Module 13, new — three
+  // separate PLATFORM-scope keys, not one broad "billing.admin," same
+  // `audit.readPlatform`/`audit.exportPlatform` precedent of splitting
+  // read from a genuinely riskier write. See billing-security.md for
+  // the full three-tier reasoning (support/admin/owner) behind why each
+  // is granted to a different subset of platform roles in roles.ts.
+  "billing.readPlatform": permission(
+    "billing",
+    "read",
+    "PLATFORM",
+    "View billing/subscription/invoice status across every organization (operational visibility only — never payment credentials).",
+    false,
+    "billing.readPlatform",
+  ),
+  "billing.plan.manage": permission(
+    "billing",
+    "manage",
+    "PLATFORM",
+    "Create, edit, or deactivate entries in the platform-wide plan catalog.",
+    false,
+    "billing.plan.manage",
+  ),
+  "billing.refund": permission(
+    "billing",
+    "manage",
+    "PLATFORM",
+    "Issue a refund on any organization's payment. Deliberately platform-owner-only — see billing-security.md's adversarial review, \"Can a support user issue an unauthorized refund?\"",
+    false,
+    "billing.refund",
+  ),
 
   // --- analytics (ORGANIZATION, reserved — future analytics module)
   "analytics.read": permission("analytics", "read", "ORGANIZATION", "View organization analytics/dashboards.", true),

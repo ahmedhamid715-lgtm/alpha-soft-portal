@@ -1,0 +1,22 @@
+-- Server-side invoice numbering (spec §10: "Invoice numbers must be
+-- generated server-side. Never trust client-provided invoice numbers...
+-- Design invoice numbering for future scale. Do not use database IDs as
+-- human-facing invoice numbers.")
+--
+-- A real Postgres SEQUENCE, not an application-level "count existing
+-- rows + 1" — the latter races under concurrent invoice creation (two
+-- transactions computing the same "next" number before either commits);
+-- a sequence's `nextval()` is atomic at the database level with no
+-- application-side locking required, and scales to millions of rows
+-- with no read cost proportional to table size. Not modeled as a Prisma
+-- field/model (Prisma has no native sequence primitive) — see
+-- src/lib/billing/invoice-numbering.ts, the one place this sequence is
+-- read from, via a raw query.
+--
+-- Not owned by any single table via a Postgres `SERIAL`/`IDENTITY`
+-- column, deliberately: `invoice_number` is a formatted STRING
+-- (`INV-{year}-{sequence}`, see invoice-numbering.ts), not the raw
+-- integer — a global sequence is what lets that formatting logic live
+-- entirely in application code without a second migration if the format
+-- ever needs to change.
+CREATE SEQUENCE invoice_number_seq START WITH 1 INCREMENT BY 1;

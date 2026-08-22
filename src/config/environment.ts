@@ -66,6 +66,27 @@ const serverEnvSchema = z.object({
   EMAIL_FROM_ADDRESS: z.string().email().optional(),
   EMAIL_FROM_NAME: z.string().min(1).optional(),
 
+  // --- Billing (Module 13 — Enterprise Billing, Plans & Subscription
+  // Infrastructure) — Stripe is the initial provider (spec section 16).
+  // Both server-only, NEVER exposed via NEXT_PUBLIC_*: this codebase's
+  // Checkout/Billing Portal flows only ever create a session server-side
+  // and redirect (see billing-provider.md) — there is no client-side
+  // Stripe.js/Elements usage anywhere in this module, so no publishable
+  // key is needed at all.
+  //
+  // Test-mode keys start with `sk_test_`/`whsec_` (from the Stripe
+  // dashboard's own test-mode webhook signing secret) — live keys start
+  // with `sk_live_`. `isStripeLiveMode` below makes an accidental
+  // dev-environment live-key mix-up loud rather than silent (spec
+  // section 52: "Configuration should make environment mistakes
+  // obvious").
+  STRIPE_SECRET_KEY: z.string().min(1).optional(),
+  // The webhook endpoint's signing secret (`whsec_...`) — required to
+  // verify `Stripe-Signature` (spec section 17); without it the webhook
+  // route refuses every request rather than silently trusting an
+  // unverified body.
+  STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
+
   // --- Observability (Module 58 formalizes this; logger uses it now) ---
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });
@@ -111,3 +132,16 @@ export const isDatabaseConfigured = Boolean(serverEnv.DATABASE_URL);
 
 /** Whether the Anthropic API key is configured (relevant from Module 33 on). */
 export const isAnthropicConfigured = Boolean(serverEnv.ANTHROPIC_API_KEY);
+
+/**
+ * Whether Stripe is configured at all (Module 13). Billing service
+ * functions that need a real provider call check this and throw
+ * `ExternalServiceError("Stripe")` rather than crash with an unhelpful
+ * Stripe SDK error when it's unset — the same "boot cleanly on a fresh
+ * checkout" tolerance every other optional integration in this file
+ * gets.
+ */
+export const isStripeConfigured = Boolean(serverEnv.STRIPE_SECRET_KEY);
+
+/** True when the configured key is a live (not test-mode) Stripe secret key — see billing-provider.md "Environment separation." */
+export const isStripeLiveMode = Boolean(serverEnv.STRIPE_SECRET_KEY?.startsWith("sk_live_"));

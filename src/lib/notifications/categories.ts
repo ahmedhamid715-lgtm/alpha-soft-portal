@@ -59,6 +59,26 @@ export const NOTIFICATION_CATEGORIES = {
     defaultEnabled: { IN_APP: true, EMAIL: true },
   }),
 
+  /// Module 13 — billing/financial events (payment succeeded/failed,
+  /// invoice available, subscription created/changed/canceled). Its own
+  /// category, not folded into ORGANIZATION_ACTIVITY — the same
+  /// reasoning ACCOUNT_SECURITY already established: a financial event
+  /// is a genuinely different kind of "important" than a membership
+  /// change, and a user may reasonably want email for one but not the
+  /// other. EMAIL default-on (a missed payment-failure email risks
+  /// service disruption — this is actionable, not routine), but still
+  /// user-optional (unlike ACCOUNT_SECURITY's fully mandatory EMAIL) —
+  /// billing notifications don't carry the same "must never be
+  /// silenceable" security stakes a compromised-account notice does.
+  BILLING: category({
+    label: "Billing",
+    description: "Payments, invoices, and subscription changes for your organizations.",
+    group: "Organization",
+    supportedChannels: ["IN_APP", "EMAIL"],
+    mandatoryChannels: ["IN_APP"],
+    defaultEnabled: { IN_APP: true, EMAIL: true },
+  }),
+
   /// Platform-wide announcements — in-app only (no email channel offered
   /// at all yet; a future module can add EMAIL to `supportedChannels`
   /// without a migration). Mandatory: a maintenance notice must not be

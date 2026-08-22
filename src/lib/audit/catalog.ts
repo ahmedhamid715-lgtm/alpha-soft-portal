@@ -96,6 +96,29 @@ export const AUDIT_CATALOG = {
   // --- Organization security & governance (Module 12) ---
   "organization.invitation_policy.updated": action("ORGANIZATION", "An organization's invitation/security governance policy (owner-only invites, allowed/blocked domains, invitation expiry) was changed."),
 
+  // --- Billing (Module 13) — every sensitive billing action produces
+  // exactly one of these (spec §30). `billing.payment_method.updated`
+  // is `reserved` — Alpha OS never directly observes a raw payment-
+  // method change (Stripe's Billing Portal handles the entire flow
+  // without a distinct webhook this module consumes; see
+  // billing-webhooks.md "Intentionally unsupported events") — seeded so
+  // a future module adding real payment-method tracking has a real
+  // catalog entry to reference, the same "reserved" convention
+  // `permissions.ts` established.
+  "billing.account.created": action("BILLING", "An organization's billing account was created."),
+  "billing.account.updated": action("BILLING", "An organization's billing account status changed (e.g. suspended, closed)."),
+  "billing.subscription.created": action("BILLING", "A subscription was created for an organization."),
+  "billing.subscription.updated": action("BILLING", "A subscription's plan, items, or period changed."),
+  "billing.subscription.canceled": action("BILLING", "A subscription was canceled (at period end or immediately)."),
+  "billing.subscription.resumed": action("BILLING", "A subscription scheduled for cancellation was resumed."),
+  "billing.plan.changed": action("BILLING", "An organization's subscription plan/price changed."),
+  "billing.plan.catalog_updated": action("BILLING", "A platform administrator created, edited, or deactivated a plan/price in the catalog."),
+  "billing.payment_method.updated": action("BILLING", "An organization's payment method changed.", true),
+  "billing.invoice.created": action("BILLING", "An invoice was created."),
+  "billing.payment.succeeded": action("BILLING", "A payment succeeded."),
+  "billing.payment.failed": action("BILLING", "A payment attempt failed."),
+  "billing.refund.created": action("BILLING", "A refund was issued on a payment."),
+
   // --- Compliance / this module's own actions ---
   "audit.export.created": action("COMPLIANCE", "An audit trail export was generated."),
 

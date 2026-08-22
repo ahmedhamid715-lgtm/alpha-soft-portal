@@ -134,6 +134,19 @@ model Organization {
   /// Module-08-learned reasoning as `auditEvents` above.
   notifications         Notification[]
   notificationDeliveries NotificationDelivery[]
+  /// Module 13 — this organization's billing relationship, if it has
+  /// one (see BillingAccount — lazily created on first checkout, same
+  /// "not every organization has customized/activated this yet" shape
+  /// as `invitationPolicy` above). `Subscription`/`Invoice`/`Payment`/
+  /// `CreditLedgerEntry` also carry their own direct `organizationId`
+  /// (denormalized from `billingAccountId` for RLS/query simplicity —
+  /// see billing-data-model.md "Ownership classification"), so each
+  /// needs its own reverse-relation array here too.
+  billingAccount      BillingAccount?
+  subscriptions       Subscription[]
+  invoices            Invoice[]
+  payments            Payment[]
+  creditLedgerEntries CreditLedgerEntry[]
 
   @@index([status])
   @@index([isPlatform])
@@ -213,6 +226,12 @@ model User {
   /// Module 08 hit with `Restrict`), not for any real production path.
   notifications           Notification[]
   notificationPreferences NotificationPreference[]
+  /// Module 13 — refunds this platform-staff user personally issued
+  /// (never a customer; see billing-security.md "Refunds are staff-
+  /// initiated only"). `SetNull` — the refund record itself is the
+  /// financial evidence and must survive independent of whether the
+  /// staff account does (same reasoning as `auditEvents` above).
+  refundsInitiated Refund[]
 
   @@index([status])
   @@map("users")
@@ -797,6 +816,13 @@ enum AuditCategory {
   SYSTEM
   ADMINISTRATION
   COMPLIANCE
+  /// Module 13 — financial/billing events. Its own category, not folded
+  /// into ORGANIZATION or ADMINISTRATION: a financial subsystem's own
+  /// audit trail needs to be independently filterable (spec §30/§45's
+  /// own "financial/security subsystem" framing) — the same reasoning
+  /// that already justified SECURITY/COMPLIANCE as their own categories
+  /// rather than variants of DATA.
+  BILLING
 
   @@map("audit_category")
 }
@@ -1023,4 +1049,554 @@ model NotificationPreference {
   /// One preference row per (user, category, channel) — the policy engine's own lookup key, also the structural "no duplicate preference rows" guarantee.
   @@unique([userId, category, channel])
   @@map("notification_preferences")
+}
+
+// =============================================================================
+// Billing — Module 13 (Enterprise Billing, Plans & Subscription Infrastructure)
+// =============================================================================
+// See docs/architecture/billing-data-model.md for the full ownership
+// classification (which model is organization-owned vs. transitively-
+// owned vs. platform-infrastructure, and why) and docs/architecture/billing.md
+// for the domain model itself. Load-bearing principle repeated at every
+// model below: Alpha OS's own tables are authoritative for application
+// behavior — `provider`/`providerXxxId` columns are external references
+// only, never a substitute for a real internal record. Every monetary
+// column is an `Int` of MINOR units (cents) — see src/lib/utils/money.ts,
+// reused here, not reimplemented.
+
+/// The only implemented value today; an enum (not a bare string) because
+/// a second provider is an explicitly anticipated future need (spec §16/
+/// §49), not a hypothetical — adding one is a migration, not a rewrite of
+/// every `provider` column's type.
+enum BillingProvider {
+  STRIPE
+
+  @@map("billing_provider")
+}
+
+enum BillingAccountStatus {
+  /// Normal state — subscriptions/invoices/payments can proceed.
+  ACTIVE
+  /// A payment has failed and dunning/retry is in progress at the
+  /// provider — Alpha OS still shows the account, but see
+  /// billing-security.md for what a PAST_DUE account can and cannot do.
+  PAST_DUE
+  /// Platform-staff-initiated hold (e.g. fraud review, chargeback) —
+  /// distinct from PAST_DUE (a payment-lifecycle state) because
+  /// SUSPENDED is a deliberate administrative action with its own
+  /// authorization boundary, not something a webhook ever sets.
+  SUSPENDED
+  /// Terminal — same "status transition, never a delete" discipline
+  /// every other lifecycle enum in this codebase uses (spec §37).
+  CLOSED
+
+  @@map("billing_account_status")
+}
+
+/// Organization-owned (RLS-protected — see billing-data-model.md). A
+/// strict 1:1 with `Organization` (`organizationId @unique`) — simpler
+/// than "at most one ACTIVE account among many," and sufficient: this
+/// codebase has no scenario requiring an organization to hold two
+/// commercial relationships with the same provider. Lazily created (no
+/// row until the organization's first checkout — see billing.md), the
+/// same shape `OrganizationInvitationPolicy` (Module 12) already
+/// established for "most rows don't exist yet."
+model BillingAccount {
+  id             String @id @db.Uuid
+  organizationId String @unique @map("organization_id") @db.Uuid
+
+  status BillingAccountStatus @default(ACTIVE)
+  /// ISO 4217. Set once, at creation, from the organization's own
+  /// `Organization.currency` — see src/lib/utils/money.ts for minor-unit
+  /// rules per currency. Not changed after creation in this module (spec
+  /// doesn't ask for multi-currency-per-account; a currency change is a
+  /// new commercial relationship, out of scope here).
+  currency String
+
+  provider           BillingProvider
+  /// The provider's customer id (e.g. Stripe's `cus_...`) — an external
+  /// reference, never treated as this account's real identity (spec §3).
+  providerCustomerId String @map("provider_customer_id")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subscriptions        Subscription[]
+  invoices             Invoice[]
+  payments             Payment[]
+  creditLedgerEntries  CreditLedgerEntry[]
+
+  /// A provider customer id is never shared across two Alpha OS billing
+  /// accounts — the structural guarantee behind "one commercial
+  /// relationship per organization per provider."
+  @@unique([provider, providerCustomerId])
+  @@map("billing_accounts")
+}
+
+/// The internal plan catalog (spec §6) — what a customer actually
+/// subscribes to. Deliberately carries NO provider reference of its own:
+/// a `Plan` is a pure Alpha OS concept (name/description/whether it's
+/// sellable); `PlanPrice` below is where provider linkage genuinely
+/// belongs, because pricing — not the plan concept — is what a Stripe
+/// `Price` object actually models. `metadata` is where a future
+/// feature/limit set lives (spec's own "PlanFeature" suggestion, folded
+/// in here rather than built as a separate table with no real reader
+/// yet — the same restraint Module 12 applied to settings nobody could
+/// enforce; see billing.md "Why there is no PlanFeature table").
+model Plan {
+  id  String @id @db.Uuid
+  /// Stable internal name — never renamed once referenced by a live
+  /// subscription's price. The UI-facing name is `name`; nothing in the
+  /// codebase should ever hardcode plan copy against this key except a
+  /// seed script (spec §6: "Do NOT hardcode plan names throughout the
+  /// UI" — the catalog row is the one source of truth for display copy).
+  key         String  @unique
+  name        String
+  description String?
+  active      Boolean @default(true)
+  sortOrder   Int     @default(0) @map("sort_order")
+  metadata    Json?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  prices PlanPrice[]
+
+  @@map("plans")
+}
+
+/// MONTH/YEAR only (spec §6/§8's own scope) — a one-time (non-recurring)
+/// charge is represented directly on an `InvoiceLineItem` without going
+/// through a `PlanPrice`/`SubscriptionItem` at all (spec §9's "not every
+/// invoice line is a subscription item" — see billing.md).
+enum BillingInterval {
+  MONTH
+  YEAR
+
+  @@map("billing_interval")
+}
+
+/// Pricing, kept deliberately separate from `Plan` (spec §6) — the same
+/// plan can have several active prices (monthly/annual, future
+/// currencies, grandfathered pricing) without the plan concept itself
+/// changing. Platform-infrastructure-adjacent, not organization-owned —
+/// see billing-data-model.md (every organization can read the active
+/// catalog; only platform staff holding `billing.plan.manage` can write
+/// it).
+model PlanPrice {
+  id     String @id @db.Uuid
+  planId String @map("plan_id") @db.Uuid
+
+  /// Internal label only (e.g. "Monthly USD") — never customer-facing
+  /// copy; `Plan.name` plus `interval`/`currency` is what the UI composes
+  /// for display.
+  nickname   String?
+  /// ISO 4217 — see src/lib/utils/money.ts.
+  currency   String
+  /// Minor units (spec §7) — e.g. `25000` for $250.00.
+  unitAmount Int             @map("unit_amount")
+  interval   BillingInterval
+  active     Boolean         @default(true)
+
+  provider        BillingProvider
+  /// Nullable until synced to the provider (a price can be defined
+  /// internally before it exists in Stripe — see billing-provider.md
+  /// "Catalog sync").
+  providerPriceId String?         @map("provider_price_id")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  plan              Plan               @relation(fields: [planId], references: [id], onDelete: Cascade)
+  subscriptionItems SubscriptionItem[]
+  invoiceLineItems  InvoiceLineItem[]
+
+  @@unique([provider, providerPriceId])
+  @@index([planId])
+  @@map("plan_prices")
+}
+
+/// Alpha OS domain states (spec §8: "Do not blindly mirror provider
+/// enums") — a superset shaped closely after Stripe's own subscription
+/// statuses because they already describe real, distinct business
+/// states worth keeping separate, not because Stripe's vocabulary is
+/// authoritative. Mapped from Stripe's own status string by
+/// `stripe/mapper.ts` — see billing-provider.md "Status mapping."
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  PAUSED
+  CANCELED
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  UNPAID
+
+  @@map("subscription_status")
+}
+
+/// Organization-owned (RLS-protected). One organization may hold
+/// multiple subscriptions over time (a canceled one and a new
+/// replacement) — never overwritten in place; canceling creates a new
+/// terminal state on the same row (spec §28: "never delete subscription
+/// history"), and a genuine plan swap is a provider-side item change on
+/// the SAME subscription (see SubscriptionItem below), not a new row.
+model Subscription {
+  id               String @id @db.Uuid
+  organizationId   String @map("organization_id") @db.Uuid
+  billingAccountId String @map("billing_account_id") @db.Uuid
+
+  status SubscriptionStatus @default(INCOMPLETE)
+
+  provider               BillingProvider
+  providerSubscriptionId String?         @map("provider_subscription_id")
+
+  currentPeriodStart DateTime? @map("current_period_start") @db.Timestamptz(3)
+  currentPeriodEnd   DateTime? @map("current_period_end") @db.Timestamptz(3)
+  cancelAtPeriodEnd  Boolean   @default(false) @map("cancel_at_period_end")
+  canceledAt         DateTime? @map("canceled_at") @db.Timestamptz(3)
+  trialStart         DateTime? @map("trial_start") @db.Timestamptz(3)
+  trialEnd           DateTime? @map("trial_end") @db.Timestamptz(3)
+
+  /// Out-of-order webhook guard (spec §50) — the `event.created` (Unix
+  /// seconds, provider-assigned) timestamp of the most recent webhook
+  /// event that successfully wrote to this row. A newly-arrived event
+  /// with an EARLIER timestamp than this is a stale, out-of-order
+  /// delivery and is ignored rather than applied — see
+  /// billing-webhooks.md "Out-of-order events." Never advanced by
+  /// anything except the webhook processor.
+  providerEventTimestamp DateTime? @map("provider_event_timestamp") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  billingAccount BillingAccount     @relation(fields: [billingAccountId], references: [id], onDelete: Cascade)
+  items          SubscriptionItem[]
+  invoices       Invoice[]
+
+  @@unique([provider, providerSubscriptionId])
+  @@index([organizationId])
+  @@index([billingAccountId])
+  @@map("subscriptions")
+}
+
+/// Transitively organization-owned, through `subscriptionId` (spec
+/// §31 — RLS via an EXISTS subquery to `subscriptions`, the exact
+/// pattern `RolePermission` already established for a transitively-
+/// owned child table — see the migration for the real policy). Exists
+/// so a subscription is never "one subscription = one price forever"
+/// (spec §9) — seats, add-ons, and future usage-based items are all
+/// just more rows here.
+model SubscriptionItem {
+  id             String @id @db.Uuid
+  subscriptionId String @map("subscription_id") @db.Uuid
+  planPriceId    String @map("plan_price_id") @db.Uuid
+
+  quantity Int @default(1)
+
+  provider       BillingProvider
+  providerItemId String?         @map("provider_item_id")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  /// `Restrict` — a price still referenced by a live subscription item
+  /// cannot be deleted out from under it (deactivate instead; see
+  /// `PlanPrice.active`).
+  planPrice    PlanPrice    @relation(fields: [planPriceId], references: [id], onDelete: Restrict)
+
+  @@unique([provider, providerItemId])
+  @@index([subscriptionId])
+  @@map("subscription_items")
+}
+
+/// A pragmatic, universal invoicing lifecycle (spec §10) rather than a
+/// blind mirror of Stripe's own invoice statuses — DRAFT/OPEN/PAID/VOID/
+/// UNCOLLECTIBLE describe real Alpha OS business states independent of
+/// which provider eventually produced the invoice.
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+  UNCOLLECTIBLE
+
+  @@map("invoice_status")
+}
+
+/// Organization-owned (RLS-protected). `subscriptionId` is nullable —
+/// an invoice can represent a subscription billing cycle OR a one-time
+/// charge with no subscription behind it at all (spec §9/§11).
+model Invoice {
+  id               String  @id @db.Uuid
+  organizationId   String  @map("organization_id") @db.Uuid
+  billingAccountId String  @map("billing_account_id") @db.Uuid
+  subscriptionId   String? @map("subscription_id") @db.Uuid
+
+  /// Server-generated, human-facing (e.g. "INV-2026-000042") — see
+  /// billing.md "Invoice numbering" for the exact scheme. NEVER a raw
+  /// database id, NEVER client-supplied (spec §10).
+  invoiceNumber String @unique @map("invoice_number")
+
+  status   InvoiceStatus
+  /// ISO 4217 — always matches the parent `BillingAccount.currency`.
+  currency String
+
+  /// Every amount below is an `Int` of minor units (spec §7).
+  subtotal      Int @map("subtotal")
+  discountTotal Int @default(0) @map("discount_total")
+  taxTotal      Int @default(0) @map("tax_total")
+  total         Int @map("total")
+  amountPaid    Int @default(0) @map("amount_paid")
+  amountDue     Int @map("amount_due")
+
+  issueDate DateTime  @map("issue_date") @db.Timestamptz(3)
+  dueDate   DateTime? @map("due_date") @db.Timestamptz(3)
+  paidAt    DateTime? @map("paid_at") @db.Timestamptz(3)
+
+  provider          BillingProvider
+  providerInvoiceId String?         @map("provider_invoice_id")
+  /// Provider-hosted invoice page (e.g. Stripe's own hosted invoice URL)
+  /// — Alpha OS never re-implements PDF generation (spec §25).
+  hostedInvoiceUrl  String?         @map("hosted_invoice_url")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  billingAccount BillingAccount    @relation(fields: [billingAccountId], references: [id], onDelete: Cascade)
+  subscription   Subscription?     @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  lineItems      InvoiceLineItem[]
+  payments       Payment[]
+
+  @@unique([provider, providerInvoiceId])
+  @@index([organizationId, status])
+  @@index([billingAccountId])
+  @@map("invoices")
+}
+
+/// Transitively organization-owned, through `invoiceId` (RLS via an
+/// EXISTS subquery, same pattern as `SubscriptionItem`). Deliberately
+/// IMMUTABLE — no `updatedAt` at all, because this row is never updated
+/// after creation (spec §11: "Do not dynamically recalculate historical
+/// invoices from today's plan pricing"). `planPriceId` is a nullable,
+/// best-effort trace back to the catalog entry active when this line
+/// was written — the line's OWN `unitAmount`/`description` are what's
+/// authoritative, even if that `PlanPrice` is later changed or
+/// deactivated.
+model InvoiceLineItem {
+  id        String @id @db.Uuid
+  invoiceId String @map("invoice_id") @db.Uuid
+
+  description    String
+  quantity       Int    @default(1)
+  unitAmount     Int    @map("unit_amount")
+  subtotal       Int
+  discountAmount Int    @default(0) @map("discount_amount")
+  taxAmount      Int    @default(0) @map("tax_amount")
+  total          Int
+
+  planPriceId String? @map("plan_price_id") @db.Uuid
+  /// Small, bounded provenance/service metadata only — never a live
+  /// pricing reference (see the model's own top comment).
+  metadata    Json?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  invoice   Invoice    @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  planPrice PlanPrice? @relation(fields: [planPriceId], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId])
+  @@map("invoice_line_items")
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+
+  @@map("payment_status")
+}
+
+/// Organization-owned (RLS-protected). Never stores raw card data (spec
+/// §12/§38) — `paymentMethodType`/`Brand`/`Last4` are exactly the safe,
+/// already-tokenized display fields Stripe itself returns; the PAN/CVV
+/// never reach Alpha OS at all (Checkout/Billing Portal are Stripe-
+/// hosted — see billing-provider.md).
+model Payment {
+  id               String  @id @db.Uuid
+  organizationId   String  @map("organization_id") @db.Uuid
+  billingAccountId String  @map("billing_account_id") @db.Uuid
+  invoiceId        String? @map("invoice_id") @db.Uuid
+
+  amount   Int
+  currency String
+  status   PaymentStatus
+
+  provider          BillingProvider
+  providerPaymentId String          @map("provider_payment_id")
+
+  paymentMethodType  String? @map("payment_method_type")
+  paymentMethodBrand String? @map("payment_method_brand")
+  paymentMethodLast4 String? @map("payment_method_last4")
+
+  failureCode    String? @map("failure_code")
+  /// Already a safe, provider-classified reason string (e.g.
+  /// "card_declined") — never a raw provider error body (spec §42).
+  failureMessage String? @map("failure_message")
+
+  paidAt DateTime? @map("paid_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  billingAccount BillingAccount @relation(fields: [billingAccountId], references: [id], onDelete: Cascade)
+  invoice        Invoice?       @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  refunds        Refund[]
+
+  @@unique([provider, providerPaymentId])
+  @@index([organizationId])
+  @@index([invoiceId])
+  @@map("payments")
+}
+
+enum RefundStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELED
+
+  @@map("refund_status")
+}
+
+/// Transitively organization-owned, through `paymentId` (RLS via an
+/// EXISTS subquery). A refund is its OWN financial event (spec §13) —
+/// the original `Payment.amount` is never mutated to represent one; see
+/// billing.md "Refunds never rewrite history."
+model Refund {
+  id        String @id @db.Uuid
+  paymentId String @map("payment_id") @db.Uuid
+
+  amount   Int
+  currency String
+  reason   String?
+  status   RefundStatus
+
+  provider         BillingProvider
+  providerRefundId String          @map("provider_refund_id")
+
+  /// Staff-initiated only (spec's own adversarial §55 Q8) — null for a
+  /// refund the webhook observed as issued directly in the Stripe
+  /// dashboard (still recorded here for completeness, but with no
+  /// Alpha OS actor to attribute).
+  initiatedByUserId String? @map("initiated_by_user_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  payment     Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  initiatedBy User?   @relation(fields: [initiatedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, providerRefundId])
+  @@index([paymentId])
+  @@map("refunds")
+}
+
+enum CreditLedgerEntryType {
+  CREDIT
+  DEBIT
+
+  @@map("credit_ledger_entry_type")
+}
+
+/// Organization-owned (RLS-protected). Append-only (spec §14/§37) — no
+/// `updatedAt`, no delete path anywhere in the service layer, entries
+/// are NEVER edited or removed. `amount` is always positive; `type`
+/// decides its sign when computing a balance — see
+/// `billing/ledger.ts`'s `computeCreditBalance()`, which SUMs this table
+/// on every read rather than trusting any cached total (spec §14: "If a
+/// cached balance is introduced for performance, document it as a
+/// projection" — no such cache exists yet; this module deliberately
+/// keeps the ledger itself as the only source of truth).
+model CreditLedgerEntry {
+  id               String @id @db.Uuid
+  organizationId   String @map("organization_id") @db.Uuid
+  billingAccountId String @map("billing_account_id") @db.Uuid
+
+  type     CreditLedgerEntryType
+  amount   Int
+  currency String
+  reason   String
+
+  relatedInvoiceId String? @map("related_invoice_id") @db.Uuid
+  relatedPaymentId String? @map("related_payment_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  billingAccount BillingAccount @relation(fields: [billingAccountId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([billingAccountId])
+  @@map("credit_ledger_entries")
+}
+
+enum BillingWebhookEventStatus {
+  PENDING
+  PROCESSED
+  FAILED
+  /// A real, verified event of a type this module deliberately does not
+  /// act on (spec §19's "document intentionally unsupported events") —
+  /// recorded for idempotency/observability, never retried.
+  IGNORED
+
+  @@map("billing_webhook_event_status")
+}
+
+/// Platform infrastructure, NOT tenant data — deliberately NO RLS and NO
+/// `organizationId` column (spec §31's own "webhook-event records may
+/// require a different platform/infrastructure classification"; see
+/// billing-webhooks.md "Why this table has no RLS" for the full
+/// reasoning). Accessed exclusively through the plain `db` client, from
+/// the webhook route handler (which has no user session at all — there
+/// is no tenant context to set) and the platform observability read
+/// path — the same infrastructure-table precedent `UserSession`/rate-
+/// limit records already established elsewhere in this codebase.
+///
+/// `@@unique([provider, providerEventId])` is THE idempotency guarantee
+/// (spec §18) — a real database constraint, not just an application-
+/// level pre-check: two concurrent deliveries of the same event can
+/// both attempt an insert, but only one ever succeeds.
+model BillingWebhookEvent {
+  id String @id @db.Uuid
+
+  provider        BillingProvider
+  providerEventId String          @map("provider_event_id")
+  eventType       String          @map("event_type")
+
+  /// The verified, raw provider event payload — kept for idempotency
+  /// proof, debugging, and future reconciliation (spec §48). Never
+  /// rendered to any customer-facing surface; never placed into an audit
+  /// event's metadata (spec §30's redaction rule still applies to
+  /// whatever reads FROM this column, even though this column itself is
+  /// not audit-redacted — see billing-security.md).
+  payload Json
+
+  status BillingWebhookEventStatus @default(PENDING)
+  /// Safe, already-sanitized failure description only — never a raw
+  /// stack trace or secret (spec §42/§47).
+  error  String?
+
+  receivedAt  DateTime  @default(now()) @map("received_at") @db.Timestamptz(3)
+  processedAt DateTime? @map("processed_at") @db.Timestamptz(3)
+
+  @@unique([provider, providerEventId])
+  @@index([status, receivedAt])
+  @@map("billing_webhook_events")
 }

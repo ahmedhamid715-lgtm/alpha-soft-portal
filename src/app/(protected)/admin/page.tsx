@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Users, Building2, ShieldCheck, Bell, KeyRound } from "lucide-react";
+import { Users, Building2, ShieldCheck, Bell, KeyRound, CreditCard, Tags } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Card, CardContent } from "@/components/ui/card";
@@ -14,6 +14,8 @@ const TOOLS = [
   { href: "/admin/audit", label: "Audit log", description: "Platform-wide security and administrative events.", icon: ShieldCheck, permission: "audit.readPlatform" as const },
   { href: "/admin/notifications", label: "Notification delivery", description: "Delivery status and failures across every organization.", icon: Bell, permission: "notifications.observability" as const },
   { href: "/admin/roles", label: "Roles & permissions", description: "Platform system roles and what each one grants.", icon: KeyRound, permission: "roles.read" as const },
+  { href: "/admin/billing", label: "Billing", description: "Every organization's billing status, platform-wide.", icon: CreditCard, permission: "billing.readPlatform" as const },
+  { href: "/admin/plans", label: "Plans", description: "The platform-wide plan catalog.", icon: Tags, permission: "billing.plan.manage" as const },
 ];
 
 /**

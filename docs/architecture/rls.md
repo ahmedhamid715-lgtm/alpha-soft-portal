@@ -104,6 +104,22 @@ REVOKE UPDATE, DELETE ON audit_events FROM alpha_os_app;
 -- docs/architecture/notification-security.md.
 REVOKE DELETE ON notifications FROM alpha_os_app;
 REVOKE DELETE ON notification_deliveries FROM alpha_os_app;
+
+-- Module 13 — `ALTER DEFAULT PRIVILEGES ... ON TABLES` above only
+-- covers future TABLES, not sequences (a different Postgres object
+-- class with its own privilege model — `nextval()` requires explicit
+-- USAGE). `invoice_number_seq` (migration
+-- 20260821163000_invoice_number_sequence) is the first sequence this
+-- codebase creates, so this is the first time that gap has mattered.
+-- Deliberately NOT granted inside the migration itself — a migration
+-- referencing `alpha_os_app` by name would fail in a fresh environment
+-- that runs `prisma migrate deploy` before this role exists, breaking
+-- the documented bootstrap order for every environment, not just ones
+-- using billing (spec §53: "document the operational step separately").
+-- Run this once per environment, same as every grant above; `prisma
+-- migrate reset` also wipes this one and it must be re-run alongside
+-- the rest of this block.
+GRANT USAGE, SELECT ON SEQUENCE invoice_number_seq TO alpha_os_app;
 ```
 
 **`prisma migrate reset` wipes these grants — re-run this block after

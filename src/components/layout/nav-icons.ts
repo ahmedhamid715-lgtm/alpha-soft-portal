@@ -21,6 +21,7 @@ import {
   Monitor,
   ShieldCheck,
   KeyRound,
+  Tags,
   type LucideIcon,
 } from "lucide-react"
 
@@ -54,6 +55,7 @@ export const NAV_ICON_MAP: Record<string, LucideIcon> = {
   sessions: Monitor,
   audit: ShieldCheck,
   roles: KeyRound,
+  plans: Tags,
 }
 
 export function resolveNavIcon(name: string | undefined): LucideIcon | undefined {

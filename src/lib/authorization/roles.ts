@@ -122,21 +122,39 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     name: "Platform Owner",
     description: "Ultimate control over Alpha OS itself — every platform-level permission, including billing.",
     scope: "PLATFORM",
-    permissions: [...PLATFORM_FULL, "billing.read", "billing.manage"],
+    // `billing.read`/`billing.manage` (ORGANIZATION-scope) govern the
+    // PLATFORM organization's own billing relationship, if it ever has
+    // one — unchanged since Module 05. `billing.readPlatform`/
+    // `billing.plan.manage`/`billing.refund` (Module 13, PLATFORM-scope)
+    // are the genuinely different capability of administering EVERY
+    // CUSTOMER organization's billing — platform_owner holds all three;
+    // see platform_admin/support_admin below for why they don't.
+    permissions: [...PLATFORM_FULL, "billing.read", "billing.manage", "billing.readPlatform", "billing.plan.manage", "billing.refund"],
   },
   platform_admin: {
     key: "platform_admin",
     name: "Platform Administrator",
-    description: "Full operational control over Alpha OS, excluding platform billing (owner-only).",
+    description: "Full operational control over Alpha OS, excluding platform billing and refunds (owner-only).",
     scope: "PLATFORM",
-    permissions: PLATFORM_FULL,
+    // Module 13 — `billing.readPlatform`/`billing.plan.manage` (operate
+    // day-to-day: view every organization's billing status, curate the
+    // plan catalog) but deliberately NOT `billing.refund` — moving real
+    // money back to a customer is reserved for platform_owner alone,
+    // the same owner-only-for-irreversible-action precedent
+    // `ownership.transfer`/`organizations.security.update`/
+    // `billing.manage` itself already establish. See
+    // billing-security.md.
+    permissions: [...PLATFORM_FULL, "billing.readPlatform", "billing.plan.manage"],
   },
   support_admin: {
     key: "support_admin",
     name: "Support Administrator",
-    description: "Oversees support operations platform-wide. Read-heavy; no user/org mutation, no billing.",
+    description: "Oversees support operations platform-wide. Read-heavy; no user/org mutation, no billing mutation.",
     scope: "PLATFORM",
-    permissions: ["users.read", "organizations.read", "roles.read", "analytics.read", "audit.readPlatform", "notifications.observability", "reports.read"],
+    // Module 13 — `billing.readPlatform` only: enough for support
+    // triage ("is this customer's payment failing?") without any
+    // ability to change a plan, touch the catalog, or move money.
+    permissions: ["users.read", "organizations.read", "roles.read", "analytics.read", "audit.readPlatform", "notifications.observability", "reports.read", "billing.readPlatform"],
   },
   support_agent: {
     key: "support_agent",
