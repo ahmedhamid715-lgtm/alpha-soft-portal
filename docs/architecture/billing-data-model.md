@@ -1,4 +1,4 @@
-# Billing data model (Module 13)
+# Billing data model (Module 13, extended by Module 16)
 
 Every billing model, its ownership classification, and why — spec §31's
 own explicit instruction: "Before creating policies: classify every
@@ -13,6 +13,7 @@ Organization
           │     └── SubscriptionItem[] (transitively owned)
           ├── Invoice[]
           │     └── InvoiceLineItem[] (transitively owned, immutable)
+          │           └── InvoiceLineItemTax[] (Module 16, transitively owned two hops, immutable)
           ├── Payment[]
           │     └── Refund[] (transitively owned)
           └── CreditLedgerEntry[] (append-only)
@@ -37,6 +38,7 @@ every URL, and every internal join actually uses.
 | `SubscriptionItem` | Transitively organization-owned (via `subscription_id`) | `EXISTS` subquery to `subscriptions`, same pattern `role_permissions` established for a transitively-owned child (Module 05) | No `organizationId` of its own — a subscription's items are never queried independent of their subscription. |
 | `Invoice` | Organization-owned | Direct `organization_id` column | Same reasoning as `Subscription`. |
 | `InvoiceLineItem` | Transitively organization-owned (via `invoice_id`) | `EXISTS` subquery; **no UPDATE policy at all** | Immutable after creation (spec §11) — the RLS layer enforces this structurally, not just by service-layer discipline: even a caller with a legitimate tenant context cannot UPDATE a line item, because no UPDATE policy exists to grant it. |
+| `InvoiceLineItemTax` (Module 16) | Transitively organization-owned, TWO hops (via `invoice_line_item_id` → `invoice_id`) | Two-hop `EXISTS` subquery (`invoice_line_items` JOIN `invoices`); **no UPDATE/DELETE policy at all** | Real per-component tax detail Stripe sends on every invoice line (`line.taxes[]`) — previously discarded, only its SUM (`InvoiceLineItem.taxAmount`) was kept. Same immutability discipline as its parent; proven RLS-isolated by `billing-reporting-rls.test.ts`'s own two-hop proof. |
 | `Payment` | Organization-owned | Direct `organization_id` column | Same reasoning as `Subscription`/`Invoice`. |
 | `Refund` | Transitively organization-owned (via `payment_id`) | `EXISTS` subquery; **no DELETE policy at all** | A refund, once recorded, is never removed (spec §37) — same structural enforcement as `InvoiceLineItem`'s immutability. |
 | `CreditLedgerEntry` | Organization-owned | Direct `organization_id` column; **INSERT/SELECT only — no UPDATE/DELETE policy at all** | Append-only ledger (spec §14) — the database itself, not just the service layer, refuses to let ANY role (including platform staff) mutate or remove an entry. A correction is a new, offsetting entry. |

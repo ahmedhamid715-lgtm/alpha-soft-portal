@@ -237,6 +237,42 @@ export function checkDuplicateLookingPayments(payments: PaymentForDuplicateCheck
   return anomalies;
 }
 
+export interface LineItemTaxSumForAnomalyCheck {
+  lineItemId: string;
+  organizationId: string;
+  /** `InvoiceLineItem.taxAmount` — the rolled-up sum Module 13's webhook mapping has always written. */
+  rolledUpTaxAmount: number;
+  /** The independently-summed `InvoiceLineItemTax.amount` rows for this same line (Module 16's own per-component detail). */
+  componentSum: number;
+}
+
+/**
+ * A real integrity check introduced by Module 16: `InvoiceLineItem.taxAmount`
+ * (the rolled-up sum, written since Module 13) and the independently-
+ * summed `InvoiceLineItemTax` rows for the same line (written since
+ * Module 16, from the SAME webhook payload's `line.taxes[]` array — see
+ * `billing-webhook-service.ts`) are two values computed from the same
+ * source data at the same moment and MUST always agree. A mismatch
+ * would mean the two write paths drifted — a genuine data-integrity
+ * signal, not a false-positive-prone heuristic. Line items with no
+ * component rows at all (`componentSum` naturally `0` — the pre-Module-16
+ * case, or a genuinely tax-free line) are correctly NOT flagged when
+ * `rolledUpTaxAmount` is also `0`; a mismatch only fires when the two
+ * numbers actually disagree.
+ */
+export function checkTaxComponentSumMismatch(lines: LineItemTaxSumForAnomalyCheck[]): BillingAnomaly[] {
+  return lines
+    .filter((l) => l.rolledUpTaxAmount !== l.componentSum)
+    .map((l) => ({
+      rule: "tax_component_sum_mismatch",
+      severity: "MEDIUM" as const,
+      organizationId: l.organizationId,
+      resourceType: "invoice_line_item",
+      resourceId: l.lineItemId,
+      description: `Invoice line item ${l.lineItemId}: rolled-up taxAmount (${l.rolledUpTaxAmount}) does not equal the sum of its own InvoiceLineItemTax rows (${l.componentSum}).`,
+    }));
+}
+
 export interface MovementForLargeChangeCheck {
   subscriptionId: string;
   organizationId: string;

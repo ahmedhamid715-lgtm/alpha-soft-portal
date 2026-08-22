@@ -318,4 +318,116 @@ describe.skipIf(!isDatabaseConfigured)("billing-webhook-service (database integr
     expect(updatedInvoice?.amountPaid).toBe(5000);
     expect(updatedInvoice?.lineItems).toHaveLength(1); // unchanged — never rewritten (spec §11 immutability)
   });
+
+  it("invoice.created captures the real Stripe line.period and per-component line.taxes[] (Module 16) — previously discarded/summed-away data", async () => {
+    const { processStripeWebhookEvent } = await import("@/server/services/billing-webhook-service");
+    const providerInvoiceId = `in_test_${generateId()}`;
+    const now = Math.floor(Date.now() / 1000);
+    const periodStart = now;
+    const periodEnd = now + 30 * 24 * 60 * 60; // a 30-day service period, exactly what a monthly subscription line looks like
+
+    const createdEvent = {
+      id: `evt_${generateId()}`,
+      type: "invoice.created",
+      created: now,
+      data: {
+        object: {
+          id: providerInvoiceId,
+          customer: customerId,
+          status: "open",
+          currency: "usd",
+          subtotal: 10000,
+          total: 10850,
+          amount_paid: 0,
+          amount_due: 10850,
+          created: now,
+          due_date: null,
+          hosted_invoice_url: "https://invoice.stripe.com/test",
+          status_transitions: { paid_at: null },
+          total_discount_amounts: [],
+          lines: {
+            data: [
+              {
+                id: "il_period_test",
+                description: "Subscription line",
+                quantity: 1,
+                subtotal: 10000,
+                amount: 10000,
+                discount_amounts: [],
+                pricing: null,
+                period: { start: periodStart, end: periodEnd },
+                taxes: [
+                  { amount: 700, tax_behavior: "exclusive", taxability_reason: "standard_rated", tax_rate_details: { tax_rate: "txr_state_ca" }, taxable_amount: 10000, type: "tax_rate_details" },
+                  { amount: 150, tax_behavior: "exclusive", taxability_reason: "standard_rated", tax_rate_details: { tax_rate: "txr_county_alameda" }, taxable_amount: 10000, type: "tax_rate_details" },
+                ],
+              },
+            ],
+          },
+        },
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+
+    const result = await processStripeWebhookEvent(createdEvent);
+    expect(result.outcome).toBe("processed");
+
+    const invoice = await withTenantContext({ userId: null, organizationId: orgAId, isPlatformStaff: true }, (tx) =>
+      invoiceRepository.findByProviderInvoiceId("STRIPE", providerInvoiceId, tx),
+    );
+    const withLines = await withTenantContext({ userId: null, organizationId: orgAId, isPlatformStaff: true }, (tx) => invoiceRepository.findByIdWithLineItems(invoice!.id, tx));
+    const line = withLines!.lineItems[0]!;
+
+    expect(line.servicePeriodStart?.toISOString()).toBe(new Date(periodStart * 1000).toISOString());
+    expect(line.servicePeriodEnd?.toISOString()).toBe(new Date(periodEnd * 1000).toISOString());
+    expect(line.taxAmount).toBe(850); // 700 + 150, unchanged rollup behavior
+
+    const taxRows = await withTenantContext({ userId: null, organizationId: orgAId, isPlatformStaff: true }, (tx) => tx.invoiceLineItemTax.findMany({ where: { invoiceLineItemId: line.id }, orderBy: { amount: "desc" } }));
+    expect(taxRows).toHaveLength(2);
+    expect(taxRows[0]).toMatchObject({ providerTaxRateId: "txr_state_ca", taxabilityReason: "standard_rated", taxBehavior: "exclusive", amount: 700 });
+    expect(taxRows[1]).toMatchObject({ providerTaxRateId: "txr_county_alameda", taxabilityReason: "standard_rated", taxBehavior: "exclusive", amount: 150 });
+  });
+
+  it("invoice.created with no line.period and empty line.taxes[] (a fixture predating Module 16, or a Stripe line genuinely without either) writes null period and zero tax rows — never a crash", async () => {
+    const { processStripeWebhookEvent } = await import("@/server/services/billing-webhook-service");
+    const providerInvoiceId = `in_test_${generateId()}`;
+    const now = Math.floor(Date.now() / 1000);
+
+    const createdEvent = {
+      id: `evt_${generateId()}`,
+      type: "invoice.created",
+      created: now,
+      data: {
+        object: {
+          id: providerInvoiceId,
+          customer: customerId,
+          status: "open",
+          currency: "usd",
+          subtotal: 2000,
+          total: 2000,
+          amount_paid: 0,
+          amount_due: 2000,
+          created: now,
+          due_date: null,
+          hosted_invoice_url: "https://invoice.stripe.com/test",
+          status_transitions: { paid_at: null },
+          total_discount_amounts: [],
+          lines: { data: [{ id: "il_no_period", description: "One-time fee", quantity: 1, subtotal: 2000, amount: 2000, discount_amounts: [], taxes: [], pricing: null }] },
+        },
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+
+    const result = await processStripeWebhookEvent(createdEvent);
+    expect(result.outcome).toBe("processed");
+
+    const invoice = await withTenantContext({ userId: null, organizationId: orgAId, isPlatformStaff: true }, (tx) => invoiceRepository.findByProviderInvoiceId("STRIPE", providerInvoiceId, tx));
+    const withLines = await withTenantContext({ userId: null, organizationId: orgAId, isPlatformStaff: true }, (tx) => invoiceRepository.findByIdWithLineItems(invoice!.id, tx));
+    const line = withLines!.lineItems[0]!;
+
+    expect(line.servicePeriodStart).toBeNull();
+    expect(line.servicePeriodEnd).toBeNull();
+
+    const taxRows = await withTenantContext({ userId: null, organizationId: orgAId, isPlatformStaff: true }, (tx) => tx.invoiceLineItemTax.findMany({ where: { invoiceLineItemId: line.id } }));
+    expect(taxRows).toHaveLength(0);
+  });
 });

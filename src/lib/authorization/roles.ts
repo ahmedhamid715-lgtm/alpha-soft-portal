@@ -141,6 +141,7 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "billing.analytics.read",
       "billing.reports.export",
       "billing.controls.read",
+      "billing.compliance.read",
     ],
   },
   platform_admin: {
@@ -163,7 +164,11 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     // diagnostics) are granted; `billing.reports.export` is NOT — a raw
     // CSV export is a distinct, narrower-held risk tier, reserved for
     // platform_owner alone (see that permission's own doc comment).
-    permissions: [...PLATFORM_FULL, "billing.readPlatform", "billing.plan.manage", "billing.credit.manage", "billing.analytics.read", "billing.controls.read"],
+    // Module 16 — `billing.compliance.read` IS granted: an admin
+    // plausibly assembles compliance materials day-to-day (see that
+    // permission's own doc comment for why this tier differs from
+    // support_admin below, which does NOT get it).
+    permissions: [...PLATFORM_FULL, "billing.readPlatform", "billing.plan.manage", "billing.credit.manage", "billing.analytics.read", "billing.controls.read", "billing.compliance.read"],
   },
   support_admin: {
     key: "support_admin",
@@ -180,7 +185,13 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     // reconciliation-health signal reveals LESS about any one customer
     // than the per-organization billing detail support already sees.
     // `billing.reports.export` is deliberately withheld (see
-    // platform_admin's own comment above).
+    // platform_admin's own comment above). Module 16 —
+    // `billing.compliance.read` is ALSO deliberately withheld: unlike
+    // MRR/aging/anomalies (all directly useful for "is this customer's
+    // billing healthy" support triage), deferred-revenue/tax-liability
+    // figures are a finance/compliance concern with no support-triage
+    // use case — a "does this role ever actually need it" boundary,
+    // not merely a data-sensitivity one.
     permissions: [
       "users.read",
       "organizations.read",

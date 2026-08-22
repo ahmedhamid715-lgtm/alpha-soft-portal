@@ -8,6 +8,7 @@ import {
   checkStalePendingWebhooks,
   checkDuplicateLookingPayments,
   checkLargeUnexplainedMovement,
+  checkTaxComponentSumMismatch,
 } from "@/lib/billing/reporting/anomalies";
 
 describe("checkInvoiceBalanceIntegrity", () => {
@@ -158,5 +159,29 @@ describe("checkLargeUnexplainedMovement", () => {
   it("a previousMrr of 0 is skipped (not a 'swing', just growth from nothing)", () => {
     const result = checkLargeUnexplainedMovement([{ subscriptionId: "s1", organizationId: "o1", type: "EXPANSION", previousMrr: 0, currentMrr: 5000 }]);
     expect(result).toEqual([]);
+  });
+});
+
+describe("checkTaxComponentSumMismatch (Module 16)", () => {
+  it("a line item whose rolled-up taxAmount equals its own component sum is not flagged", () => {
+    const result = checkTaxComponentSumMismatch([{ lineItemId: "l1", organizationId: "o1", rolledUpTaxAmount: 850, componentSum: 850 }]);
+    expect(result).toEqual([]);
+  });
+
+  it("a mismatch between the rolled-up sum and the independently-summed components is flagged MEDIUM", () => {
+    const result = checkTaxComponentSumMismatch([{ lineItemId: "l1", organizationId: "o1", rolledUpTaxAmount: 850, componentSum: 700 }]);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.severity).toBe("MEDIUM");
+    expect(result[0]?.rule).toBe("tax_component_sum_mismatch");
+  });
+
+  it("a tax-free line (both 0) is not flagged", () => {
+    const result = checkTaxComponentSumMismatch([{ lineItemId: "l1", organizationId: "o1", rolledUpTaxAmount: 0, componentSum: 0 }]);
+    expect(result).toEqual([]);
+  });
+
+  it("a line with no component rows at all (pre-Module-16 data) but a nonzero rolled-up taxAmount IS flagged — a real, honest signal that detail is missing", () => {
+    const result = checkTaxComponentSumMismatch([{ lineItemId: "l1", organizationId: "o1", rolledUpTaxAmount: 500, componentSum: 0 }]);
+    expect(result).toHaveLength(1);
   });
 });

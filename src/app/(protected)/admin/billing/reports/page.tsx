@@ -16,6 +16,8 @@ const REPORTS = [
   { type: "credits", label: "Credit ledger", description: "Every credit ledger entry — type, currency, amount, reason, the compensating entry it corrects (if any)." },
   { type: "aging", label: "AR aging", description: "Outstanding receivables by aging bucket and currency, as of now." },
   { type: "mrr", label: "MRR / ARR", description: "Current MRR and ARR by currency, with subscription counts." },
+  { type: "revenue-recognition", label: "Deferred revenue", description: "Total billed / recognized / deferred, by currency, as of now (Module 16)." },
+  { type: "tax", label: "Tax compliance", description: "Tax collected this month, by currency/taxability reason/provider tax rate reference (Module 16)." },
 ] as const;
 
 /**

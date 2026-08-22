@@ -8,6 +8,7 @@ import { creditLedgerRepository } from "@/server/repositories/credit-ledger-repo
 import { subscriptionRepository } from "@/server/repositories/subscription-repository";
 import { isStripeConfigured } from "@/config/environment";
 import { computeCreditBalance } from "@/lib/billing/ledger";
+import { resolvePeriod } from "@/lib/billing/reporting/period";
 import {
   checkInvoiceBalanceIntegrity,
   checkRefundDoesNotExceedPayment,
@@ -16,6 +17,7 @@ import {
   checkSubscriptionStateConsistency,
   checkStalePendingWebhooks,
   checkDuplicateLookingPayments,
+  checkTaxComponentSumMismatch,
   type BillingAnomaly,
 } from "@/lib/billing/reporting/anomalies";
 
@@ -52,6 +54,13 @@ import {
  * snapshot table requires explicit justification"). Documented rather
  * than wired in half-heartedly; see `financial-controls.md`'s own
  * "Known limitations" section.
+ *
+ * Module 16 ADDS `checkTaxComponentSumMismatch()` — an integrity signal
+ * ("did the two independent tax-write-paths agree"), not itself
+ * compliance REPORTING data, so it stays under this control center's
+ * existing `billing.controls.read` gate rather than the new, narrower
+ * `billing.compliance.read` (see `tax-compliance.md` "Where the tax
+ * integrity check lives, and why").
  */
 
 export interface WebhookHealth {
@@ -71,6 +80,8 @@ export interface ConsistencyDiagnostics {
   creditRelationAnomalies: BillingAnomaly[];
   subscriptionStateAnomalies: BillingAnomaly[];
   duplicatePaymentAnomalies: BillingAnomaly[];
+  /** Module 16 — see `checkTaxComponentSumMismatch()`'s own doc comment. */
+  taxComponentAnomalies: BillingAnomaly[];
 }
 
 export interface ControlCenterReport {
@@ -101,12 +112,13 @@ export async function getControlCenterReport(): Promise<ControlCenterReport> {
   };
 
   const consistency = await withTenantContext({ userId: null, organizationId: null, isPlatformStaff: true }, async (tx) => {
-    const [openInvoices, paymentsWithRefunds, creditEntries, subscriptions, recentPayments] = await Promise.all([
+    const [openInvoices, paymentsWithRefunds, creditEntries, subscriptions, recentPayments, currentMonthLineItemTaxSums] = await Promise.all([
       invoiceRepository.listOpenForAging({ platform: true }, tx),
       paymentRepository.listSucceededWithRefundTotals({ platform: true }, tx),
       creditLedgerRepository.listAll({ platform: true }, tx),
       subscriptionRepository.listWithPricedItems({ platform: true }, tx),
       paymentRepository.listRecentSucceeded({ platform: true }, new Date(asOf.getTime() - DUPLICATE_PAYMENT_SCAN_WINDOW_MS), tx),
+      invoiceRepository.listLineItemTaxSumsForPeriod({ platform: true }, resolvePeriod("current_month", "UTC", asOf), tx),
     ]);
 
     // Invoice balance integrity is checked over a BOUNDED, meaningful
@@ -136,7 +148,9 @@ export async function getControlCenterReport(): Promise<ControlCenterReport> {
       recentPayments.map((p) => ({ paymentId: p.id, organizationId: p.organizationId, amount: p.amount, currency: p.currency, createdAt: p.createdAt })),
     );
 
-    return { invoiceBalanceAnomalies, refundAnomalies, creditBalanceAnomalies, creditRelationAnomalies, subscriptionStateAnomalies, duplicatePaymentAnomalies };
+    const taxComponentAnomalies = checkTaxComponentSumMismatch(currentMonthLineItemTaxSums);
+
+    return { invoiceBalanceAnomalies, refundAnomalies, creditBalanceAnomalies, creditRelationAnomalies, subscriptionStateAnomalies, duplicatePaymentAnomalies, taxComponentAnomalies };
   });
 
   const totalAnomalyCount =
@@ -146,7 +160,8 @@ export async function getControlCenterReport(): Promise<ControlCenterReport> {
     consistency.creditBalanceAnomalies.length +
     consistency.creditRelationAnomalies.length +
     consistency.subscriptionStateAnomalies.length +
-    consistency.duplicatePaymentAnomalies.length;
+    consistency.duplicatePaymentAnomalies.length +
+    consistency.taxComponentAnomalies.length;
 
   return { asOf, webhookHealth, providerConnectivity: { configured: isStripeConfigured }, consistency, totalAnomalyCount };
 }

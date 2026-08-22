@@ -247,6 +247,20 @@ async function handleInvoiceCreated(event: Stripe.Event): Promise<void> {
           taxAmount,
           total: line.amount,
           planPriceId: planPrice?.id ?? null,
+          // Module 16 — real Stripe fields, always present on the
+          // provider payload; captured for the first time (previously
+          // discarded, `period`) or captured with full per-component
+          // detail for the first time (previously summed away, `taxes`).
+          // See `revenue-recognition.md`/`tax-compliance.md`.
+          servicePeriodStart: line.period ? eventDate(line.period.start) : null,
+          servicePeriodEnd: line.period ? eventDate(line.period.end) : null,
+          taxes: line.taxes?.map((t) => ({
+            id: generateId(),
+            providerTaxRateId: t.tax_rate_details?.tax_rate ?? null,
+            taxabilityReason: t.taxability_reason ?? null,
+            taxBehavior: t.tax_behavior ?? null,
+            amount: t.amount,
+          })),
         },
         tx,
       );

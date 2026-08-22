@@ -1408,13 +1408,81 @@ model InvoiceLineItem {
   /// pricing reference (see the model's own top comment).
   metadata    Json?
 
+  /// The service period this line's revenue is EARNED over (Module 16)
+  /// — Stripe's own `line.period.start`/`.end` on every invoice line,
+  /// always present on the provider payload but discarded by Module 13's
+  /// original webhook mapping. `null` only for line items created before
+  /// Module 16's migration (never backfilled — see
+  /// `revenue-recognition.md` "Known limitations"); a one-time (non-
+  /// subscription) charge has `servicePeriodStart == servicePeriodEnd`
+  /// (a zero-length period, Stripe's own representation of an instant),
+  /// which `lib/billing/recognition/schedule.ts` recognizes as fully
+  /// earned immediately — not a special case in this schema, just a real
+  /// value the recognition engine already handles correctly.
+  servicePeriodStart DateTime? @map("service_period_start") @db.Timestamptz(3)
+  servicePeriodEnd   DateTime? @map("service_period_end") @db.Timestamptz(3)
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  invoice   Invoice    @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  planPrice PlanPrice? @relation(fields: [planPriceId], references: [id], onDelete: SetNull)
+  invoice   Invoice               @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  planPrice PlanPrice?            @relation(fields: [planPriceId], references: [id], onDelete: SetNull)
+  taxes     InvoiceLineItemTax[]
 
   @@index([invoiceId])
+  @@index([servicePeriodEnd])
   @@map("invoice_line_items")
+}
+
+/// Per-component tax detail (Module 16) — Stripe's own `line.taxes[]`,
+/// captured in full for the first time (Module 13 only ever summed this
+/// array into `InvoiceLineItem.taxAmount`, discarding the breakdown). A
+/// single line can carry MULTIPLE simultaneous tax components (e.g. a US
+/// state + county + city rate stacked on one line) — real detail that
+/// cannot be reconstructed from the rolled-up sum after the fact, which
+/// is the actual justification for this being a separate table rather
+/// than more columns on `InvoiceLineItem` itself (spec's own "why is a
+/// new table truly necessary" bar). Transitively organization-owned,
+/// through `invoiceLineItemId` → `invoiceId` — same RLS shape
+/// `InvoiceLineItem` itself already uses one hop up. Deliberately
+/// IMMUTABLE — no `updatedAt`, no UPDATE/DELETE RLS policy (same
+/// append-only discipline as its parent), written once, atomically, in
+/// the SAME webhook-processing transaction that creates its parent line.
+/// NOT backfilled for line items created before this migration — that
+/// detail was already lost at the old webhook mapping's summing step and
+/// cannot be honestly reconstructed (documented, not silently ignored).
+model InvoiceLineItemTax {
+  id                String @id @db.Uuid
+  invoiceLineItemId String @map("invoice_line_item_id") @db.Uuid
+
+  /// Stripe's own tax rate id (e.g. `txr_...`) — preserved as an OPAQUE
+  /// reference, deliberately never resolved to a human jurisdiction name
+  /// or percentage. Resolving it would require a live
+  /// `stripe.taxRates.retrieve()` call this dev environment has no
+  /// configured Stripe key to ever exercise or verify — see
+  /// `tax-compliance.md` "Why tax rate ids are not resolved." `null` when
+  /// Stripe itself returns no rate object for this component (a real,
+  /// possible provider state — e.g. `reverse_charge`).
+  providerTaxRateId String? @map("provider_tax_rate_id")
+  /// Stripe's own already-classified reasoning for this component (e.g.
+  /// `standard_rated`, `product_exempt`, `reverse_charge`,
+  /// `not_collecting`) — real provider data, never inferred or computed
+  /// by Alpha OS. An open-ended, provider-controlled string (Stripe's own
+  /// type explicitly allows values beyond its documented list) — a
+  /// Postgres enum here would break ingestion the moment Stripe adds a
+  /// new reason, the same "open string, not an enum" choice this
+  /// codebase already makes for `AuditEvent.resourceType`.
+  taxabilityReason  String? @map("taxability_reason")
+  /// `'exclusive'` or `'inclusive'` — Stripe's own field, stored as-is.
+  taxBehavior       String? @map("tax_behavior")
+  /// Minor units — this component's own share of the line's total tax.
+  amount            Int    @map("amount")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  invoiceLineItem InvoiceLineItem @relation(fields: [invoiceLineItemId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceLineItemId])
+  @@map("invoice_line_item_taxes")
 }
 
 enum PaymentStatus {

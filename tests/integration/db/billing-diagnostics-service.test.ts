@@ -6,6 +6,10 @@ import { userRepository } from "@/server/repositories/user-repository";
 import { organizationRepository } from "@/server/repositories/organization-repository";
 import { membershipRepository } from "@/server/repositories/membership-repository";
 import { roleRepository } from "@/server/repositories/role-repository";
+import { billingAccountRepository } from "@/server/repositories/billing-account-repository";
+import { invoiceRepository } from "@/server/repositories/invoice-repository";
+import { nextInvoiceNumber } from "@/lib/billing/invoice-numbering";
+import { withTenantContext } from "@/lib/tenancy/context";
 
 let mockUser: { id: string } | null = null;
 let mockMembershipsByOrg = new Map<string, { organizationId: string; userId: string; roleId: string | null; status: string }>();
@@ -96,8 +100,68 @@ describe.skipIf(!isDatabaseConfigured)("billing-diagnostics-service (database in
         result.consistency.creditBalanceAnomalies.length +
         result.consistency.creditRelationAnomalies.length +
         result.consistency.subscriptionStateAnomalies.length +
-        result.consistency.duplicatePaymentAnomalies.length,
+        result.consistency.duplicatePaymentAnomalies.length +
+        result.consistency.taxComponentAnomalies.length,
     );
+  });
+
+  it("getControlCenterReport (Module 16): a line item whose rolled-up taxAmount disagrees with its own InvoiceLineItemTax rows is flagged", async () => {
+    const account = await withTenantContext({ userId: null, organizationId: orgAId, isPlatformStaff: true }, (tx) =>
+      billingAccountRepository.create({ id: generateId(), organizationId: orgAId, currency: "USD", provider: "STRIPE", providerCustomerId: `cus_diagnostics_tax_${generateId()}` }, tx),
+    );
+    const invoiceNumber = await nextInvoiceNumber();
+    const invoice = await withTenantContext({ userId: null, organizationId: orgAId, isPlatformStaff: true }, (tx) =>
+      invoiceRepository.create(
+        { id: generateId(), organizationId: orgAId, billingAccountId: account.id, invoiceNumber, status: "PAID", currency: "USD", subtotal: 10000, discountTotal: 0, taxTotal: 850, total: 10850, amountPaid: 10850, amountDue: 0, issueDate: new Date(), provider: "STRIPE" },
+        tx,
+      ),
+    );
+    // taxAmount (850) rolled up, but ZERO InvoiceLineItemTax rows written for it — a real, deliberately-produced mismatch (bypassing the normal webhook write path, the only way to construct this abnormal state, same convention this file's own stale-webhook test already uses).
+    await withTenantContext({ userId: null, organizationId: orgAId, isPlatformStaff: true }, (tx) =>
+      invoiceRepository.addLineItem({ id: generateId(), invoiceId: invoice.id, description: "Mismatched tax line", quantity: 1, unitAmount: 10000, subtotal: 10000, discountAmount: 0, taxAmount: 850, total: 10000 }, tx),
+    );
+
+    const owner = await makeMember(platformOrgId, "platform_owner", "diagnostics-tax-mismatch-owner@example.com");
+    actAs(owner.userId, owner.membership);
+    const { getControlCenterReport } = await import("@/server/services/billing-diagnostics-service");
+    const result = await getControlCenterReport();
+    expect(result.consistency.taxComponentAnomalies.some((a) => a.organizationId === orgAId)).toBe(true);
+  });
+
+  it("getControlCenterReport (Module 16): a line item whose rolled-up taxAmount agrees with its own InvoiceLineItemTax rows is NOT flagged", async () => {
+    const account = await withTenantContext({ userId: null, organizationId: orgAId, isPlatformStaff: true }, (tx) =>
+      billingAccountRepository.create({ id: generateId(), organizationId: orgAId, currency: "USD", provider: "STRIPE", providerCustomerId: `cus_diagnostics_tax_ok_${generateId()}` }, tx),
+    );
+    const invoiceNumber = await nextInvoiceNumber();
+    const invoice = await withTenantContext({ userId: null, organizationId: orgAId, isPlatformStaff: true }, (tx) =>
+      invoiceRepository.create(
+        { id: generateId(), organizationId: orgAId, billingAccountId: account.id, invoiceNumber, status: "PAID", currency: "USD", subtotal: 10000, discountTotal: 0, taxTotal: 850, total: 10850, amountPaid: 10850, amountDue: 0, issueDate: new Date(), provider: "STRIPE" },
+        tx,
+      ),
+    );
+    const lineItem = await withTenantContext({ userId: null, organizationId: orgAId, isPlatformStaff: true }, (tx) =>
+      invoiceRepository.addLineItem(
+        {
+          id: generateId(),
+          invoiceId: invoice.id,
+          description: "Consistent tax line",
+          quantity: 1,
+          unitAmount: 10000,
+          subtotal: 10000,
+          discountAmount: 0,
+          taxAmount: 850,
+          total: 10000,
+          taxes: [{ id: generateId(), providerTaxRateId: "txr_test", taxabilityReason: "standard_rated", taxBehavior: "exclusive", amount: 850 }],
+        },
+        tx,
+      ),
+    );
+
+    const owner = await makeMember(platformOrgId, "platform_owner", "diagnostics-tax-ok-owner@example.com");
+    actAs(owner.userId, owner.membership);
+    const { getControlCenterReport } = await import("@/server/services/billing-diagnostics-service");
+    const result = await getControlCenterReport();
+    expect(result.consistency.taxComponentAnomalies.some((a) => a.resourceId === lineItem.id)).toBe(false);
   });
 
   it("getControlCenterReport: a genuinely stale PENDING webhook event is flagged", async () => {

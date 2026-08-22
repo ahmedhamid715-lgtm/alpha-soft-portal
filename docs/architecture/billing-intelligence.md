@@ -10,7 +10,11 @@ financial record to make a report look right.
 This document is the map. For the exact definition of any individual
 number, see `revenue-metrics.md`. For the operational control center and
 anomaly rules, see `financial-controls.md`. For the authorization/RLS/
-export security model, see `billing-reporting-security.md`.
+export security model, see `billing-reporting-security.md` (extended by
+Module 16). Module 16 (`revenue-recognition.md`, `tax-compliance.md`)
+builds directly on top of this module — ratable revenue recognition and
+tax-collected reporting, both platform-only, both derived from real
+data this module's own webhook capture now includes.
 
 ## What this module is built on
 

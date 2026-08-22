@@ -568,4 +568,102 @@ export async function seedBillingFixtures(): Promise<void> {
       console.log("[seed-billing] Billing history fixture seeded for Lambda Europe: 1 ACTIVE EUR subscription (currency-grouping fixture).");
     }
   }
+
+  // --- Iota Media — Module 16's own fixture: a PAID invoice line item
+  // with a REAL captured service period (roughly half-elapsed, so the
+  // deferred-revenue dashboard shows a genuine, non-trivial recognized/
+  // deferred split rather than a 0-or-100% edge case) and real
+  // multi-component tax detail (two simultaneous tax rates on one line
+  // — a US state + county stack, exactly the shape
+  // `InvoiceLineItemTax` exists to represent). A NEW dedicated
+  // organization, not a retrofit of an existing fixture invoice — Acme
+  // Corp's own invoice is asserted against by exact-amount E2E/
+  // integration tests going back to Module 13; adding period/tax data
+  // to it would risk silently changing those numbers (the same
+  // "new org for a new fixture need" discipline Epsilon/Zeta/Theta/
+  // Kappa/Lambda above already established, not a new pattern).
+  if (starterMonthly) {
+    const orgIId = await ensureOrganization({ slug: "iota-media-dev", name: "Iota Media", displayName: "Iota Media" });
+    await ensureMember(orgIId, "owner-i@alpha-os.test", "Owner I (Dev)", "owner");
+    let accountI = await billingAccountRepository.findByOrganizationId(orgIId, db);
+    if (!accountI) accountI = await billingAccountRepository.create({ id: generateId(), organizationId: orgIId, currency: "USD", provider: "STRIPE", providerCustomerId: `cus_dev_${orgIId}` }, db);
+
+    const existingSubI = await subscriptionRepository.findCurrentForOrganization(orgIId, db);
+    if (!existingSubI) {
+      const now = new Date();
+      const currentPeriodStart = new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000);
+      const currentPeriodEnd = new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000);
+      const subscriptionI = await subscriptionRepository.create({ id: generateId(), organizationId: orgIId, billingAccountId: accountI.id, provider: "STRIPE", providerSubscriptionId: `sub_dev_${orgIId}`, status: "ACTIVE" }, db);
+      await subscriptionRepository.applyProviderState(subscriptionI.id, { status: "ACTIVE", currentPeriodStart, currentPeriodEnd, cancelAtPeriodEnd: false, canceledAt: null, trialStart: null, trialEnd: null, providerEventTimestamp: now }, db);
+      await subscriptionItemRepository.create({ id: generateId(), subscriptionId: subscriptionI.id, planPriceId: starterMonthly.id, quantity: 1, provider: "STRIPE", providerItemId: `si_dev_${subscriptionI.id}` }, db);
+
+      const invoiceNumber = await nextInvoiceNumber(db);
+      const subtotal = 4900;
+      const stateTax = 300;
+      const countyTax = 65;
+      const taxTotal = stateTax + countyTax;
+      const invoice = await invoiceRepository.create(
+        {
+          id: generateId(),
+          organizationId: orgIId,
+          billingAccountId: accountI.id,
+          subscriptionId: subscriptionI.id,
+          invoiceNumber,
+          status: "PAID",
+          currency: "USD",
+          subtotal,
+          discountTotal: 0,
+          taxTotal,
+          total: subtotal + taxTotal,
+          amountPaid: subtotal + taxTotal,
+          amountDue: 0,
+          issueDate: currentPeriodStart,
+          paidAt: currentPeriodStart,
+          provider: "STRIPE",
+          providerInvoiceId: `in_dev_${generateId()}`,
+        },
+        db,
+      );
+      await invoiceRepository.addLineItem(
+        {
+          id: generateId(),
+          invoiceId: invoice.id,
+          description: "Starter — monthly",
+          quantity: 1,
+          unitAmount: subtotal,
+          subtotal,
+          discountAmount: 0,
+          taxAmount: taxTotal,
+          total: subtotal,
+          planPriceId: starterMonthly.id,
+          servicePeriodStart: currentPeriodStart,
+          servicePeriodEnd: currentPeriodEnd,
+          taxes: [
+            { id: generateId(), providerTaxRateId: "txr_dev_ca_state", taxabilityReason: "standard_rated", taxBehavior: "exclusive", amount: stateTax },
+            { id: generateId(), providerTaxRateId: "txr_dev_ca_county", taxabilityReason: "standard_rated", taxBehavior: "exclusive", amount: countyTax },
+          ],
+        },
+        db,
+      );
+      await paymentRepository.create(
+        {
+          id: generateId(),
+          organizationId: orgIId,
+          billingAccountId: accountI.id,
+          invoiceId: invoice.id,
+          amount: subtotal + taxTotal,
+          currency: "USD",
+          status: "SUCCEEDED",
+          provider: "STRIPE",
+          providerPaymentId: `pi_dev_${generateId()}`,
+          paymentMethodType: "card",
+          paymentMethodBrand: "visa",
+          paymentMethodLast4: "4242",
+          paidAt: currentPeriodStart,
+        },
+        db,
+      );
+      console.log("[seed-billing] Billing history fixture seeded for Iota Media: 1 ACTIVE subscription, 1 PAID invoice with a real service period + 2-component tax detail (Module 16 revenue-recognition/tax-compliance fixture).");
+    }
+  }
 }

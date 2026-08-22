@@ -322,6 +322,30 @@ export const PERMISSION_CATALOG = {
     "billing.controls.read",
   ),
 
+  // --- billing, revenue recognition & tax compliance (Module 16, new —
+  // ONE platform-scope key, not a fourth billing-analytics variant. See
+  // billing-reporting-security.md "Permission set" (extended by Module
+  // 16) for the full reasoning: this data (deferred revenue, tax
+  // collected by jurisdiction reference) is a narrower, finance/
+  // compliance-specific concern than Module 15's general operational
+  // billing.analytics.read, deliberately not folded into it — a role
+  // that needs day-to-day MRR/aging visibility does not automatically
+  // need to see the platform's own deferred-revenue/tax-liability
+  // figures. Export of this data reuses the EXISTING billing.reports.export
+  // key rather than adding a second export permission — the export
+  // risk tier is identical (a portable CSV), so a new key would add
+  // process without adding a real distinction (Module 15's own "why
+  // anomaly diagnostics were folded into controls.read" reasoning,
+  // applied here to exports specifically).
+  "billing.compliance.read": permission(
+    "billing",
+    "read",
+    "PLATFORM",
+    "View platform-wide revenue recognition (deferred/recognized revenue) and tax compliance reporting (tax collected by period/currency/provider tax-rate reference). Never a tax calculation or filing capability — reporting only, on data the payment provider already calculated.",
+    false,
+    "billing.compliance.read",
+  ),
+
   // --- analytics (ORGANIZATION, reserved — future analytics module)
   "analytics.read": permission("analytics", "read", "ORGANIZATION", "View organization analytics/dashboards.", true),
 

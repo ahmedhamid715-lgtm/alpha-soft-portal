@@ -7,6 +7,8 @@ import {
   exportPlatformCredits,
   exportPlatformAging,
   exportPlatformMrr,
+  exportPlatformRevenueRecognition,
+  exportPlatformTaxCompliance,
 } from "@/server/services/billing-export-service";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +23,11 @@ export const dynamic = "force-dynamic";
  * never a bypass of that authorization.
  */
 const STREAMING_REPORTS = new Set(["invoices", "payments", "refunds", "credits"]);
-const AGGREGATE_REPORTS = new Set(["aging", "mrr"]);
+const AGGREGATE_REPORTS = new Set(["aging", "mrr", "revenue-recognition"]);
+// Module 16 — genuinely period-scoped (unlike aging/mrr/revenue-recognition,
+// all point-in-time "as of now" snapshots), so it gets its own branch
+// that actually forwards periodStart/periodEnd rather than ignoring them.
+const PERIOD_AGGREGATE_REPORTS = new Set(["tax"]);
 
 export const GET = createRouteHandler<{ type: string }>(async (request, { params }) => {
   const { type } = await params;
@@ -42,7 +48,12 @@ export const GET = createRouteHandler<{ type: string }>(async (request, { params
   }
 
   if (AGGREGATE_REPORTS.has(type)) {
-    const csv = type === "aging" ? await exportPlatformAging() : await exportPlatformMrr();
+    const csv = type === "aging" ? await exportPlatformAging() : type === "mrr" ? await exportPlatformMrr() : await exportPlatformRevenueRecognition();
+    return new Response(csv, { status: 200, headers });
+  }
+
+  if (PERIOD_AGGREGATE_REPORTS.has(type)) {
+    const csv = await exportPlatformTaxCompliance({ periodStart, periodEnd });
     return new Response(csv, { status: 200, headers });
   }
 

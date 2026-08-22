@@ -78,6 +78,7 @@ export default async function AdminBillingPage() {
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline"><Link href="/admin/billing/organizations">Organizations</Link></Button>
             <Button asChild variant="outline"><Link href="/admin/billing/controls">Controls</Link></Button>
+            <Button asChild variant="outline"><Link href="/admin/billing/compliance">Compliance</Link></Button>
             <Button asChild variant="outline"><Link href="/admin/billing/webhooks">Webhooks</Link></Button>
             <Button asChild variant="outline"><Link href="/admin/billing/reports">Reports</Link></Button>
           </div>

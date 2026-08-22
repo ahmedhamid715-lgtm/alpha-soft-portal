@@ -1,4 +1,4 @@
-# Billing webhooks (Module 13)
+# Billing webhooks (Module 13, extended by Module 16)
 
 `POST /api/webhooks/stripe` (`src/app/api/webhooks/stripe/route.ts`) —
 the ONLY entrypoint through which an external Stripe event can change
@@ -111,6 +111,28 @@ functionality should be documented... not prematurely implemented"):
 usage-based billing ingestion, a coupon/promotion engine beyond
 `InvoiceLineItem`'s own discount fields, automated dunning beyond
 Stripe's own default retry schedule, multi-provider failover.
+
+## `invoice.created` line-item capture — extended by Module 16
+
+The SAME `invoice.created` handler above now also captures two pieces
+of REAL Stripe data on every line item that were previously discarded
+or collapsed:
+
+- **`line.period`** → `InvoiceLineItem.servicePeriodStart/End`. Always
+  present on the real Stripe payload (a one-time, non-subscription line
+  has `period.start === period.end`, Stripe's own representation of an
+  instant). See `revenue-recognition.md` for what this feeds.
+- **`line.taxes[]`** → one `InvoiceLineItemTax` row per component,
+  written atomically in the SAME `invoiceLineItem.create()` call (a
+  nested Prisma create, not a second round trip). `InvoiceLineItem.taxAmount`
+  (the rolled-up sum Module 13 already wrote) is UNCHANGED — this is
+  additive detail, not a replacement. See `tax-compliance.md`.
+
+Both are captured going forward only — no backfill for line items
+created before this migration (`20260822173047_revenue_recognition_and_tax_detail`).
+Proven by `billing-webhook-service.test.ts`'s own dedicated Module 16
+regression tests (a real captured case, and a no-period/no-tax case
+proving no crash).
 
 ## Invoice → Payment linkage — a documented best-effort join
 

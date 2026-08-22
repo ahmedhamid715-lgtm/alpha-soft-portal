@@ -142,6 +142,61 @@ describe.skipIf(!isDatabaseConfigured || !isTenantRoleConfigured)("Billing repor
     expect(seenByOrgB.map((e) => e.organizationId)).toEqual([orgBId]);
   });
 
+  it("Module 16 — invoiceRepository.listLineItemsWithDeferredBalance({platform: true}) under Org B's own tenant context never returns Org A's line items", async () => {
+    await seedOrgs();
+    const now = new Date();
+    const periodStart = new Date(now.getTime() + 60 * 60 * 1000);
+    const periodEnd = new Date(now.getTime() + 31 * 24 * 60 * 60 * 1000);
+    for (const [organizationId, total] of [[orgAId, 9000] as const, [orgBId, 4000] as const]) {
+      const account = await withTenantContext({ userId: null, organizationId, isPlatformStaff: true }, (tx) =>
+        billingAccountRepository.create({ id: generateId(), organizationId, currency: "USD", provider: "STRIPE", providerCustomerId: `cus_rls_deferred_${generateId()}` }, tx),
+      );
+      const invoiceNumber = await nextInvoiceNumber();
+      const invoice = await withTenantContext({ userId: null, organizationId, isPlatformStaff: true }, (tx) =>
+        invoiceRepository.create(
+          { id: generateId(), organizationId, billingAccountId: account.id, invoiceNumber, status: "PAID", currency: "USD", subtotal: total, discountTotal: 0, taxTotal: 0, total, amountPaid: total, amountDue: 0, issueDate: now, provider: "STRIPE" },
+          tx,
+        ),
+      );
+      await withTenantContext({ userId: null, organizationId, isPlatformStaff: true }, (tx) =>
+        invoiceRepository.addLineItem({ id: generateId(), invoiceId: invoice.id, description: "RLS deferred test line", quantity: 1, unitAmount: total, subtotal: total, discountAmount: 0, taxAmount: 0, total, servicePeriodStart: periodStart, servicePeriodEnd: periodEnd }, tx),
+      );
+    }
+
+    const seenByOrgB = await withTenantContext({ userId: null, organizationId: orgBId, isPlatformStaff: false }, (tx) => invoiceRepository.listLineItemsWithDeferredBalance({ platform: true }, now, tx));
+    expect(seenByOrgB.map((l) => l.organizationId)).toEqual([orgBId]);
+    expect(seenByOrgB.map((l) => l.total)).toEqual([4000]); // never Org A's 9000
+  });
+
+  it("Module 16 — invoiceRepository.listLineItemTaxesForPeriod({platform: true}) under Org B's own tenant context never returns Org A's InvoiceLineItemTax rows", async () => {
+    await seedOrgs();
+    const now = new Date();
+    for (const [organizationId, amount] of [[orgAId, 700] as const, [orgBId, 150] as const]) {
+      const account = await withTenantContext({ userId: null, organizationId, isPlatformStaff: true }, (tx) =>
+        billingAccountRepository.create({ id: generateId(), organizationId, currency: "USD", provider: "STRIPE", providerCustomerId: `cus_rls_taxdetail_${generateId()}` }, tx),
+      );
+      const invoiceNumber = await nextInvoiceNumber();
+      const invoice = await withTenantContext({ userId: null, organizationId, isPlatformStaff: true }, (tx) =>
+        invoiceRepository.create(
+          { id: generateId(), organizationId, billingAccountId: account.id, invoiceNumber, status: "PAID", currency: "USD", subtotal: 10000, discountTotal: 0, taxTotal: amount, total: 10000 + amount, amountPaid: 10000 + amount, amountDue: 0, issueDate: now, provider: "STRIPE" },
+          tx,
+        ),
+      );
+      await withTenantContext({ userId: null, organizationId, isPlatformStaff: true }, (tx) =>
+        invoiceRepository.addLineItem(
+          { id: generateId(), invoiceId: invoice.id, description: "RLS tax detail test line", quantity: 1, unitAmount: 10000, subtotal: 10000, discountAmount: 0, taxAmount: amount, total: 10000, taxes: [{ id: generateId(), providerTaxRateId: "txr_rls_test", taxabilityReason: "standard_rated", taxBehavior: "exclusive", amount }] },
+          tx,
+        ),
+      );
+    }
+
+    const seenByOrgB = await withTenantContext({ userId: null, organizationId: orgBId, isPlatformStaff: false }, (tx) =>
+      invoiceRepository.listLineItemTaxesForPeriod({ platform: true }, { start: new Date(now.getTime() - 60_000), end: new Date(now.getTime() + 60_000) }, tx),
+    );
+    expect(seenByOrgB.map((t) => t.organizationId)).toEqual([orgBId]);
+    expect(seenByOrgB.map((t) => t.amount)).toEqual([150]); // never Org A's 700
+  });
+
   it("a context with NO organization and NO platform staff flag (fails closed) sees NOTHING, even for {platform: true} scope", async () => {
     await seedOrgs();
     const account = await withTenantContext({ userId: null, organizationId: orgAId, isPlatformStaff: true }, (tx) =>

@@ -1,4 +1,4 @@
-# Financial controls & anomaly detection (Module 15)
+# Financial controls & anomaly detection (Module 15, extended by Module 16)
 
 The billing operational control center (`/admin/billing/controls`,
 `billing.controls.read`) — `billing-diagnostics-service.ts`'s
@@ -45,6 +45,7 @@ instruction). Every rule is independently unit-tested
 | `canceled_without_timestamp` | MEDIUM | `status = CANCELED` AND `canceledAt = null` | All subscriptions |
 | `stale_pending_webhook` | MEDIUM | A `BillingWebhookEvent` still `PENDING` more than 1 hour after receipt | Recent pending events (bounded, `listRecent(200, {status: "PENDING"})`) |
 | `possible_duplicate_payment` | LOW | Two SUCCEEDED payments, same org/amount/currency, within 5 minutes of each other | Payments in the trailing 24 hours only (bounded scan window) |
+| `tax_component_sum_mismatch` (Module 16) | MEDIUM | `InvoiceLineItem.taxAmount` (rolled-up) disagrees with the independently-summed `InvoiceLineItemTax` rows for the same line | Line items on invoices issued in the current month only (bounded scan window) — see `tax-compliance.md` "Where the tax integrity check lives, and why" |
 
 All rules are advisory, surfaced for human review — none is ever
 auto-acted-on (no auto-refund, no auto-correction). Several rules are

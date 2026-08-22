@@ -12,6 +12,9 @@ import { computeMrrByCurrency, type SubscriptionForMrr } from "@/lib/billing/rep
 import { computeAgingReport } from "@/lib/billing/reporting/aging";
 import { subscriptionRepository, type SubscriptionWithPricedItems } from "@/server/repositories/subscription-repository";
 import { getCurrencyExponent } from "@/lib/utils/money";
+import { summarizeRecognition } from "@/lib/billing/recognition/schedule";
+import { summarizeTaxCollected } from "@/lib/billing/tax/compliance";
+import { resolvePeriod, customPeriod } from "@/lib/billing/reporting/period";
 import type { Invoice, Payment, Refund, CreditLedgerEntry } from "@/generated/prisma/client";
 import type { AuthorizationContext } from "@/lib/authorization/context";
 
@@ -255,5 +258,47 @@ export async function exportPlatformMrr(): Promise<string> {
   const byCurrency = computeMrrByCurrency(subscriptions.map(toSubscriptionForMrr));
   const lines = [csvLine(["currency", "mrr", "arr", "subscription_count"])];
   for (const row of byCurrency) lines.push(csvLine([row.currency, moneyColumn(row.mrr, row.currency), moneyColumn(row.arr, row.currency), row.subscriptionCount]));
+  return lines.join("\n");
+}
+
+/**
+ * `billing.reports.export` — Module 16. Deferred-revenue CSV, a
+ * point-in-time balance ("as of now"), the same aggregate-not-streamed
+ * shape `exportPlatformAging()`/`exportPlatformMrr()` already use — this
+ * report's own row count is bounded by currency count, never a
+ * per-invoice scan.
+ */
+export async function exportPlatformRevenueRecognition(): Promise<string> {
+  const context = await requirePermission("billing.reports.export");
+  await auditExport(context, "revenue_recognition", null, {});
+  const asOf = new Date();
+  const rows = await withTenantContext({ userId: null, organizationId: null, isPlatformStaff: true }, (tx) => invoiceRepository.listLineItemsWithDeferredBalance({ platform: true }, asOf, tx));
+  const lines = summarizeRecognition(
+    rows.map((r) => ({ lineItemId: r.id, invoiceId: r.invoiceId, organizationId: r.organizationId, currency: r.currency, amount: r.total, periodStart: r.servicePeriodStart, periodEnd: r.servicePeriodEnd })),
+    asOf,
+  );
+  const csvLines = [csvLine(["currency", "total_billed", "recognized", "deferred", "as_of"])];
+  for (const row of lines) csvLines.push(csvLine([row.currency, moneyColumn(row.totalBilled, row.currency), moneyColumn(row.recognized, row.currency), moneyColumn(row.deferred, row.currency), asOf]));
+  return csvLines.join("\n");
+}
+
+const taxExportSchema = z.object({ periodStart: z.coerce.date().optional(), periodEnd: z.coerce.date().optional() });
+
+/**
+ * `billing.reports.export` — Module 16. Tax-collected CSV, broken down
+ * by currency/taxability reason/provider tax rate reference, for
+ * invoices issued in the requested period (defaults to the current
+ * month, same default `revenue-reporting-service.ts`'s own org-scoped
+ * function already uses when nothing is specified).
+ */
+export async function exportPlatformTaxCompliance(rawInput: unknown): Promise<string> {
+  const context = await requirePermission("billing.reports.export");
+  const input = parseOrThrow(taxExportSchema, rawInput);
+  await auditExport(context, "tax_compliance", null, input);
+  const period = input.periodStart && input.periodEnd ? customPeriod(input.periodStart, input.periodEnd, "UTC") : resolvePeriod("current_month", "UTC", new Date());
+  const rows = await withTenantContext({ userId: null, organizationId: null, isPlatformStaff: true }, (tx) => invoiceRepository.listLineItemTaxesForPeriod({ platform: true }, period, tx));
+  const breakdown = summarizeTaxCollected(rows);
+  const lines = [csvLine(["currency", "taxability_reason", "provider_tax_rate_id", "amount", "component_count"])];
+  for (const row of breakdown) lines.push(csvLine([row.currency, row.taxabilityReason, row.providerTaxRateId, moneyColumn(row.amount, row.currency), row.componentCount]));
   return lines.join("\n");
 }

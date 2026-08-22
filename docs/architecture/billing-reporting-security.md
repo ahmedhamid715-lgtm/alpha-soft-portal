@@ -1,35 +1,41 @@
-# Billing reporting security (Module 15)
+# Billing reporting security (Module 15, extended by Module 16)
 
-The authorization, RLS, and export-security model for every new
-Module 15 surface. See `billing-security.md` (Module 13/14) for the
-mutation-side security model this document doesn't repeat.
+The authorization, RLS, and export-security model for every Module 15
+AND Module 16 reporting/compliance surface. See `billing-security.md`
+(Module 13/14) for the mutation-side security model this document
+doesn't repeat.
 
 ## Permission set
 
-Three new PLATFORM-scope permission keys — not one broad
-`billing.finance` — the same tiered-risk split Module 13's own
-`readPlatform`/`plan.manage`/`refund` three-way split already
-established:
+Four PLATFORM-scope permission keys total (three from Module 15, one
+added by Module 16) — never one broad `billing.finance`, the same
+tiered-risk split Module 13's own `readPlatform`/`plan.manage`/`refund`
+three-way split already established:
 
 | Key | Grants | Why separate |
 |---|---|---|
 | `billing.analytics.read` | View platform-wide MRR/ARR, revenue reporting, AR aging, financial health, trends. Never payment credentials. | The base "see the numbers" capability. |
-| `billing.reports.export` | Export raw report data (invoices/payments/refunds/credits/aging/MRR) as CSV. | Deliberately NARROWER than `analytics.read` — a CSV is portable/exfiltratable in a way an on-screen dashboard isn't, the same read-vs-export risk split `audit.export`/`audit.exportPlatform` already established in Module 08. |
+| `billing.reports.export` | Export raw report data (invoices/payments/refunds/credits/aging/MRR/deferred-revenue/tax) as CSV. | Deliberately NARROWER than `analytics.read`/`compliance.read` — a CSV is portable/exfiltratable in a way an on-screen dashboard isn't, the same read-vs-export risk split `audit.export`/`audit.exportPlatform` already established in Module 08. |
 | `billing.controls.read` | View the operational control center — reconciliation/webhook health, data-consistency diagnostics, anomaly detection. | Diagnostic only; every underlying mutation it links out to (refund, credit, plan change) is independently gated by its OWN existing permission — this key never itself authorizes a write. |
+| `billing.compliance.read` (Module 16) | View platform-wide revenue recognition (deferred/recognized revenue) and tax compliance reporting. Never a tax calculation or filing capability. | A narrower, finance/compliance-specific concern than `analytics.read` — a role that needs day-to-day MRR/aging visibility does not automatically need the platform's own deferred-revenue/tax-liability figures (see role grants below). |
 
-Anomaly/reconciliation-diagnostic visibility was folded INTO
-`billing.controls.read` rather than given a fourth key — there is no
-meaningfully separable risk between "see the anomaly list" and "see the
-webhook health counts"; both are the same diagnostic read.
+Anomaly/reconciliation-diagnostic visibility (including Module 16's own
+`checkTaxComponentSumMismatch()`) was folded INTO `billing.controls.read`
+rather than given a further key — there is no meaningfully separable
+risk between "see the anomaly list" and "see the webhook health
+counts"; both are the same diagnostic read. Export of Module 16's
+compliance data reuses the EXISTING `billing.reports.export` rather
+than a second export key, for the same reasoning — the export risk
+tier (a portable CSV) is identical regardless of which report it is.
 
 ### Role grants
 
-| Role | `analytics.read` | `reports.export` | `controls.read` |
-|---|---|---|---|
-| `platform_owner` | ✓ | ✓ | ✓ |
-| `platform_admin` | ✓ | — | ✓ |
-| `support_admin` | ✓ | — | ✓ |
-| `support_agent` | — | — | — |
+| Role | `analytics.read` | `reports.export` | `controls.read` | `compliance.read` |
+|---|---|---|---|---|
+| `platform_owner` | ✓ | ✓ | ✓ | ✓ |
+| `platform_admin` | ✓ | — | ✓ | ✓ |
+| `support_admin` | ✓ | — | ✓ | — |
+| `support_agent` | — | — | — | — |
 
 `platform_admin` and `support_admin` deliberately do NOT get
 `billing.reports.export` — day-to-day financial visibility and
@@ -38,6 +44,17 @@ full audit-log export) is `platform_owner`-only. Proven directly:
 `billing-intelligence.spec.ts`'s own E2E coverage logs in as
 `support_admin` and confirms the dashboard/controls pages render while
 `/admin/billing/reports` renders the access-denied state.
+
+`support_admin` deliberately does NOT get `billing.compliance.read`,
+unlike `analytics.read`/`controls.read` (which it DOES hold) — a
+"does this role ever actually need it" boundary, not merely a
+data-sensitivity one: MRR/aging/anomalies are all directly useful for
+"is this customer's billing healthy" support triage, while
+deferred-revenue/tax-liability figures are a finance/compliance concern
+with no support-triage use case. Proven by
+`billing-compliance.spec.ts`. `platform_admin` DOES get it — plausibly
+assembles compliance materials day-to-day, a real, if less frequent,
+operational need `support_admin`'s role doesn't share.
 
 ### Organization-scoped access, unchanged
 
@@ -100,6 +117,16 @@ NEITHER an organization NOR the platform-staff flag sees NOTHING at
 all, even for a `{platform: true}` scope request — RLS fails closed,
 not open.
 
+**Module 16 extends this same proof two hops deep.** `InvoiceLineItemTax`
+is transitively owned via `invoice_line_item_id` → `invoice_id` →
+`organization_id` — the deepest transitive-ownership chain in this
+codebase. `billing-reporting-rls.test.ts`'s own Module 16 tests prove
+`invoiceRepository.listLineItemsWithDeferredBalance({platform: true})`
+and `listLineItemTaxesForPeriod({platform: true})` under Org B's tenant
+context return ONLY Org B's own rows, never Org A's — the two-hop
+`EXISTS` policy (`invoice_line_item_taxes` → `invoice_line_items` →
+`invoices`) holds exactly as reliably as the one-hop policies above.
+
 **Reports are never a way around RLS.** Every reporting/export function
 is a thin wrapper: `requirePermission()` first, then the SAME
 tenant-scoped repository calls the rest of the codebase uses. No
@@ -124,10 +151,13 @@ SQL text in the response body.
 - **Streaming, never full-materialization.** Every row-level export
   (invoices/payments/refunds/credits) streams via `streamCsv()`
   (`csv.ts`) — cursor-batched (500 rows/batch), never the full result
-  set held in server memory at once. The two aggregate exports (AR
-  aging, MRR) are small enough (one row per bucket/currency, never more
-  than a few dozen rows) to build inline without the streaming
-  machinery a naturally-small report doesn't need.
+  set held in server memory at once. The aggregate exports (AR aging,
+  MRR, and Module 16's own deferred-revenue and tax-compliance exports)
+  are small enough (one row per bucket/currency/taxability-reason, never
+  more than a few dozen rows given each is fed by the same naturally-
+  bounded queries their own on-screen reports use — see
+  `revenue-recognition.md`/`tax-compliance.md`) to build inline without
+  the streaming machinery a naturally-small report doesn't need.
 - **A real bug found and fixed during this module's own testing:** a
   `ReadableStream`'s `pull()` callback runs LAZILY, invoked by whoever
   actually reads the stream — AFTER the exporting function itself has

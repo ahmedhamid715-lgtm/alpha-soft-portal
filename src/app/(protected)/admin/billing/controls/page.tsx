@@ -46,6 +46,7 @@ export default async function AdminBillingControlsPage() {
     ...report.consistency.creditRelationAnomalies,
     ...report.consistency.subscriptionStateAnomalies,
     ...report.consistency.duplicatePaymentAnomalies,
+    ...report.consistency.taxComponentAnomalies,
   ].sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
 
   return (
