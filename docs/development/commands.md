@@ -14,7 +14,7 @@
 | `npm run db:generate` | Regenerate the Prisma client (`src/generated/prisma`) — also runs automatically via `postinstall` |
 | `npm run db:migrate` | `prisma migrate dev` — create/apply a migration locally |
 | `npm run db:deploy` | `prisma migrate deploy` — apply pending migrations in CI/production, no prompts |
-| `npm run db:seed` | Run `prisma/seed.ts` — creates three dev accounts (owner/support/customer roles), see `authentication.md` |
+| `npm run db:seed` | Run `prisma/seed.ts` — seeds dev fixtures across every module (roles/permissions, organizations, billing, notifications, ...), see `authentication.md`. **Re-run this after editing `lib/authorization/{permissions,roles}.ts`** — role/permission grants are read from the DB `role_permissions` table at runtime, not live from those TypeScript files; a permission/role change has no real effect until reseeded (a real, repeated gotcha across Modules 16/17). |
 | `npm run db:studio` | Open Prisma Studio |
 
 ## Adding a shadcn/ui component

@@ -357,9 +357,28 @@ export const PERMISSION_CATALOG = {
   "settings.read": permission("settings", "read", "ORGANIZATION", "View advanced organization settings.", true),
   "settings.update": permission("settings", "update", "ORGANIZATION", "Change advanced organization settings.", true),
 
-  // --- ai (ORGANIZATION, reserved — Module 17/33 AI Core)
-  "ai.use": permission("ai", "execute", "ORGANIZATION", "Use AI-assisted features.", true, "ai.use"),
-  "ai.manage": permission("ai", "manage", "ORGANIZATION", "Configure AI features/providers for this organization.", true),
+  // --- ai (Module 17 — AI Infrastructure & Intelligence Foundation).
+  // `ai.use`/`ai.manage` were reserved by Module 05 with the module-
+  // numbering ambiguity "17/33" in their own comment — resolved: Module
+  // 17 is the real, authoritative claimant, `reserved` flips to `false`
+  // now that real `requirePermission()` call sites exist
+  // (`ai-conversation-service.ts`). `ai.observability` is NEW —
+  // PLATFORM-scope, mirroring `notifications.observability` exactly
+  // (see that permission's own doc comment): platform staff need
+  // aggregate, cross-organization AI usage/cost visibility for the same
+  // operational-cost-monitoring reason Module 09 needed delivery
+  // observability, never a grant of any one organization's actual
+  // conversation content.
+  "ai.use": permission("ai", "execute", "ORGANIZATION", "Use AI-assisted features (start/continue a support-chat conversation).", false, "ai.use"),
+  "ai.manage": permission("ai", "manage", "ORGANIZATION", "View this organization's own AI usage/cost, and close any conversation in the organization (oversight beyond one's own conversations).", false),
+  "ai.observability": permission(
+    "ai",
+    "read",
+    "PLATFORM",
+    "View AI usage/cost across organizations (operational metadata — token counts, estimated cost, conversation counts — never a grant of any organization's actual conversation content).",
+    false,
+    "ai.observability",
+  ),
 
   // --- integrations (ORGANIZATION, reserved — Module 54)
   "integrations.read": permission("integrations", "read", "ORGANIZATION", "View configured integrations.", true),

@@ -69,6 +69,8 @@ const PLATFORM_FULL: PermissionKey[] = [
   "analytics.read",
   "reports.read",
   "reports.export",
+  // Module 17 — same reasoning as notifications.observability above.
+  "ai.observability",
 ];
 
 const ORGANIZATION_FULL: PermissionKey[] = [
@@ -192,6 +194,10 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     // figures are a finance/compliance concern with no support-triage
     // use case — a "does this role ever actually need it" boundary,
     // not merely a data-sensitivity one.
+    // Module 17 — `ai.observability` is ALSO granted: same "aggregate
+    // operational metadata, not any one customer's actual content"
+    // reasoning as `notifications.observability`/`billing.analytics.read`
+    // above.
     permissions: [
       "users.read",
       "organizations.read",
@@ -203,6 +209,7 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "billing.readPlatform",
       "billing.analytics.read",
       "billing.controls.read",
+      "ai.observability",
     ],
   },
   support_agent: {
@@ -254,6 +261,10 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     name: "Member",
     description: "Standard working staff — can act on tickets/projects but not manage other people or settings.",
     scope: "ORGANIZATION",
+    // Module 17 — `ai.use` (standard working staff can use the AI
+    // support-chat assistant) but NOT `ai.manage` (org-wide conversation
+    // oversight stays owner/admin-only, same "manage" tier `ORGANIZATION_FULL`
+    // already reserves for owner/admin elsewhere).
     permissions: [
       "tickets.read",
       "tickets.create",
@@ -262,6 +273,7 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "projects.create",
       "projects.update",
       "analytics.read",
+      "ai.use",
     ],
   },
   viewer: {

@@ -43,14 +43,20 @@ const serverEnvSchema = z.object({
   // must be a high-entropy random string (32+ bytes).
   AUTH_SECRET: z.string().min(32).optional(),
 
-  // --- AI (Module 33 — AI Core) ---
+  // --- AI (Module 17 — AI Infrastructure & Intelligence Foundation) ---
   // Claude is the primary provider (see shared/claude-api skill conventions
   // used elsewhere in this project — always the official Anthropic SDK).
+  // Reserved by Module 01; claimed by Module 17's real
+  // `lib/ai/provider/anthropic/` implementation. The module-numbering
+  // ambiguity this comment previously carried ("Module 33 — AI Core")
+  // is resolved — Module 17 is the real, authoritative claimant.
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
-  // OpenAI is a planned secondary provider, decided during Module 01 but
-  // implemented in Module 33 — these are reserved now purely so the env
-  // schema doesn't need revisiting when that lands. No OpenAI SDK code
-  // exists yet; do not add integration logic in Module 01.
+  ANTHROPIC_CHAT_MODEL: z.string().min(1).optional(),
+  // OpenAI remains a reserved, NOT-yet-implemented secondary provider —
+  // still no OpenAI SDK code anywhere in this codebase (see
+  // `lib/ai/provider/interface.ts` "Why only one provider is
+  // implemented"). Reserved so the env schema doesn't need revisiting
+  // when a real second caller justifies it.
   OPENAI_API_KEY: z.string().min(1).optional(),
   OPENAI_BASE_URL: z.string().url().optional(),
   OPENAI_CHAT_MODEL: z.string().min(1).optional(),
@@ -130,7 +136,7 @@ export const serverEnv = loadServerEnv();
  */
 export const isDatabaseConfigured = Boolean(serverEnv.DATABASE_URL);
 
-/** Whether the Anthropic API key is configured (relevant from Module 33 on). */
+/** Whether the Anthropic API key is configured — gates every real call in `lib/ai/provider/anthropic/client.ts` (Module 17), the same "safe error when unconfigured, never a crash" pattern `isStripeConfigured` already established. */
 export const isAnthropicConfigured = Boolean(serverEnv.ANTHROPIC_API_KEY);
 
 /**

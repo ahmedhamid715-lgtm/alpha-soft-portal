@@ -210,8 +210,8 @@ role's grant to actually gate (see "Reserved permissions" below).
 | reports.export *(reserved)* | ✓ | ✓ |  |  | ✓ | ✓ |  |  |  |  |
 | settings.read *(reserved)* | ✓ | ✓ |  |  | ✓ | ✓ |  |  |  |  |
 | settings.update *(reserved)* | ✓ | ✓ |  |  | ✓ | ✓ |  |  |  |  |
-| ai.use *(reserved)* |  |  |  |  | ✓ | ✓ |  |  |  |  |
-| ai.manage *(reserved)* |  |  |  |  | ✓ | ✓ |  |  |  |  |
+| ai.use *(no longer reserved as of Module 17 — also granted to `member`; see ai-infrastructure.md)* |  |  |  |  | ✓ | ✓ |  |  |  |  |
+| ai.manage *(no longer reserved as of Module 17)* |  |  |  |  | ✓ | ✓ |  |  |  |  |
 | integrations.read *(reserved)* |  |  |  |  | ✓ | ✓ |  |  |  |  |
 | integrations.manage *(reserved)* |  |  |  |  | ✓ | ✓ |  |  |  |  |
 | audit.read |  |  |  |  | ✓ | ✓ |  |  |  |  |
@@ -238,16 +238,22 @@ for (const key of PERMISSION_KEYS) {
 ### Reserved permissions
 
 `tickets.*`, `projects.*`, `billing.*`, `reports.*`, `settings.*` (beyond
-`organizations.update`'s basic fields), `ai.*`, and `integrations.*` are
-seeded (so a future module's role-permission assignments have a real
-catalog row to reference — and so this module's role definitions already
+`organizations.update`'s basic fields), and `integrations.*` are seeded
+(so a future module's role-permission assignments have a real catalog
+row to reference — and so this module's role definitions already
 express sensible defaults for them) but have no `requirePermission()`
 call anywhere in Module 05's own shipped code — no `Ticket`, `Project`,
-`Invoice`, `Report`, `AiAction`, or `Integration` resource exists yet to
-check against. Module 30 (Support), future project-delivery modules,
-Module 17/33 (AI), and Module 54 (Integrations) are the expected first
-real callers — see "Future module compatibility" in this module's
-completion report.
+`Invoice`, `Report`, or `Integration` resource exists yet to check
+against. Module 30 (Support), future project-delivery modules, and
+Module 54 (Integrations) are the expected first real callers — see
+"Future module compatibility" in this module's completion report.
+
+`ai.use`/`ai.manage` were ALSO seeded here as reserved placeholders
+(with this section's own "Module 17/33" numbering ambiguity at the
+time) — no longer reserved. Module 17 (AI Infrastructure &
+Intelligence Foundation) claimed both with real `requirePermission()`
+call sites (`ai-conversation-service.ts`) and added a third,
+platform-scope `ai.observability`. See `ai-infrastructure.md`.
 
 `audit.read`/`audit.export`/`audit.readPlatform`/`audit.exportPlatform`
 were seeded here as reserved placeholders by this module, but are no

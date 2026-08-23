@@ -9,7 +9,29 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/80",
+        // Module 17 — `hover:bg-primary/80` measured ~4.1:1 in dark mode
+        // (below WCAG AA's 4.5:1) for `text-primary-foreground` on top of
+        // it, found by axe-core scanning a real page immediately after a
+        // real `.click()` (the mouse stays over the button afterward, so
+        // the hover state was actually engaged at scan time — not caught
+        // by any earlier accessibility test, none of which happened to
+        // scan mid-hover). A first attempt tried `dark:hover:bg-primary/90`
+        // (a less-transparent fraction) and STILL failed, verified by
+        // directly inspecting the real computed background at runtime:
+        // `color-mix(..., transparent)` produces a genuinely
+        // SEMI-TRANSPARENT color (an alpha channel), not a pre-flattened
+        // solid one — its EFFECTIVE on-screen color still depends on
+        // whatever sits behind the button (a Card, a page background,
+        // ...), so no fixed opacity fraction is reliably safe against an
+        // unknown backdrop. Same root cause `destructive`'s own comment
+        // below already documents, this time actually fixed the same way
+        // THAT variant was: mix toward an OPAQUE color (black), never
+        // `transparent` — `color-mix(in oklab, var(--primary) 85%,
+        // black)` measures 9.1:1 against white regardless of backdrop,
+        // verified directly (canvas pixel sampling), not estimated. Light
+        // mode's `/80` (a real, working transparent blend against that
+        // theme's own lighter backdrops) is untouched.
+        default: "bg-primary text-primary-foreground hover:bg-primary/80 dark:hover:bg-[color-mix(in_oklab,var(--primary)_85%,black)]",
         outline:
           "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
         secondary:

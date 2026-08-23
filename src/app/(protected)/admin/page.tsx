@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Users, Building2, ShieldCheck, Bell, KeyRound, CreditCard, Tags } from "lucide-react";
+import { Users, Building2, ShieldCheck, Bell, KeyRound, CreditCard, Tags, Bot } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,6 +16,7 @@ const TOOLS = [
   { href: "/admin/roles", label: "Roles & permissions", description: "Platform system roles and what each one grants.", icon: KeyRound, permission: "roles.read" as const },
   { href: "/admin/billing", label: "Billing", description: "Platform-wide financial intelligence — MRR, revenue, receivables, financial health.", icon: CreditCard, permission: "billing.analytics.read" as const },
   { href: "/admin/plans", label: "Plans", description: "The platform-wide plan catalog.", icon: Tags, permission: "billing.plan.manage" as const },
+  { href: "/admin/ai", label: "AI usage", description: "Platform-wide AI message/token/cost activity, by organization.", icon: Bot, permission: "ai.observability" as const },
 ];
 
 /**

@@ -214,6 +214,30 @@ palette) opened. Current state: **zero violations** across all of those.
 Getting there found several real, non-obvious bugs worth knowing about
 before adding new components:
 
+> **`page.emulateMedia({ colorScheme })` does NOT switch this app's
+> theme — found by Module 17, applies to every accessibility spec ever
+> written against this codebase, including all the ones referenced
+> below.** `ThemeProvider` (`components/theme-provider.tsx`) configures
+> `next-themes` with `enableSystem={false}`; with system detection
+> disabled, next-themes' own blocking script never consults
+> `prefers-color-scheme` at all — the theme is always whatever
+> `localStorage['theme']` holds, defaulting to `defaultTheme="dark"`
+> when unset (a fresh Playwright context has none). Every existing
+> `emulateMedia`-driven "(light)" scan in this codebase has actually
+> been re-scanning dark mode a second time. The real mechanism (and the
+> one used in `tests/e2e/ai-assistant-accessibility.spec.ts`, the first
+> spec file to use it) is `page.evaluate(() => localStorage.setItem
+> ('theme', scheme))` before each navigation — the same thing the real
+> `ThemeToggle` component's `setTheme()` call ultimately writes.
+> **This has not been retroactively fixed in any spec file predating
+> Module 17** — a real, worthwhile follow-up module/task, not done here
+> to avoid an unrelated mass rewrite. Two genuine light-mode contrast
+> bugs surfaced immediately once light mode was actually exercised for
+> the first time (`--light-text-muted`, and a `Button` dark-mode hover
+> state found the same session — see `ai-infrastructure.md`'s own
+> "Real bugs found" section for the full account) — there may be more,
+> undiscovered simply because light mode was never really checked.
+
 - **`role="combobox"` doesn't get an accessible name from its visible
   text.** Unlike a plain `<button>`, `combobox` isn't in ARIA's
   name-from-content role list — `Combobox`'s trigger needs an explicit

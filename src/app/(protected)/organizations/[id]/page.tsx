@@ -175,6 +175,16 @@ export default async function OrganizationDetailPage({ params }: PageProps<"/org
               </CardContent>
             </Card>
           ) : null}
+          {context.permissions.has("ai.use") ? (
+            <Card>
+              <CardContent>
+                <Link href={`/organizations/${id}/assistant`} className="flex flex-col gap-1 hover:underline">
+                  <span className="font-medium">Assistant</span>
+                  <span className="text-sm text-muted-foreground">Ask the AI support assistant</span>
+                </Link>
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
       </section>
     </div>

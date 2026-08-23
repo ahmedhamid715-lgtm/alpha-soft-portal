@@ -147,6 +147,11 @@ model Organization {
   invoices            Invoice[]
   payments            Payment[]
   creditLedgerEntries CreditLedgerEntry[]
+  /// Module 17 — this organization's AI support-chat conversations.
+  /// `Cascade`, same shape as the billing relations above (real,
+  /// organization-owned business data — not evidentiary like
+  /// `auditEvents`, which stay `SetNull`).
+  aiConversations AiConversation[]
 
   @@index([status])
   @@index([isPlatform])
@@ -236,6 +241,12 @@ model User {
   /// personally issued/adjusted. Same `SetNull` reasoning as
   /// `refundsInitiated` above.
   creditLedgerEntriesInitiated CreditLedgerEntry[]
+  /// Module 17 — AI support-chat conversations this user has started.
+  /// `Cascade` — same "User is never hard-deleted in real operation;
+  /// this FK matters for test-fixture cleanup ergonomics, not a real
+  /// production path" reasoning as `notifications` above, and a
+  /// conversation with no owning user is meaningless (same logic).
+  aiConversations AiConversation[]
 
   @@index([status])
   @@map("users")
@@ -827,6 +838,13 @@ enum AuditCategory {
   /// that already justified SECURITY/COMPLIANCE as their own categories
   /// rather than variants of DATA.
   BILLING
+  /// Module 17 — AI conversation/usage events. Its own category for the
+  /// same reason BILLING is: an AI subsystem's audit trail (who started
+  /// a conversation, when a per-organization rate limit was hit) is a
+  /// genuinely different concern from ORGANIZATION/ADMINISTRATION and
+  /// independently filterable/reportable, especially given AI usage
+  /// carries a real per-call cost.
+  AI
 
   @@map("audit_category")
 }
@@ -1707,4 +1725,105 @@ model BillingWebhookEvent {
   @@unique([provider, providerEventId])
   @@index([status, receivedAt])
   @@map("billing_webhook_events")
+}
+
+// =============================================================================
+// AI (Module 17 — AI Infrastructure & Intelligence Foundation)
+// =============================================================================
+//
+// A real, working AI support-chat capability (Anthropic's Claude,
+// through the provider abstraction in `lib/ai/provider/`) — not tool-
+// calling/agentic actions on the customer's behalf (that's a
+// structurally different, higher-risk surface reserved for a future
+// "AI Tool System" module — see `AIActionCard` in
+// `components/shared/ai-chat.tsx`, whose own doc comment already
+// anticipates this boundary) and not grounded in a specific
+// organization's live account/billing data (no function-calling into
+// this platform's own data in this module — a real, deliberate scope
+// boundary, not an oversight; see `ai-infrastructure.md` "What this
+// does NOT claim to be"). See that same doc for the full architecture.
+
+/// Organization-owned (direct `organization_id`, standard tenant-
+/// isolation RLS — the same shape `Subscription`/`Invoice` already use)
+/// AND user-owned (`user_id` — the conversation's starter). RLS handles
+/// the ORGANIZATION boundary (never cross-tenant); the finer-grained
+/// "only this user, or `ai.manage`/`ai.observability`, may view this
+/// specific conversation" rule is an APPLICATION-layer check, the same
+/// "RLS for tenant isolation, service layer for finer business rules"
+/// layering Module 10's own user-detail activity panel already
+/// established — RLS is not the right tool for a WITHIN-tenant
+/// visibility rule that depends on which permission the caller holds.
+model AiConversation {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  userId         String @map("user_id") @db.Uuid
+
+  status AiConversationStatus @default(OPEN)
+  /// Derived from the first user message (truncated) at creation time —
+  /// display convenience only, never re-derived/edited afterward.
+  title  String?
+
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  closedAt  DateTime? @map("closed_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages     AiMessage[]
+
+  @@index([organizationId, updatedAt])
+  @@index([userId, updatedAt])
+  @@map("ai_conversations")
+}
+
+enum AiConversationStatus {
+  OPEN
+  CLOSED
+
+  @@map("ai_conversation_status")
+}
+
+/// Transitively organization-owned, through `conversation_id` (RLS via
+/// an EXISTS subquery, the same pattern `InvoiceLineItem` already uses
+/// one hop up). Deliberately IMMUTABLE — no `updatedAt`, no UPDATE/
+/// DELETE RLS policy: a chat transcript, like an audit event, is a
+/// record of what was actually said, not something to revise after the
+/// fact. Usage/cost fields are denormalized directly onto the message
+/// row (only ever populated for `ASSISTANT` messages) rather than a
+/// separate usage-log table — one real API call maps to exactly one
+/// `ASSISTANT` message, so a second table would just be a 1:1 join with
+/// no independent lifecycle of its own (contrast with Module 16's
+/// `InvoiceLineItemTax`, which genuinely needs its own table because ONE
+/// line item can carry MULTIPLE simultaneous tax components).
+model AiMessage {
+  id             String       @id @db.Uuid
+  conversationId String       @map("conversation_id") @db.Uuid
+  role           AiMessageRole
+  content        String
+
+  /// Real Anthropic API response fields — `null` for USER messages.
+  model             String? @map("model")
+  inputTokens       Int?    @map("input_tokens")
+  outputTokens      Int?    @map("output_tokens")
+  /// Minor units (matches this codebase's money convention everywhere
+  /// else) — an ESTIMATE from a locally-maintained pricing table, not a
+  /// verified invoice figure. See `ai-infrastructure.md` "Cost
+  /// estimation — an honest limitation."
+  costMinorUnits    Int?    @map("cost_minor_units")
+  latencyMs         Int?    @map("latency_ms")
+  providerMessageId String? @map("provider_message_id")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("ai_messages")
+}
+
+enum AiMessageRole {
+  USER
+  ASSISTANT
+
+  @@map("ai_message_role")
 }

@@ -2,8 +2,9 @@ import "server-only";
 
 /**
  * Rate-limit abstraction (spec sections 18 & 27). No surface in Module 01
- * actually needs rate limiting yet (there's no public API, no login form,
- * no AI chat), so this ships as an interface plus a no-op implementation —
+ * actually needed rate limiting yet (there was no public API, no login
+ * form, no AI chat), so this shipped as an interface plus a no-op
+ * implementation —
  * enough for future route handlers to depend on the *shape* now and get a
  * real backend (Upstash Redis is the natural fit, given lib/platform/cache
  * will likely also want Redis) swapped in the moment a module needs it,
@@ -125,3 +126,17 @@ export const invitationRateLimiter: RateLimiter = new InMemoryRateLimiter(20, 60
  * abuse; see notification-security.md "Rate limiting."
  */
 export const notificationRateLimiter: RateLimiter = new InMemoryRateLimiter(60, 5 * 60 * 1000);
+
+/**
+ * Module 17 — AI chat messages. Same `InMemoryRateLimiter` class, a new
+ * instance/key namespace — not a fourth rate-limiting implementation.
+ * 30 messages per hour, keyed by `` `ai:${organizationId}` `` (per-
+ * organization, not per-user — the real abuse/cost surface is an
+ * organization's TOTAL AI spend, the same "the org is the cost-bearing
+ * unit" reasoning `invitationRateLimiter` already established for its
+ * own domain). A real, if simple, cost-protection guardrail — see
+ * `ai-infrastructure.md` "Known limitations" for the same in-memory,
+ * single-instance caveat `authRateLimiter`'s own doc comment already
+ * discloses.
+ */
+export const aiRateLimiter: RateLimiter = new InMemoryRateLimiter(30, 60 * 60 * 1000);

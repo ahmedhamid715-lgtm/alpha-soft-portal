@@ -161,6 +161,16 @@ export const AUDIT_CATALOG = {
   "notification.delivery.failed": action("SYSTEM", "A notification delivery attempt reached a terminal failure state."),
   "notification.test.sent": action("ADMINISTRATION", "Platform staff sent a test notification to verify provider configuration."),
   "notification.provider.changed": action("ADMINISTRATION", "The configured email provider was changed.", true),
+
+  // --- Module 17 — AI support chat. Individual messages are NOT
+  // audited (the AiMessage table itself is the full, durable transcript
+  // — audit isn't a second copy of it, the same "audit the outcome, not
+  // every routine action" discipline `billing.reconciliation.divergence_detected`
+  // already establishes). Conversation lifecycle and rate-limit denials
+  // ARE audited — real, business/security-significant events.
+  "ai.conversation.started": action("AI", "A user started a new AI support-chat conversation."),
+  "ai.conversation.closed": action("AI", "An AI support-chat conversation was closed."),
+  "ai.rate_limit.exceeded": action("AI", "An organization's AI message rate limit was exceeded — the message was rejected before any provider call was made."),
 } as const satisfies Record<string, AuditActionDefinition>;
 
 export type AuditActionKey = keyof typeof AUDIT_CATALOG;

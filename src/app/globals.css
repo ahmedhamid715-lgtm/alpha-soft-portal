@@ -53,9 +53,23 @@
      — not exempt as "large text"). Found running axe-core against a real
      page in light mode during Module 04, not by inspection — Module 02's
      own light-theme scans apparently never hit this exact text/surface
-     pairing. #77717f is the same hue, darkened until it clears 4.5:1
-     (4.72:1) with a real margin, not just barely passing. */
-  --light-text-muted: #77717f;
+     pairing. Module 04 then picked #77717f (darkened until it cleared
+     4.5:1 against the white CARD surface specifically, at 4.72:1) — but
+     `--light-bg` (#faf9fc, the PAGE background, not `--light-surface`'s
+     pure white) is slightly darker, and muted text sitting directly on
+     it (e.g. a `PageHeader` description, outside any Card) only reached
+     4.49:1 there — under 4.5, not caught before because NO accessibility
+     spec in this codebase actually exercised light mode at all until
+     Module 17 (its own `page.emulateMedia({colorScheme})` calls turned
+     out to be a no-op against this app's `next-themes` config —
+     `enableSystem={false}` means the theme is ALWAYS whatever
+     `localStorage` says, never OS preference; see
+     `ai-assistant-accessibility.spec.ts`'s own top comment for the full
+     finding). #6d6775 is the same hue, darkened further until it clears
+     4.5:1 against BOTH real light-mode surfaces with a genuine margin
+     (5.20:1 against `--light-bg`, 5.46:1 against `--light-surface`),
+     not just the one that happened to be tested last time. */
+  --light-text-muted: #6d6775;
 
   /* --- 1. Primitives: dark theme surfaces beyond the base four --- */
   --dark-surface-2: #241530;
