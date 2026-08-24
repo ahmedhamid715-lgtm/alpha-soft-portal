@@ -52,14 +52,25 @@ const serverEnvSchema = z.object({
   // is resolved — Module 17 is the real, authoritative claimant.
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
   ANTHROPIC_CHAT_MODEL: z.string().min(1).optional(),
-  // OpenAI remains a reserved, NOT-yet-implemented secondary provider —
-  // still no OpenAI SDK code anywhere in this codebase (see
+  // OpenAI — as a CHAT provider, still reserved/not implemented (no
+  // second `AiChatProvider` adapter exists — see
   // `lib/ai/provider/interface.ts` "Why only one provider is
-  // implemented"). Reserved so the env schema doesn't need revisiting
-  // when a real second caller justifies it.
+  // implemented"). As an EMBEDDING provider, claimed by Module 18 (AI
+  // Knowledge, Context & Retrieval Infrastructure) — `OPENAI_API_KEY`
+  // is the same key, genuinely shared across both potential uses,
+  // exactly like `ANTHROPIC_API_KEY` would be if this codebase ever
+  // added Claude-based embeddings. See
+  // `lib/knowledge/embedding/openai/`.
   OPENAI_API_KEY: z.string().min(1).optional(),
   OPENAI_BASE_URL: z.string().url().optional(),
   OPENAI_CHAT_MODEL: z.string().min(1).optional(),
+  // Defaults to `text-embedding-3-small` (1536 dimensions) if unset —
+  // see `lib/knowledge/embedding/openai/client.ts`. Changing this to a
+  // model with a DIFFERENT dimension requires a new migration (the
+  // `knowledge_embeddings.vector` column is a fixed-dimension pgvector
+  // type) — see `docs/architecture/retrieval.md` "Embedding dimension
+  // is a schema decision, not a config one."
+  OPENAI_EMBEDDING_MODEL: z.string().min(1).optional(),
 
   // --- Email (Module 09 — Notification & Communication Infrastructure) ---
   // Selects the `EmailProvider` implementation (`lib/mail/mailer.ts`).
@@ -138,6 +149,9 @@ export const isDatabaseConfigured = Boolean(serverEnv.DATABASE_URL);
 
 /** Whether the Anthropic API key is configured — gates every real call in `lib/ai/provider/anthropic/client.ts` (Module 17), the same "safe error when unconfigured, never a crash" pattern `isStripeConfigured` already established. */
 export const isAnthropicConfigured = Boolean(serverEnv.ANTHROPIC_API_KEY);
+
+/** Whether OpenAI is configured for embeddings — gates every real call in `lib/knowledge/embedding/openai/client.ts` (Module 18), the same pattern as `isAnthropicConfigured` above. Independent of any future OpenAI *chat* provider decision — this flag is specifically about the embedding call path. */
+export const isOpenAiConfigured = Boolean(serverEnv.OPENAI_API_KEY);
 
 /**
  * Whether Stripe is configured at all (Module 13). Billing service

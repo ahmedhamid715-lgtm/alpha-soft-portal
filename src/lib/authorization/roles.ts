@@ -71,6 +71,8 @@ const PLATFORM_FULL: PermissionKey[] = [
   "reports.export",
   // Module 17 — same reasoning as notifications.observability above.
   "ai.observability",
+  // Module 18 — same reasoning as ai.observability above.
+  "knowledge.observability",
 ];
 
 const ORGANIZATION_FULL: PermissionKey[] = [
@@ -107,6 +109,14 @@ const ORGANIZATION_FULL: PermissionKey[] = [
   "settings.update",
   "ai.use",
   "ai.manage",
+  // Module 18 — owner/admin get full knowledge management (create/
+  // disable/archive sources, ingest/re-index/delete documents, and
+  // retrieval over CONFIDENTIAL/RESTRICTED sources) plus ordinary read/
+  // retrieval — see `manager`/`member`/`viewer` below for the narrower
+  // grants explicit additions give the rest of the organization.
+  "knowledge.source.read",
+  "knowledge.retrieve",
+  "knowledge.source.manage",
   "integrations.read",
   "integrations.manage",
 ];
@@ -144,6 +154,10 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "billing.reports.export",
       "billing.controls.read",
       "billing.compliance.read",
+      // Module 18 — curating Alpha OS's own platform-level knowledge
+      // (product docs, policies) — see platform_admin's own comment
+      // below for why this is narrower than `PLATFORM_FULL`.
+      "knowledge.platform.manage",
     ],
   },
   platform_admin: {
@@ -170,7 +184,21 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     // plausibly assembles compliance materials day-to-day (see that
     // permission's own doc comment for why this tier differs from
     // support_admin below, which does NOT get it).
-    permissions: [...PLATFORM_FULL, "billing.readPlatform", "billing.plan.manage", "billing.credit.manage", "billing.analytics.read", "billing.controls.read", "billing.compliance.read"],
+    // Module 18 — `knowledge.platform.manage` IS granted here (an admin
+    // plausibly curates platform docs day-to-day, the same
+    // `billing.compliance.read`-tier reasoning already applied to
+    // platform_admin above) — deliberately NOT held by `support_admin`
+    // (see that role's own comment).
+    permissions: [
+      ...PLATFORM_FULL,
+      "billing.readPlatform",
+      "billing.plan.manage",
+      "billing.credit.manage",
+      "billing.analytics.read",
+      "billing.controls.read",
+      "billing.compliance.read",
+      "knowledge.platform.manage",
+    ],
   },
   support_admin: {
     key: "support_admin",
@@ -198,6 +226,13 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     // operational metadata, not any one customer's actual content"
     // reasoning as `notifications.observability`/`billing.analytics.read`
     // above.
+    // Module 18 — `knowledge.observability` is ALSO granted, same
+    // reasoning. Deliberately NOT `knowledge.platform.manage` — curating
+    // Alpha OS's own product docs/policies is an operational-content
+    // action reserved for platform_owner/platform_admin, the same
+    // "support triage needs visibility, not content-management power"
+    // line `billing.reports.export`/`billing.compliance.read` already
+    // draw for this role.
     permissions: [
       "users.read",
       "organizations.read",
@@ -210,6 +245,7 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "billing.analytics.read",
       "billing.controls.read",
       "ai.observability",
+      "knowledge.observability",
     ],
   },
   support_agent: {
@@ -254,6 +290,12 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "projects.update",
       "analytics.read",
       "reports.read",
+      // Module 18 — day-to-day working staff can browse AND retrieve
+      // (not just browse) — a manager's own working content (tickets/
+      // projects) plausibly benefits from grounded knowledge search the
+      // same way `ai.use` already extends to `member`.
+      "knowledge.source.read",
+      "knowledge.retrieve",
     ],
   },
   member: {
@@ -274,6 +316,10 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "projects.update",
       "analytics.read",
       "ai.use",
+      // Module 18 — same audience as `ai.use` immediately above (standard
+      // working staff, not oversight-tier `knowledge.source.manage`).
+      "knowledge.source.read",
+      "knowledge.retrieve",
     ],
   },
   viewer: {
@@ -281,7 +327,13 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     name: "Viewer",
     description: "Read-only access — no create/update/delete on anything.",
     scope: "ORGANIZATION",
-    permissions: ["tickets.read", "projects.read", "analytics.read", "reports.read"],
+    // Module 18 — `knowledge.source.read` only, NOT `knowledge.retrieve`:
+    // browsing what sources/documents exist is passive reading (the same
+    // tier as `tickets.read`/`projects.read` this role already holds);
+    // running a retrieval query is a real, rate-limited, cost-bearing AI-
+    // adjacent OPERATION, not a passive read — the same line `ai.use`
+    // already draws by excluding this role entirely.
+    permissions: ["tickets.read", "projects.read", "analytics.read", "reports.read", "knowledge.source.read"],
   },
   customer: {
     key: "customer",

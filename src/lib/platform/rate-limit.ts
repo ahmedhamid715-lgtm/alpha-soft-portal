@@ -140,3 +140,21 @@ export const notificationRateLimiter: RateLimiter = new InMemoryRateLimiter(60, 
  * discloses.
  */
 export const aiRateLimiter: RateLimiter = new InMemoryRateLimiter(30, 60 * 60 * 1000);
+
+/**
+ * Module 18 — knowledge retrieval queries. Same `InMemoryRateLimiter`
+ * class, a new instance/key namespace — not a fifth rate-limiting
+ * implementation. 60 retrievals per hour, keyed by
+ * `` `knowledge:${organizationId}` `` (per-organization, the same
+ * "the org is the cost-bearing unit" reasoning `aiRateLimiter` already
+ * established — a retrieval call is itself a real embedding-API cost,
+ * on top of whatever calls it). Set roughly 2x `aiRateLimiter`'s own
+ * limit deliberately: a single AI turn may plausibly issue more than
+ * one retrieval query (this module builds the retrieval capability
+ * itself, not a specific caller's call pattern, so the limit is set
+ * generously rather than guessing a future caller's exact ratio) —
+ * see `docs/architecture/knowledge-security.md` "Rate limiting" for the
+ * full reasoning, same in-memory/single-instance caveat every other
+ * limiter in this file discloses.
+ */
+export const knowledgeRetrievalRateLimiter: RateLimiter = new InMemoryRateLimiter(60, 60 * 60 * 1000);

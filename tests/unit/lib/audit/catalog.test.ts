@@ -29,6 +29,7 @@ describe("AUDIT_CATALOG", () => {
       "COMPLIANCE",
       "BILLING",
       "AI",
+      "KNOWLEDGE",
     ]);
     for (const definition of Object.values(AUDIT_CATALOG)) {
       expect(validCategories.has(definition.category)).toBe(true);

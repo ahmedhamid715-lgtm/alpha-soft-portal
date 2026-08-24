@@ -380,6 +380,57 @@ export const PERMISSION_CATALOG = {
     "ai.observability",
   ),
 
+  // --- knowledge (Module 18 — AI Knowledge, Context & Retrieval
+  // Infrastructure). Three ORGANIZATION-scope keys plus two
+  // PLATFORM-scope ones, the same tiered-risk split Module 17's own
+  // ai.use/ai.manage/ai.observability three-way split already
+  // established for an adjacent AI-infrastructure domain — reused
+  // deliberately, not reinvented.
+  "knowledge.source.read": permission(
+    "knowledge",
+    "read",
+    "ORGANIZATION",
+    "View this organization's knowledge sources and documents.",
+    false,
+    "knowledge.source.read",
+  ),
+  // Deliberately its own, broader-held key than `.manage` below — same
+  // "owner/admin/manager/member can browse and retrieve; owner/admin
+  // manage the content itself" split `ai.use`/`ai.manage` already
+  // established.
+  "knowledge.retrieve": permission(
+    "knowledge",
+    "execute",
+    "ORGANIZATION",
+    "Run a retrieval/search query against this organization's knowledge base (and any platform-level knowledge). CONFIDENTIAL/RESTRICTED-classified sources require knowledge.source.manage instead — see lib/knowledge/classification.ts.",
+    false,
+    "knowledge.retrieve",
+  ),
+  "knowledge.source.manage": permission(
+    "knowledge",
+    "manage",
+    "ORGANIZATION",
+    "Create, disable, or archive a knowledge source; ingest, re-index, or delete a document. Also grants retrieval over CONFIDENTIAL/RESTRICTED-classified sources.",
+    false,
+    "knowledge.source.manage",
+  ),
+  "knowledge.observability": permission(
+    "knowledge",
+    "read",
+    "PLATFORM",
+    "View retrieval/ingestion usage and health across organizations (operational metadata — latency, volume, failures — never a grant of any organization's actual document content).",
+    false,
+    "knowledge.observability",
+  ),
+  "knowledge.platform.manage": permission(
+    "knowledge",
+    "manage",
+    "PLATFORM",
+    "Create and manage PLATFORM-level knowledge sources/documents (Alpha OS's own product docs, policies) — visible to every organization's retrieval, never a customer organization's own knowledge.",
+    false,
+    "knowledge.platform.manage",
+  ),
+
   // --- integrations (ORGANIZATION, reserved — Module 54)
   "integrations.read": permission("integrations", "read", "ORGANIZATION", "View configured integrations.", true),
   "integrations.manage": permission(

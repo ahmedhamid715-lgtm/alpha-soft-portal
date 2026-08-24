@@ -171,6 +171,22 @@ export const AUDIT_CATALOG = {
   "ai.conversation.started": action("AI", "A user started a new AI support-chat conversation."),
   "ai.conversation.closed": action("AI", "An AI support-chat conversation was closed."),
   "ai.rate_limit.exceeded": action("AI", "An organization's AI message rate limit was exceeded — the message was rejected before any provider call was made."),
+
+  // --- Module 18 — AI Knowledge, Context & Retrieval Infrastructure.
+  // Source/document LIFECYCLE and rate-limit denials are audited — real,
+  // data-governance-significant events. Individual RETRIEVAL queries are
+  // deliberately NOT audited (a real support/AI-assisted workflow could
+  // call retrieval many times per minute) — the same "audit the outcome,
+  // not every routine action" discipline `ai.conversation.*`'s own
+  // comment already establishes for individual chat messages.
+  "knowledge.source.created": action("KNOWLEDGE", "A knowledge source was created."),
+  "knowledge.source.updated": action("KNOWLEDGE", "A knowledge source's status or classification was changed."),
+  "knowledge.source.archived": action("KNOWLEDGE", "A knowledge source was archived."),
+  "knowledge.document.ingested": action("KNOWLEDGE", "A document was ingested (a new version became ready)."),
+  "knowledge.document.ingestion_failed": action("KNOWLEDGE", "A document ingestion attempt failed (see the version's own failureReason for the safe, sanitized cause)."),
+  "knowledge.document.deleted": action("KNOWLEDGE", "A document was deleted (soft-deleted — see knowledge-security.md)."),
+  "knowledge.document.reindexed": action("KNOWLEDGE", "A document was re-indexed under a new chunking strategy or embedding model."),
+  "knowledge.rate_limit.exceeded": action("KNOWLEDGE", "An organization's knowledge-retrieval rate limit was exceeded — the query was rejected before any retrieval ran."),
 } as const satisfies Record<string, AuditActionDefinition>;
 
 export type AuditActionKey = keyof typeof AUDIT_CATALOG;

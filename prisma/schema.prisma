@@ -105,15 +105,15 @@ model Organization {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  memberships OrganizationMembership[]
+  memberships            OrganizationMembership[]
   /// Custom (organization-scoped) roles this organization has created — see Role below. System roles have `organizationId = null` and aren't reachable through this relation.
-  roles       Role[]
+  roles                  Role[]
   /// Module 07 — invitations issued by this organization (pending, accepted, or revoked).
-  invitations Invitation[]
+  invitations            Invitation[]
   /// Module 07 — this organization's onboarding progress, if it has any (see OrganizationOnboarding).
-  onboarding  OrganizationOnboarding?
+  onboarding             OrganizationOnboarding?
   /// Module 12 — this organization's invitation governance policy, if it has customized one (see OrganizationInvitationPolicy — lazily created, most organizations have none).
-  invitationPolicy OrganizationInvitationPolicy?
+  invitationPolicy       OrganizationInvitationPolicy?
   /// Module 08 — this organization's audit trail. `SetNull`, never
   /// `Cascade` (see tenancy-foundation.md "Audit foundation" — an audit
   /// trail that disappears when the thing it describes is deleted has
@@ -126,13 +126,13 @@ model Organization {
   /// `resourceName`/`actorDisplayName` snapshot fields — the actual
   /// evidence — without permanently pinning the organization row in
   /// place.
-  auditEvents AuditEvent[]
+  auditEvents            AuditEvent[]
   /// Module 09 — notifications associated with this organization
   /// (grouping/filtering/observability only, never the SELECT boundary —
   /// see `docs/architecture/notifications.md` "Notification —
   /// recipient-owned, organization-*associated*"). `SetNull`, same
   /// Module-08-learned reasoning as `auditEvents` above.
-  notifications         Notification[]
+  notifications          Notification[]
   notificationDeliveries NotificationDelivery[]
   /// Module 13 — this organization's billing relationship, if it has
   /// one (see BillingAccount — lazily created on first checkout, same
@@ -142,16 +142,23 @@ model Organization {
   /// (denormalized from `billingAccountId` for RLS/query simplicity —
   /// see billing-data-model.md "Ownership classification"), so each
   /// needs its own reverse-relation array here too.
-  billingAccount      BillingAccount?
-  subscriptions       Subscription[]
-  invoices            Invoice[]
-  payments            Payment[]
-  creditLedgerEntries CreditLedgerEntry[]
+  billingAccount         BillingAccount?
+  subscriptions          Subscription[]
+  invoices               Invoice[]
+  payments               Payment[]
+  creditLedgerEntries    CreditLedgerEntry[]
   /// Module 17 — this organization's AI support-chat conversations.
   /// `Cascade`, same shape as the billing relations above (real,
   /// organization-owned business data — not evidentiary like
   /// `auditEvents`, which stay `SetNull`).
-  aiConversations AiConversation[]
+  aiConversations        AiConversation[]
+  /// Module 18 — this organization's own knowledge sources/documents
+  /// (nullable-`organizationId` platform-level rows are NOT reachable
+  /// through this relation, the same shape `roles`' own `organizationId
+  /// IS NULL` system rows aren't a `Role[]` on any one `Organization`).
+  /// `Cascade`, same reasoning as `aiConversations` above.
+  knowledgeSources       KnowledgeSource[]
+  knowledgeDocuments     KnowledgeDocument[]
 
   @@index([status])
   @@index([isPlatform])
@@ -206,18 +213,18 @@ model User {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  memberships       OrganizationMembership[]
+  memberships                  OrganizationMembership[]
   /// Module 07 — invitations this user has sent (as an org admin/owner) or accepted.
-  invitationsSent   Invitation[] @relation("InvitationsSent")
-  invitationsAccepted Invitation[] @relation("InvitationsAccepted")
-  credential  UserCredential?
-  sessions    UserSession[]
-  authTokens  AuthToken[]
+  invitationsSent              Invitation[]             @relation("InvitationsSent")
+  invitationsAccepted          Invitation[]             @relation("InvitationsAccepted")
+  credential                   UserCredential?
+  sessions                     UserSession[]
+  authTokens                   AuthToken[]
   /// Module 08 — audit events where this user is the actor. `SetNull`,
   /// same reasoning as `Organization.auditEvents` — never `Cascade`.
   /// Never joined for display (see `AuditEvent.actorDisplayName`); this
   /// relation exists for referential integrity only.
-  auditEvents AuditEvent[]
+  auditEvents                  AuditEvent[]
   /// Module 09 — notifications addressed to this user. `Cascade`, NOT
   /// `SetNull` like `auditEvents` — deliberately different reasoning,
   /// not an oversight: `recipientUserId` is a required field (a
@@ -229,14 +236,14 @@ model User {
   /// "Deletion strategy" — deactivation, not deletion) — this FK choice
   /// matters for test-fixture cleanup ergonomics (the exact class of bug
   /// Module 08 hit with `Restrict`), not for any real production path.
-  notifications           Notification[]
-  notificationPreferences NotificationPreference[]
+  notifications                Notification[]
+  notificationPreferences      NotificationPreference[]
   /// Module 13 — refunds this platform-staff user personally issued
   /// (never a customer; see billing-security.md "Refunds are staff-
   /// initiated only"). `SetNull` — the refund record itself is the
   /// financial evidence and must survive independent of whether the
   /// staff account does (same reasoning as `auditEvents` above).
-  refundsInitiated Refund[]
+  refundsInitiated             Refund[]
   /// Module 14 — credit ledger entries this platform-staff user
   /// personally issued/adjusted. Same `SetNull` reasoning as
   /// `refundsInitiated` above.
@@ -246,7 +253,7 @@ model User {
   /// this FK matters for test-fixture cleanup ergonomics, not a real
   /// production path" reasoning as `notifications` above, and a
   /// conversation with no owning user is meaningless (same logic).
-  aiConversations AiConversation[]
+  aiConversations              AiConversation[]
 
   @@index([status])
   @@map("users")
@@ -279,7 +286,7 @@ model OrganizationMembership {
   /// Module 04's original role KEY ("owner", "admin", "support", "member") — kept exactly as-is, still authoritative for `resolveDestination()` (Module 04's post-login routing), untouched by Module 05. See `roleId` below for the real RBAC relationship; the two are kept in sync by `roleAssignmentService.assignRole()`, never written independently.
   role   String
   /// Module 05 (RBAC) — the actual `Role` this membership grants, resolving `tenancy-foundation.md`'s "migration path when Module 05 lands": a real foreign key, not a second guess at what `role` (the string) means. Nullable rather than a same-migration NOT NULL, per `migrations.md`'s expand→migrate→contract — every membership this module creates or updates always sets it; existing Module 03/04 rows are backfilled by this module's seed. `onDelete: Restrict` is section 26's "prevent deletion of roles currently assigned to users," enforced by the database, not just application code.
-  roleId String? @map("role_id") @db.Uuid
+  roleId String?          @map("role_id") @db.Uuid
   status MembershipStatus @default(ACTIVE)
 
   invitedAt DateTime? @map("invited_at") @db.Timestamptz(3)
@@ -360,13 +367,13 @@ model UserSession {
   /// Truncated on write, informational only — not a fingerprinting mechanism. See authentication.md "Session/device foundation."
   userAgent String? @map("user_agent")
 
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   /// Updated at most once per `updateAge` window (see auth.ts) — not on every single request, to avoid a write on every page load.
-  lastActiveAt DateTime  @default(now()) @map("last_active_at") @db.Timestamptz(3)
-  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(3)
-  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz(3)
+  lastActiveAt  DateTime  @default(now()) @map("last_active_at") @db.Timestamptz(3)
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz(3)
   /// e.g. "user_logout", "password_reset", "admin_revoked" — for the future session-management UI (not built in this module), not machine logic.
-  revokedReason String?  @map("revoked_reason")
+  revokedReason String?   @map("revoked_reason")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -498,9 +505,9 @@ model Role {
 /// grant (a PLATFORM-only permission on an ORGANIZATION-scope role) at
 /// write time instead of only at check time.
 model Permission {
-  id          String  @id @db.Uuid
+  id          String    @id @db.Uuid
   /// `resource.action`, e.g. "users.read", "tickets.assign" — see permissions.ts for the centralized resource/action vocabulary this must be built from.
-  key         String  @unique
+  key         String    @unique
   resource    String
   action      String
   scope       RoleScope
@@ -581,10 +588,10 @@ model Invitation {
 
   status InvitationStatus @default(PENDING)
 
-  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(3)
-  acceptedAt DateTime? @map("accepted_at") @db.Timestamptz(3)
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz(3)
+  acceptedAt       DateTime? @map("accepted_at") @db.Timestamptz(3)
   /// Set only on acceptance — may differ from whichever `User` row `email` originally implied if that person's account didn't exist yet at invitation time (created during acceptance) — see invitations.md "Existing vs. new user."
-  acceptedByUserId String? @map("accepted_by_user_id") @db.Uuid
+  acceptedByUserId String?   @map("accepted_by_user_id") @db.Uuid
   revokedAt        DateTime? @map("revoked_at") @db.Timestamptz(3)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -617,7 +624,7 @@ model OrganizationOnboarding {
   id             String @id @db.Uuid
   organizationId String @unique @map("organization_id") @db.Uuid
 
-  currentStep String @map("current_step")
+  currentStep String    @map("current_step")
   completedAt DateTime? @map("completed_at") @db.Timestamptz(3)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -718,19 +725,19 @@ model AuditEvent {
   /// integrity, not being the only copy of the identifying information.
   organizationId String? @map("organization_id") @db.Uuid
 
-  actorType AuditActorType @map("actor_type")
+  actorType        AuditActorType @map("actor_type")
   /// `SetNull`, never `Cascade` — same reasoning as `organizationId`.
   /// Never joined for display — see `actorDisplayName`.
-  actorUserId String? @map("actor_user_id") @db.Uuid
+  actorUserId      String?        @map("actor_user_id") @db.Uuid
   /// Future SERVICE/AI actor identifier (spec Phase 28) — no table backs
   /// this yet, so it's a plain string, not a relation; this model won't
   /// need to change when that table eventually exists.
-  actorServiceId String? @map("actor_service_id")
+  actorServiceId   String?        @map("actor_service_id")
   /// Snapshot at the moment of the event, not a live join — the actor's
   /// `name`/`email` can change or the account can be deactivated years
   /// later; the record must still read correctly. Same reasoning
   /// Module 07 applied to `Invitation` never joining live for display.
-  actorDisplayName String? @map("actor_display_name")
+  actorDisplayName String?        @map("actor_display_name")
 
   /// Canonical catalog key (`lib/audit/catalog.ts`), e.g.
   /// `"organization.suspended"`. Plain string, not an enum — the
@@ -765,7 +772,7 @@ model AuditEvent {
   /// top-level audited call when the caller supplies none (Server
   /// Actions have no `Request` object for `lib/platform/request-id.ts`
   /// to read).
-  requestId String @map("request_id")
+  requestId     String @map("request_id")
   /// Groups multiple audit events from one logical operation. Defaults
   /// to the same value as `requestId` for single-event operations.
   correlationId String @map("correlation_id")
@@ -845,6 +852,13 @@ enum AuditCategory {
   /// independently filterable/reportable, especially given AI usage
   /// carries a real per-call cost.
   AI
+  /// Module 18 — knowledge source/document lifecycle and retrieval
+  /// rate-limit events. Deliberately its own category, not folded into
+  /// AI: a knowledge-ingestion event (a document was added/deleted) is
+  /// a data-governance concern independently filterable/reportable from
+  /// AI usage/cost, the same reasoning that already separates BILLING
+  /// from ORGANIZATION.
+  KNOWLEDGE
 
   @@map("audit_category")
 }
@@ -928,9 +942,9 @@ model Notification {
   /// different record for a different purpose (evidence, not a UI
   /// message), even when they happen to describe the same underlying
   /// mutation.
-  sourceEventType   String  @map("source_event_type")
-  sourceEntityType  String? @map("source_entity_type")
-  sourceEntityId    String? @map("source_entity_id") @db.Uuid
+  sourceEventType  String  @map("source_event_type")
+  sourceEntityType String? @map("source_entity_type")
+  sourceEntityId   String? @map("source_entity_id") @db.Uuid
 
   /// Structural duplicate prevention (Section 4.5 — "enforce this
   /// structurally where possible with database constraints", not only
@@ -992,8 +1006,8 @@ enum NotificationDeliveryStatus {
 /// has two of these. Never claims SENT merely because the application
 /// called a provider — see `lib/notifications/delivery.ts`.
 model NotificationDelivery {
-  id             String @id @db.Uuid
-  notificationId String @map("notification_id") @db.Uuid
+  id             String  @id @db.Uuid
+  notificationId String  @map("notification_id") @db.Uuid
   /// Denormalized from the parent `Notification` at creation time —
   /// avoids a join for the platform observability view's own filters,
   /// and is what this table's RLS INSERT policy checks (see the
@@ -1028,7 +1042,7 @@ model NotificationDelivery {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  notification Notification  @relation(fields: [notificationId], references: [id], onDelete: Cascade)
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
   /// "This notification's delivery attempts across channels."
@@ -1127,7 +1141,7 @@ model BillingAccount {
   id             String @id @db.Uuid
   organizationId String @unique @map("organization_id") @db.Uuid
 
-  status BillingAccountStatus @default(ACTIVE)
+  status   BillingAccountStatus @default(ACTIVE)
   /// ISO 4217. Set once, at creation, from the organization's own
   /// `Organization.currency` — see src/lib/utils/money.ts for minor-unit
   /// rules per currency. Not changed after creation in this module (spec
@@ -1138,16 +1152,16 @@ model BillingAccount {
   provider           BillingProvider
   /// The provider's customer id (e.g. Stripe's `cus_...`) — an external
   /// reference, never treated as this account's real identity (spec §3).
-  providerCustomerId String @map("provider_customer_id")
+  providerCustomerId String          @map("provider_customer_id")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  subscriptions        Subscription[]
-  invoices             Invoice[]
-  payments             Payment[]
-  creditLedgerEntries  CreditLedgerEntry[]
+  subscriptions       Subscription[]
+  invoices            Invoice[]
+  payments            Payment[]
+  creditLedgerEntries CreditLedgerEntry[]
 
   /// A provider customer id is never shared across two Alpha OS billing
   /// accounts — the structural guarantee behind "one commercial
@@ -1167,7 +1181,7 @@ model BillingAccount {
 /// yet — the same restraint Module 12 applied to settings nobody could
 /// enforce; see billing.md "Why there is no PlanFeature table").
 model Plan {
-  id  String @id @db.Uuid
+  id          String  @id @db.Uuid
   /// Stable internal name — never renamed once referenced by a live
   /// subscription's price. The UI-facing name is `name`; nothing in the
   /// codebase should ever hardcode plan copy against this key except a
@@ -1442,8 +1456,8 @@ model InvoiceLineItem {
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  invoice   Invoice               @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  planPrice PlanPrice?            @relation(fields: [planPriceId], references: [id], onDelete: SetNull)
+  invoice   Invoice              @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  planPrice PlanPrice?           @relation(fields: [planPriceId], references: [id], onDelete: SetNull)
   taxes     InvoiceLineItemTax[]
 
   @@index([invoiceId])
@@ -1493,7 +1507,7 @@ model InvoiceLineItemTax {
   /// `'exclusive'` or `'inclusive'` — Stripe's own field, stored as-is.
   taxBehavior       String? @map("tax_behavior")
   /// Minor units — this component's own share of the line's total tax.
-  amount            Int    @map("amount")
+  amount            Int     @map("amount")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
@@ -1624,8 +1638,8 @@ model CreditLedgerEntry {
   currency String
   reason   String
 
-  relatedInvoiceId String? @map("related_invoice_id") @db.Uuid
-  relatedPaymentId String? @map("related_payment_id") @db.Uuid
+  relatedInvoiceId  String? @map("related_invoice_id") @db.Uuid
+  relatedPaymentId  String? @map("related_payment_id") @db.Uuid
   /// Module 14 — self-reference for a COMPENSATING entry (spec §11: "a
   /// correction happens through a compensating entry, never an UPDATE").
   /// Set only on the reversal/adjustment entry, pointing back at the
@@ -1636,7 +1650,7 @@ model CreditLedgerEntry {
   /// policy" note). `onDelete: Restrict`, matching `Role`'s own
   /// deletion-safety precedent — a corrected entry can never be
   /// removed out from under its own correction.
-  relatedEntryId String? @map("related_entry_id") @db.Uuid
+  relatedEntryId    String? @map("related_entry_id") @db.Uuid
   /// Module 14 — the platform-staff actor who issued/adjusted this
   /// entry, if any. Null for a webhook-driven or system-originated
   /// entry (none exist yet in this module — see credit-service.ts's own
@@ -1653,8 +1667,6 @@ model CreditLedgerEntry {
   corrections    CreditLedgerEntry[] @relation("CreditLedgerEntryCorrection")
   initiatedBy    User?               @relation(fields: [initiatedByUserId], references: [id], onDelete: SetNull)
 
-  @@index([organizationId])
-  @@index([billingAccountId])
   /// Module 14 — AT MOST ONE compensating entry per original (Postgres
   /// unique constraints allow unlimited NULLs but enforce uniqueness
   /// among non-null values — exactly "most rows don't correct anything,
@@ -1670,6 +1682,8 @@ model CreditLedgerEntry {
   /// proven under real concurrency, not just reasoned about, in
   /// `credit-concurrency.test.ts`.
   @@unique([relatedEntryId])
+  @@index([organizationId])
+  @@index([billingAccountId])
   @@map("credit_ledger_entries")
 }
 
@@ -1796,8 +1810,8 @@ enum AiConversationStatus {
 /// `InvoiceLineItemTax`, which genuinely needs its own table because ONE
 /// line item can carry MULTIPLE simultaneous tax components).
 model AiMessage {
-  id             String       @id @db.Uuid
-  conversationId String       @map("conversation_id") @db.Uuid
+  id             String        @id @db.Uuid
+  conversationId String        @map("conversation_id") @db.Uuid
   role           AiMessageRole
   content        String
 
@@ -1826,4 +1840,366 @@ enum AiMessageRole {
   ASSISTANT
 
   @@map("ai_message_role")
+}
+
+// =============================================================================
+// Knowledge & Retrieval — Module 18 (AI Knowledge, Context & Retrieval
+// Infrastructure)
+// =============================================================================
+// The enterprise knowledge/retrieval foundation future AI modules
+// (agents, copilots, a real support assistant grounded in account data)
+// will consume. See docs/architecture/ai-knowledge.md for the full
+// architecture, docs/architecture/retrieval.md for the hybrid-search/
+// pgvector design, docs/architecture/knowledge-security.md for the
+// authorization-before-retrieval trust model this schema exists to
+// support. NOT wired into Module 17's existing AI chat — a deliberate
+// scope boundary (see ai-knowledge.md "What this module is, and is
+// not").
+//
+// Ownership classification (spec §25 — decided per table, documented,
+// not assumed uniform):
+//   - KnowledgeSource / KnowledgeDocument: organization-owned when
+//     `organizationId` is set, PLATFORM-owned (shared, global reference
+//     data — Alpha OS's own product docs/policies) when NULL. The exact
+//     nullable-organizationId shape `AuditEvent.organizationId` already
+//     established for a different reason (survives org deletion) — here
+//     the reason is different (a source can be *intentionally*
+//     platform-wide from creation, not just orphaned later), but the
+//     RLS shape this enables is the SAME one `roles`/`role_permissions`
+//     already use for "global reference data, visible to everyone" (see
+//     rls.md "Protected tables") — reused deliberately, not
+//     reinvented.
+//   - KnowledgeDocumentVersion / KnowledgeChunk / KnowledgeEmbedding:
+//     transitively owned through their parent chain. `KnowledgeChunk`
+//     denormalizes `organizationId` directly (nullable, same meaning)
+//     for RLS/query simplicity — the same `Subscription`/`Invoice`/
+//     `Payment` precedent (`Organization`'s own reverse-relation
+//     comment above) applied here because retrieval is this table's
+//     hottest, highest-volume query path and a 3-hop transitive EXISTS
+//     (chunk -> version -> document -> source -> organization) would be
+//     real, avoidable overhead on every single retrieval call.
+//     `KnowledgeEmbedding` stays transitively owned via `chunkId` (one
+//     hop to the now-denormalized `KnowledgeChunk.organizationId`) — the
+//     same one-hop `EXISTS` shape `ai_messages` already uses via
+//     `conversation_id`.
+//
+// Deletion strategy (spec §17, `src/types/lifecycle.ts`):
+//   - `KnowledgeSource`: Archivable (`status` + no hard/soft delete) —
+//     disabling a source stops new ingestion/retrieval without erasing
+//     its documents' history, the same reasoning `Organization` is
+//     Archivable.
+//   - `KnowledgeDocument`: Softdeletable (`deletedAt`/`deletedBy`) —
+//     `lifecycle.ts`'s own top comment names "documents" as the
+//     canonical Softdeletable example. Deleting a document does NOT
+//     cascade-delete its versions/chunks/embeddings (they remain for a
+//     possible future restore/audit need) — retrieval and every
+//     document-listing query filter `deletedAt IS NULL` explicitly, so
+//     no chunk/embedding belonging to a deleted document is ever
+//     reachable through the application, even though the rows
+//     physically remain (proven directly by a dedicated security test
+//     that queries the raw table alongside the retrieval path — see
+//     knowledge-security.md "Deletion — soft, but genuinely
+//     unreachable").
+//   - `KnowledgeChunk` / `KnowledgeEmbedding`: immutable and append-only,
+//     the same discipline `AiMessage`/`AuditEvent` already establish —
+//     no UPDATE/DELETE RLS policy at all (see the migration).
+//     `KnowledgeDocumentVersion` is PROCESSING-STATE mutable instead
+//     (its own `status`/`failureReason`/`chunkCount`/`readyAt` change
+//     as ingestion proceeds — a real UPDATE RLS policy exists for it;
+//     see the migration's own top comment for the correction this
+//     went through) — its CONTENT (`content`/`contentChecksum`/
+//     `versionNumber`) stays immutable in practice. Re-indexing (a
+//     chunking-strategy or embedding-model change) ADDS new chunk/
+//     embedding rows rather than mutating existing ones — "never
+//     mutate old embeddings into new meanings" (spec §16) — old rows
+//     simply stop being selected by retrieval
+//     once it's reconfigured to query the CURRENT strategy/model
+//     (`KnowledgeChunk.chunkingStrategy` / `KnowledgeEmbedding.model`),
+//     never deleted.
+
+/// A knowledge source — the reusable abstraction future connectors
+/// (website content, CRM records, uploaded files, ...) implement.
+/// `MANUAL` is the only type with a real ingestion pathway in this
+/// module (a staff member pastes or uploads a plain-text/markdown
+/// document directly) — see ai-knowledge.md "Why only one source type
+/// is implemented" for the same "build the abstraction, not every
+/// future connector" reasoning `lib/ai/provider/interface.ts` already
+/// applies to a second AI chat provider.
+model KnowledgeSource {
+  id             String  @id @db.Uuid
+  /// `null` = a platform-level source (Alpha OS's own product docs/
+  /// policies), visible to every organization — see the RLS policy in
+  /// the migration and the block comment above.
+  organizationId String? @map("organization_id") @db.Uuid
+
+  type KnowledgeSourceType
+
+  name        String
+  description String?
+
+  status KnowledgeSourceStatus @default(ACTIVE)
+
+  /// Usable by retrieval policy today, not a decorative label: a
+  /// caller holding only `knowledge.retrieve` (not `knowledge.source.manage`)
+  /// may retrieve from PUBLIC/INTERNAL sources but not CONFIDENTIAL/
+  /// RESTRICTED ones — see knowledge-security.md "Classification is an
+  /// access tier, not a label." No separate "visibility" field: this
+  /// codebase has no sub-organization audience concept (teams,
+  /// departments) that a distinct visibility axis could meaningfully
+  /// enforce yet — adding one now would be exactly the "field without
+  /// architectural justification" this schema's own conventions warn
+  /// against (data-modeling.md).
+  classification DataClassification @default(INTERNAL)
+
+  /// Free-form, settings-shaped config a future connector type would
+  /// need (a website's crawl root, a CRM's object filter) — genuinely
+  /// unstructured and not queried/indexed on its own, the same
+  /// `Organization.metadata` justification (data-modeling.md "JSON/JSONB
+  /// strategy"). `null` for `MANUAL` sources, which need none.
+  metadata Json?
+
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization?       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  documents    KnowledgeDocument[]
+
+  @@index([organizationId, status])
+  @@map("knowledge_sources")
+}
+
+enum KnowledgeSourceType {
+  MANUAL
+
+  @@map("knowledge_source_type")
+}
+
+enum KnowledgeSourceStatus {
+  ACTIVE
+  DISABLED
+  ARCHIVED
+
+  @@map("knowledge_source_status")
+}
+
+/// Four principled tiers (spec §11), reused wherever this codebase needs
+/// a data-sensitivity classification — not a per-module enum. `PUBLIC`
+/// has no real gating effect today (every classification below
+/// CONFIDENTIAL is retrievable by any `knowledge.retrieve` holder); it
+/// exists as the honest bottom tier for content a future public-facing
+/// surface (a documentation site, an unauthenticated help widget) could
+/// eventually read without becoming meaningless in the meantime.
+enum DataClassification {
+  PUBLIC
+  INTERNAL
+  CONFIDENTIAL
+  RESTRICTED
+
+  @@map("data_classification")
+}
+
+/// A document within a source. `organizationId` is denormalized from
+/// `source.organizationId` at creation time (never re-derived — a
+/// document cannot move between organizations) purely for query/RLS
+/// convenience, the same `Subscription`/`Invoice` precedent noted above.
+model KnowledgeDocument {
+  id             String  @id @db.Uuid
+  sourceId       String  @map("source_id") @db.Uuid
+  /// Denormalized from `source.organizationId` — see this model's own
+  /// top comment.
+  organizationId String? @map("organization_id") @db.Uuid
+
+  title       String
+  /// A stable identifier for THIS piece of content within its source
+  /// (e.g. a file path, a CRM record id) — what makes re-ingesting the
+  /// "same" document idempotent rather than creating a duplicate. `null`
+  /// is allowed (an ad hoc pasted document with no natural external
+  /// identity) but then re-ingestion always creates a NEW document, by
+  /// design — there is nothing to match against.
+  canonicalId String? @map("canonical_id")
+  /// Defaults to plain text — this module ingests text content only
+  /// (pasted, or extracted server-side from an uploaded `.txt`/`.md`
+  /// file); no OCR, no binary format parsing. See ai-knowledge.md
+  /// "Text-only ingestion — an honest limitation."
+  contentType String  @default("text/plain") @map("content_type")
+
+  /// The current READY version's id, or `null` before the first
+  /// ingestion ever completes successfully — never points at a FAILED
+  /// version (see knowledge-ingestion-service.ts). This, not a separate
+  /// `status` enum, is what distinguishes "not yet ingested" from
+  /// "ready" — a document's own lifecycle is fully expressed by
+  /// `currentVersionId` (ready or not) and `deletedAt` (soft-deleted or
+  /// not); a third, redundant status axis would duplicate one of those
+  /// two, the exact anti-pattern data-modeling.md's own "don't blindly
+  /// add fields" guidance warns against.
+  currentVersionId String? @unique @map("current_version_id") @db.Uuid
+
+  metadata Json?
+
+  /// Softdeletable (`src/types/lifecycle.ts`) — see this model's own
+  /// deletion-strategy note in the file-level comment above.
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+  deletedBy String?   @map("deleted_by") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  source         KnowledgeSource            @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  organization   Organization?              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  versions       KnowledgeDocumentVersion[] @relation("DocumentVersions")
+  currentVersion KnowledgeDocumentVersion?  @relation("CurrentVersion", fields: [currentVersionId], references: [id])
+
+  @@index([sourceId, deletedAt])
+  @@index([organizationId, deletedAt])
+  @@map("knowledge_documents")
+}
+
+/// A new ingestion always creates a NEW version (spec §3); historical
+/// versions' CONTENT is never overwritten — `content`/`contentChecksum`/
+/// `versionNumber` are immutable in practice (no UPDATE call site ever
+/// touches them). `status`/`failureReason`/`chunkCount`/`readyAt` ARE
+/// real, legitimate UPDATE targets — see the migration's own top
+/// comment for the correction this went through (a first draft wrongly
+/// modeled this table as fully immutable like `AiMessage`, caught by
+/// this module's own integration tests). `content` holds the real
+/// ingested text (this module's only supported content shape — see
+/// `KnowledgeDocument.contentType`'s own comment).
+model KnowledgeDocumentVersion {
+  id         String @id @db.Uuid
+  documentId String @map("document_id") @db.Uuid
+
+  versionNumber   Int    @map("version_number")
+  content         String
+  /// SHA-256 hex of `content` — the idempotency key `ingestText()` uses
+  /// to detect "this is genuinely the same content again" and skip
+  /// creating a duplicate version (spec §15 — "running the same
+  /// ingestion twice must not create duplicate logical knowledge").
+  contentChecksum String @map("content_checksum")
+
+  /// Deliberately scoped to what a VERSION can actually be — the full
+  /// spec §15 vocabulary (DISCOVERED/.../DELETED) mixes per-version
+  /// processing state with per-DOCUMENT lifecycle state that belongs on
+  /// `KnowledgeDocument` instead: "DISCOVERED" is implicit (a document
+  /// with zero versions), "DELETED" is `KnowledgeDocument.deletedAt`.
+  /// See ai-knowledge.md "Ingestion lifecycle" for the full mapping.
+  status        KnowledgeIngestionStatus @default(QUEUED)
+  failureReason String?                  @map("failure_reason")
+  /// Denormalized once processing completes — cheap display without a
+  /// COUNT query on every document list row.
+  chunkCount    Int?                     @map("chunk_count")
+
+  /// Real ingestion metadata (e.g. the uploaded filename, submitter) —
+  /// genuinely unstructured, same `Organization.metadata` justification.
+  sourceMetadata Json? @map("source_metadata")
+
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  readyAt   DateTime? @map("ready_at") @db.Timestamptz(3)
+
+  document           KnowledgeDocument  @relation("DocumentVersions", fields: [documentId], references: [id], onDelete: Cascade)
+  currentForDocument KnowledgeDocument? @relation("CurrentVersion")
+  chunks             KnowledgeChunk[]
+
+  @@unique([documentId, versionNumber])
+  @@index([documentId, createdAt])
+  @@map("knowledge_document_versions")
+}
+
+enum KnowledgeIngestionStatus {
+  QUEUED
+  PROCESSING
+  CHUNKING
+  EMBEDDING
+  READY
+  FAILED
+  /// A version that used to be `currentVersionId` before a newer
+  /// version became ready — kept fully identifiable (spec §3: "historical
+  /// versions must remain identifiable"), never deleted or relabeled.
+  SUPERSEDED
+
+  @@map("knowledge_ingestion_status")
+}
+
+/// A deterministic chunk of one document version's content. Multiple
+/// chunk SETS (distinguished by `chunkingStrategy`) may coexist for the
+/// same version — re-chunking with a new strategy ADDS rows, it does not
+/// replace the old ones (spec §16) — retrieval always filters to the
+/// CURRENT configured strategy (`lib/knowledge/chunking.ts`).
+model KnowledgeChunk {
+  id                String  @id @db.Uuid
+  documentVersionId String  @map("document_version_id") @db.Uuid
+  /// Denormalized from the document/source chain — see this file's
+  /// top-level ownership comment for why (RLS/query cost on the hottest
+  /// retrieval path).
+  organizationId    String? @map("organization_id") @db.Uuid
+
+  /// Position within THIS chunking strategy's own sequence, zero-based.
+  sequence Int
+  content  String
+
+  charCount  Int    @map("char_count")
+  /// A character-based ESTIMATE (see `lib/knowledge/chunking.ts`'s own
+  /// comment for the exact heuristic) — this codebase has no tokenizer
+  /// dependency; stated honestly as an estimate, the same discipline
+  /// `lib/ai/pricing.ts`'s own cost figures already apply.
+  tokenCount Int?   @map("token_count")
+  checksum   String
+
+  /// e.g. `"fixed-char-v1"` — see `lib/knowledge/chunking.ts`. A
+  /// versioned STRING, not an enum: a new chunking strategy is a
+  /// deployable code change, not a schema migration (the same
+  /// `OrganizationMembership.role`-is-a-string reasoning data-modeling.md
+  /// already documents for an analogous "controlled by code, not by an
+  /// admin, but shouldn't need a migration to add a value" case).
+  chunkingStrategy String @map("chunking_strategy")
+
+  /// Real structural context extracted during chunking (e.g. a heading
+  /// the chunk falls under) — genuinely unstructured per-chunk metadata.
+  structuralMetadata Json? @map("structural_metadata")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  documentVersion KnowledgeDocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
+  embeddings      KnowledgeEmbedding[]
+
+  @@unique([documentVersionId, chunkingStrategy, sequence])
+  @@index([organizationId])
+  @@map("knowledge_chunks")
+}
+
+/// One embedding of one chunk, by one (provider, model). Its OWN table,
+/// not columns on `KnowledgeChunk` — spec §5's own "never assume all
+/// embeddings are interchangeable": a chunk legitimately has MULTIPLE
+/// simultaneous embeddings over its lifetime (a model upgrade adds a
+/// new row rather than overwriting the old vector), the same genuine
+/// 1:many reasoning `InvoiceLineItemTax` already established for "one
+/// parent, multiple simultaneous typed children" (contrast `AiMessage`,
+/// which does NOT get a separate table because it's genuinely 1:1).
+///
+/// `vector` is `Unsupported(...)` — Prisma has no native pgvector
+/// scalar; every read/write of this column goes through raw,
+/// PARAMETERIZED SQL (`$queryRaw`/`$executeRaw` — never string
+/// concatenation) in `knowledge-embedding-repository.ts`. Fixed at
+/// 1536 dimensions (`text-embedding-3-small`'s real output size) —
+/// see `docs/architecture/retrieval.md` "Embedding dimension is a
+/// schema decision, not a config one" for why changing the configured
+/// model to one with a different dimension requires a new migration,
+/// not just an env var change.
+model KnowledgeEmbedding {
+  id      String @id @db.Uuid
+  chunkId String @map("chunk_id") @db.Uuid
+
+  provider  String
+  model     String
+  dimension Int
+
+  /// @db.Unsupported — see this model's own top comment.
+  vector Unsupported("vector(1536)")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  chunk KnowledgeChunk @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+
+  @@unique([chunkId, provider, model])
+  @@map("knowledge_embeddings")
 }

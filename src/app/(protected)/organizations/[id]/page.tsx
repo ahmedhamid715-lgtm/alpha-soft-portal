@@ -185,6 +185,16 @@ export default async function OrganizationDetailPage({ params }: PageProps<"/org
               </CardContent>
             </Card>
           ) : null}
+          {context.permissions.has("knowledge.source.read") ? (
+            <Card>
+              <CardContent>
+                <Link href={`/organizations/${id}/knowledge`} className="flex flex-col gap-1 hover:underline">
+                  <span className="font-medium">Knowledge</span>
+                  <span className="text-sm text-muted-foreground">Sources, documents, and search</span>
+                </Link>
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
       </section>
     </div>

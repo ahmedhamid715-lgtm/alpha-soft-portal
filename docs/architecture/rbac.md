@@ -212,6 +212,12 @@ role's grant to actually gate (see "Reserved permissions" below).
 | settings.update *(reserved)* | ✓ | ✓ |  |  | ✓ | ✓ |  |  |  |  |
 | ai.use *(no longer reserved as of Module 17 — also granted to `member`; see ai-infrastructure.md)* |  |  |  |  | ✓ | ✓ |  |  |  |  |
 | ai.manage *(no longer reserved as of Module 17)* |  |  |  |  | ✓ | ✓ |  |  |  |  |
+| ai.observability *(Module 17)* | ✓ | ✓ | ✓ |  |  |  |  |  |  |  |
+| knowledge.source.read *(Module 18)* |  |  |  |  | ✓ | ✓ | ✓ | ✓ | ✓ |  |
+| knowledge.retrieve *(Module 18)* |  |  |  |  | ✓ | ✓ | ✓ | ✓ |  |  |
+| knowledge.source.manage *(Module 18)* |  |  |  |  | ✓ | ✓ |  |  |  |  |
+| knowledge.observability *(Module 18)* | ✓ | ✓ | ✓ |  |  |  |  |  |  |  |
+| knowledge.platform.manage *(Module 18)* | ✓ | ✓ |  |  |  |  |  |  |  |  |
 | integrations.read *(reserved)* |  |  |  |  | ✓ | ✓ |  |  |  |  |
 | integrations.manage *(reserved)* |  |  |  |  | ✓ | ✓ |  |  |  |  |
 | audit.read |  |  |  |  | ✓ | ✓ |  |  |  |  |
@@ -254,6 +260,14 @@ time) — no longer reserved. Module 17 (AI Infrastructure &
 Intelligence Foundation) claimed both with real `requirePermission()`
 call sites (`ai-conversation-service.ts`) and added a third,
 platform-scope `ai.observability`. See `ai-infrastructure.md`.
+
+`knowledge.source.read`/`knowledge.retrieve`/`knowledge.source.manage`/
+`knowledge.observability`/`knowledge.platform.manage` are NEW as of
+Module 18 (AI Knowledge, Context & Retrieval Infrastructure) — not
+reserved placeholders this time (Module 05 seeded no `knowledge.*` keys
+in advance), a real permission set with real `requirePermission()` call
+sites from the moment they were added. See `ai-knowledge.md` and
+`knowledge-security.md`.
 
 `audit.read`/`audit.export`/`audit.readPlatform`/`audit.exportPlatform`
 were seeded here as reserved placeholders by this module, but are no
