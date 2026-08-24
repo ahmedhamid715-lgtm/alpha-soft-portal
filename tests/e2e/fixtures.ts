@@ -7,7 +7,14 @@ import { test as base } from "@playwright/test";
  * docs/architecture/authentication.md "No business logic").
  */
 export const SEED_ACCOUNTS = {
-  owner: { email: "owner@alpha-os.test", password: "alpha-os-dev-password", destination: "/admin" },
+  // `owner`'s role ("owner") is ORGANIZATION-scope, not platform-scope —
+  // it routes to that organization's OWN page
+  // (`/organizations/<alpha-page-rankers-dev's id>`), a dynamic path, so
+  // it has no fixed `destination` here. See `auth.spec.ts`'s dedicated
+  // owner-routing test, and `lib/auth/destination.ts`'s own top comment
+  // for why this isn't `/admin` (a real bug, found live, fixed in
+  // Module 17's own follow-up work).
+  owner: { email: "owner@alpha-os.test", password: "alpha-os-dev-password" },
   support: { email: "support@alpha-os.test", password: "alpha-os-dev-password", destination: "/support" },
   customer: { email: "customer@alpha-os.test", password: "alpha-os-dev-password", destination: "/dashboard" },
 } as const;

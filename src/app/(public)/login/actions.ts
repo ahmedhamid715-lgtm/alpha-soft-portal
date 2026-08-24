@@ -96,7 +96,7 @@ export async function loginAction(_prevState: LoginActionState, formData: FormDa
   // regardless of role until this fix.
   const user = await userRepository.findByEmail(email);
   const memberships = user ? await membershipRepository.listForUser(user.id) : [];
-  const membershipRole = memberships.length === 1 ? memberships[0].role : null;
+  const soleMembership = memberships.length === 1 ? memberships[0] : null;
 
   // Best-effort, same reasoning as the failure path above — `signIn()`
   // already succeeded; a lost audit write must not turn a real,
@@ -124,7 +124,7 @@ export async function loginAction(_prevState: LoginActionState, formData: FormDa
   const destination =
     typeof callbackUrl === "string" && callbackUrl.startsWith("/") && !callbackUrl.startsWith("//")
       ? callbackUrl
-      : resolveDestination(membershipRole);
+      : resolveDestination(soleMembership ? { role: soleMembership.role, organizationId: soleMembership.organizationId } : null);
 
   redirect(destination);
 }

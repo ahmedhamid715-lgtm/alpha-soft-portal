@@ -19,5 +19,5 @@ export default async function RootPage() {
   }
 
   const membership = await getCurrentMembership();
-  redirect(resolveDestination(membership?.role ?? null));
+  redirect(resolveDestination(membership ? { role: membership.role, organizationId: membership.organizationId } : null));
 }

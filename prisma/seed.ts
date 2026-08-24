@@ -89,7 +89,7 @@ async function main() {
 
   console.log(`[seed] Created organization "${organization.displayName}" (${organization.id}).`);
   console.log("[seed] Three dev accounts ready (password for all: alpha-os-dev-password):");
-  console.log("[seed]   owner@alpha-os.test    role=owner    -> /admin");
+  console.log(`[seed]   owner@alpha-os.test    role=owner    -> /organizations/${organization.id}`);
   console.log("[seed]   support@alpha-os.test  role=support  -> /support");
   console.log("[seed]   customer@alpha-os.test role=member   -> /dashboard");
 }
