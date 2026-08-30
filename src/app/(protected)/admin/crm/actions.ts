@@ -12,6 +12,8 @@ import * as customFieldService from "@/server/services/crm-custom-field-service"
 import * as pipelineService from "@/server/services/crm-pipeline-service";
 import * as pipelineStageService from "@/server/services/crm-pipeline-stage-service";
 import * as dealService from "@/server/services/crm-deal-service";
+import * as salesTeamService from "@/server/services/crm-sales-team-service";
+import * as salesGoalService from "@/server/services/crm-sales-goal-service";
 import type {
   CrmCompany,
   CrmContact,
@@ -25,6 +27,8 @@ import type {
   CrmPipelineStage,
   CrmDeal,
   CrmDealHistory,
+  CrmSalesTeamMember,
+  CrmSalesGoal,
 } from "@/generated/prisma/client";
 
 /**
@@ -270,5 +274,35 @@ export async function convertLeadToDealAction(input: unknown): Promise<ActionRes
     revalidatePath(`/admin/crm/deals/${result.data.id}`);
     if (result.data.sourceLeadId) revalidatePath(`/admin/crm/leads/${result.data.sourceLeadId}`);
   }
+  return result;
+}
+
+// --- Sales Team (Build 21 — Roadmap Module 15).
+
+export async function addSalesTeamMemberAction(input: unknown): Promise<ActionResult<CrmSalesTeamMember>> {
+  return run(() => salesTeamService.addSalesTeamMember(input), ["/admin/crm/sales-team"]);
+}
+
+export async function removeSalesTeamMemberAction(input: unknown): Promise<ActionResult<CrmSalesTeamMember>> {
+  const result = await run(() => salesTeamService.removeSalesTeamMember(input), ["/admin/crm/sales-team"]);
+  if (result.data) revalidatePath(`/admin/crm/sales-team/${result.data.id}`);
+  return result;
+}
+
+export async function changeSalesTeamManagerAction(input: unknown): Promise<ActionResult<CrmSalesTeamMember>> {
+  const result = await run(() => salesTeamService.changeSalesTeamManager(input), ["/admin/crm/sales-team"]);
+  if (result.data) revalidatePath(`/admin/crm/sales-team/${result.data.id}`);
+  return result;
+}
+
+export async function createSalesGoalAction(input: unknown): Promise<ActionResult<CrmSalesGoal>> {
+  const result = await run(() => salesGoalService.createGoal(input), ["/admin/crm/sales-team"]);
+  if (result.data?.salesTeamMemberId) revalidatePath(`/admin/crm/sales-team/${result.data.salesTeamMemberId}`);
+  return result;
+}
+
+export async function archiveSalesGoalAction(input: unknown): Promise<ActionResult<CrmSalesGoal>> {
+  const result = await run(() => salesGoalService.archiveGoal(input), ["/admin/crm/sales-team"]);
+  if (result.data?.salesTeamMemberId) revalidatePath(`/admin/crm/sales-team/${result.data.salesTeamMemberId}`);
   return result;
 }

@@ -333,6 +333,38 @@ export const NOTIFICATION_TEMPLATES = {
       actionUrl: "/admin/crm/pipeline",
     }),
   }),
+  /// Build 21 — reacts to `crm.sales_team.member_added`
+  /// (`crm-sales-team-service.ts`). Same reasoning `crm.task.assigned`/
+  /// `crm.deal.assigned` above already establish — joining the sales
+  /// team is a real "something now applies to YOU" event.
+  "crm.sales_team.member_added": template({
+    version: 1,
+    active: true,
+    category: "CRM_ACTIVITY",
+    severity: "INFO",
+    render: () => ({
+      title: "Added to the sales team",
+      body: "You were added to Alpha Page Rankers' sales team.",
+      actionUrl: "/admin/crm/sales-team",
+    }),
+  }),
+  /// Build 21 — reacts to `crm.sales_team.goal_assigned`
+  /// (`crm-sales-goal-service.ts`), fired only when a goal has a real
+  /// `salesTeamMemberId` (never for an organization-wide goal, which has
+  /// no single recipient). Ordinary goal archival is deliberately NOT
+  /// notified — same "don't notify on every routine action" discipline
+  /// `crm.deal.assigned`'s own comment establishes for stage moves.
+  "crm.sales_team.goal_assigned": template({
+    version: 1,
+    active: true,
+    category: "CRM_ACTIVITY",
+    severity: "INFO",
+    render: (data: { metricLabel: string }) => ({
+      title: "New sales target/quota assigned",
+      body: `A new ${data.metricLabel} target/quota was set for you.`,
+      actionUrl: "/admin/crm/sales-team",
+    }),
+  }),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as const satisfies Record<string, NotificationTemplateDefinition<any>>;
 

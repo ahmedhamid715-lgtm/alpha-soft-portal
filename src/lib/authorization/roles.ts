@@ -82,6 +82,11 @@ const PLATFORM_FULL: PermissionKey[] = [
   // crm.read above. `crm.pipeline.manage` stays a separate, narrower
   // grant — see each role's own permissions list below.
   "crm.pipeline.read",
+  // Build 21 — day-to-day Sales Team visibility (roster, performance,
+  // leaderboard, targets/quotas), same reasoning as crm.pipeline.read
+  // above. `crm.sales_team.manage` stays a separate, narrower grant —
+  // see each role's own permissions list below.
+  "crm.sales_team.read",
 ];
 
 const ORGANIZATION_FULL: PermissionKey[] = [
@@ -176,6 +181,11 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       // PLATFORM_FULL below; `crm.pipeline.manage` is the narrower deal-
       // creating/editing/won-lost capability, same tier as `crm.manage`.
       "crm.pipeline.manage",
+      // Build 21 — Sales Team Management. `crm.sales_team.read` also
+      // granted via PLATFORM_FULL below; `crm.sales_team.manage` is the
+      // narrower rep/manager/target/quota-managing capability, same
+      // tier as `crm.manage`/`crm.pipeline.manage`.
+      "crm.sales_team.manage",
     ],
   },
   platform_admin: {
@@ -224,6 +234,10 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       // above — deliberately NOT held by `support_admin` (see that
       // role's own comment).
       "crm.pipeline.manage",
+      // Build 21 — same tier/reasoning as `crm.pipeline.manage`
+      // immediately above — deliberately NOT held by `support_admin`
+      // (see that role's own comment).
+      "crm.sales_team.manage",
     ],
   },
   support_admin: {
@@ -265,6 +279,10 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     // management power" line as `knowledge.platform.manage` above.
     // Build 20 — `crm.pipeline.read` ALSO granted, same reasoning;
     // deliberately NOT `crm.pipeline.manage`.
+    // Build 21 — `crm.sales_team.read` ALSO granted, same reasoning
+    // (support staff plausibly need visibility into rep
+    // performance/pipeline ownership for the same customer-context
+    // reason); deliberately NOT `crm.sales_team.manage`.
     permissions: [
       "users.read",
       "organizations.read",
@@ -280,6 +298,7 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "knowledge.observability",
       "crm.read",
       "crm.pipeline.read",
+      "crm.sales_team.read",
     ],
   },
   support_agent: {

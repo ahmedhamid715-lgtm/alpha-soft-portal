@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ShieldAlert, Building2, Users, Target, ListChecks, ArrowRight, Handshake } from "lucide-react";
+import { ShieldAlert, Building2, Users, Target, ListChecks, ArrowRight, Handshake, Trophy } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { SectionHeader } from "@/components/layout/section-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -12,6 +12,7 @@ import { listContacts } from "@/server/services/crm-contact-service";
 import { listLeads } from "@/server/services/crm-lead-service";
 import { listTasks } from "@/server/services/crm-task-service";
 import { listDeals } from "@/server/services/crm-deal-service";
+import { listSalesTeam } from "@/server/services/crm-sales-team-service";
 import { formatInTimeZone } from "@/lib/utils/datetime";
 import type { CrmLeadStatus } from "@/generated/prisma/client";
 
@@ -42,12 +43,14 @@ export default async function CrmDashboardPage() {
   }
 
   const canSeePipeline = context.permissions.has("crm.pipeline.read");
-  const [companies, contacts, leadCounts, myOpenTasks, openDeals] = await Promise.all([
+  const canSeeSalesTeam = context.permissions.has("crm.sales_team.read");
+  const [companies, contacts, leadCounts, myOpenTasks, openDeals, salesTeamCount] = await Promise.all([
     listCompanies({ limit: 1, status: "ACTIVE" }),
     listContacts({ limit: 1, status: "ACTIVE" }),
     Promise.all(LEAD_STATUSES.map((status) => listLeads({ limit: 1, status }).then((r) => [status, r.pageInfo.totalCount ?? 0] as const))),
     listTasks({ limit: 10, status: "OPEN", assignedToUserId: context.user!.id }),
     canSeePipeline ? listDeals({ limit: 1, status: "OPEN" }) : null,
+    canSeeSalesTeam ? listSalesTeam({ status: "ACTIVE" }) : null,
   ]);
 
   const openLeadCount = leadCounts.filter(([status]) => status !== "CONVERTED" && status !== "DISQUALIFIED").reduce((sum, [, count]) => sum + count, 0);
@@ -105,6 +108,18 @@ export default async function CrmDashboardPage() {
                   <Handshake className="size-4" aria-hidden="true" /> Open deals
                 </span>
                 <span className="text-2xl font-semibold tabular-nums">{openDeals?.pageInfo.totalCount ?? 0}</span>
+              </Link>
+            </CardContent>
+          </Card>
+        ) : null}
+        {canSeeSalesTeam ? (
+          <Card>
+            <CardContent>
+              <Link href="/admin/crm/sales-team" className="flex flex-col gap-1">
+                <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Trophy className="size-4" aria-hidden="true" /> Sales team
+                </span>
+                <span className="text-2xl font-semibold tabular-nums">{salesTeamCount?.length ?? 0}</span>
               </Link>
             </CardContent>
           </Card>

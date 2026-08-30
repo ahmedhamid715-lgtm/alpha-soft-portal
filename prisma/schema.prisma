@@ -175,6 +175,10 @@ model Organization {
   crmPipelineStages         CrmPipelineStage[]
   crmDeals                  CrmDeal[]
   crmDealHistory            CrmDealHistory[]
+  /// Build 21 (Sales Team Management) — extends the CRM domain above;
+  /// same exclusive platform-organization ownership.
+  crmSalesTeamMembers       CrmSalesTeamMember[]
+  crmSalesGoals             CrmSalesGoal[]
 
   @@index([status])
   @@index([isPlatform])
@@ -279,6 +283,11 @@ model User {
   /// history entries this user's actions produced.
   crmDealsAssigned             CrmDeal[]                @relation("CrmDealAssignedTo")
   crmDealHistoryLogged         CrmDealHistory[]         @relation("CrmDealHistoryActor")
+  /// Build 21 (Sales Team Management) — this user's own sales-team
+  /// participation row(s) (one per join/leave cycle — see
+  /// `CrmSalesTeamMember`'s own comment), and goals this user created.
+  crmSalesTeamMemberships      CrmSalesTeamMember[]     @relation("CrmSalesTeamMemberUser")
+  crmSalesGoalsCreated         CrmSalesGoal[]           @relation("CrmSalesGoalCreatedBy")
 
   @@index([status])
   @@map("users")
@@ -2692,6 +2701,13 @@ model CrmDealHistory {
   actorUser    User         @relation("CrmDealHistoryActor", fields: [actorUserId], references: [id], onDelete: Restrict)
 
   @@index([organizationId, dealId, occurredAt])
+  // A further partial index, `crm_deal_history_org_type_occurred_close_idx`
+  // (`organization_id, type, occurred_at INCLUDE (actor_user_id, deal_id)
+  // WHERE type IN ('WON','LOST')`), backs Build 21's own
+  // `crmSalesPerformanceRepository.closedDealsByActor()` — Prisma cannot
+  // express a partial/covering index via `@@index`, so it's hand-written
+  // directly in the `sales_team_deal_history_close_index` migration only
+  // (same limitation as `crm_deals_organization_id_won_at_idx`, Build 20).
   @@map("crm_deal_history")
 }
 
@@ -2708,4 +2724,157 @@ enum CrmDealHistoryType {
   NOTE
 
   @@map("crm_deal_history_type")
+}
+
+// --- Build 21 (Roadmap Module 15) — Sales Team Management. Extends the
+// CRM/Sales Pipeline foundation (Build 19/20) with real sales-team
+// participation, targets/quotas, and deterministic performance
+// reporting — never a second identity system, never a duplicate Deal/
+// Lead/activity table. See docs/architecture/sales-team-management.md.
+
+/// A rep's explicit participation in Alpha Page Rankers' own internal
+/// sales team — always references an existing `User`, never a second
+/// identity. NOT every platform-staff member is a sales rep: this row's
+/// mere existence (and `status`) is the explicit opt-in the master
+/// prompt requires. `status` is INACTIVE on removal, never a hard
+/// delete — `CrmSalesGoal`/attribution reporting must keep referencing
+/// a past member by id. `managerId` is an optional self-reference (the
+/// narrowest possible "team" concept — see the architecture doc's own
+/// "Sales team model" section for why a separate `SalesTeam` grouping
+/// entity was deliberately NOT built).
+model CrmSalesTeamMember {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  userId         String @map("user_id") @db.Uuid
+
+  status    CrmSalesTeamMemberStatus @default(ACTIVE)
+  /// Self-reference — this member's manager, also a
+  /// `CrmSalesTeamMember` (i.e. the manager must themselves be an
+  /// explicit sales-team participant, not merely any platform user).
+  managerId String?                  @map("manager_id") @db.Uuid
+
+  joinedAt DateTime  @default(now()) @map("joined_at") @db.Timestamptz(3)
+  leftAt   DateTime? @map("left_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization  Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user          User                 @relation("CrmSalesTeamMemberUser", fields: [userId], references: [id], onDelete: Cascade)
+  manager       CrmSalesTeamMember?  @relation("CrmSalesTeamMemberManager", fields: [managerId], references: [id], onDelete: SetNull)
+  directReports CrmSalesTeamMember[] @relation("CrmSalesTeamMemberManager")
+  goals         CrmSalesGoal[]
+
+  // At most one ACTIVE row per (organizationId, userId) — a hand-written
+  // partial unique index (see migration; Prisma cannot express `@@unique`
+  // with a WHERE clause), the same pattern `crm_pipelines_one_default_
+  // per_org` already established in Build 20. A rep who left and later
+  // rejoined gets a NEW row, not a reactivated one — the old row (and
+  // every goal/attribution that references it) stays exactly as it was.
+  @@index([organizationId, status])
+  @@index([userId])
+  @@index([managerId])
+  @@map("crm_sales_team_members")
+}
+
+enum CrmSalesTeamMemberStatus {
+  ACTIVE
+  INACTIVE
+
+  @@map("crm_sales_team_member_status")
+}
+
+/// A target (informal, operational) or quota (formal performance
+/// threshold) for one metric over one explicit period — one unified
+/// model rather than two near-duplicate tables, distinguished by `kind`.
+/// `salesTeamMemberId` null means an organization-wide/whole-team goal.
+/// Immutable once created except for `status` (ACTIVE -> ARCHIVED) — a
+/// mistaken value/period is corrected by archiving and creating a new
+/// goal, never an in-place edit, avoiding the update-race class of bug
+/// entirely (see the architecture doc's own "Concurrency" section) and
+/// keeping the centralized audit log's "target/quota created/archived"
+/// entries a complete, honest history without a second history table.
+model CrmSalesGoal {
+  id                String  @id @db.Uuid
+  organizationId    String  @map("organization_id") @db.Uuid
+  salesTeamMemberId String? @map("sales_team_member_id") @db.Uuid
+
+  kind   CrmSalesGoalKind
+  metric CrmSalesGoalMetric
+
+  /// Exactly one of these three is set, matching `metric`'s own value
+  /// kind — enforced by a CHECK constraint (the migration's own
+  /// `num_nonnulls()`-style pattern, first established for
+  /// `CrmActivity`'s exactly-one-parent constraint in Build 19).
+  /// Integer minor units — REVENUE_WON only. Same convention as
+  /// `CrmDeal.valueMinorUnits`; never a JS float.
+  valueMinorUnits Int?    @map("value_minor_units")
+  /// ISO 4217 — required exactly when `valueMinorUnits` is set.
+  currency        String? @db.VarChar(3)
+  /// Plain integer count — DEALS_WON / CALLS_LOGGED / APPOINTMENTS_LOGGED only.
+  valueCount      Int?    @map("value_count")
+  /// Integer percentage, 0-100 — LEAD_CONVERSION_RATE only.
+  valuePercent    Int?    @map("value_percent")
+
+  /// Half-open `[periodStart, periodEnd)` — see
+  /// `src/lib/billing/reporting/period.ts`'s own `FinancialPeriod`
+  /// convention, reused directly for this goal's own period at creation
+  /// time (never re-derived at read time). Anchored to UTC — see the
+  /// architecture doc's own "Period semantics" for why (this module has
+  /// no per-organization timezone to anchor to; same reasoning Module
+  /// 17's `ai-observability-service.ts` already documents for its own
+  /// platform-wide UTC anchor).
+  periodStart DateTime @map("period_start") @db.Timestamptz(3)
+  /// Exclusive.
+  periodEnd   DateTime @map("period_end") @db.Timestamptz(3)
+  /// The named period this was resolved from (`FinancialPeriod.label`),
+  /// or `"custom"` — display/audit context only, never re-derived from
+  /// `periodStart`/`periodEnd` alone.
+  periodLabel String   @map("period_label")
+
+  status CrmSalesGoalStatus @default(ACTIVE)
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  salesTeamMember CrmSalesTeamMember? @relation(fields: [salesTeamMemberId], references: [id], onDelete: Cascade)
+  createdByUser   User                @relation("CrmSalesGoalCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  // No two ACTIVE goals for the same (organizationId, salesTeamMemberId
+  // [org-wide goals coalesced to one sentinel group], kind, metric) may
+  // have overlapping periods — a hand-written `EXCLUDE USING gist`
+  // constraint (see migration; Prisma cannot express this), the
+  // strongest honest answer to "prevent ambiguous overlapping records"
+  // the master prompt asks for, not merely an application-layer check.
+  @@index([organizationId, salesTeamMemberId, status])
+  @@index([organizationId, kind, metric, status])
+  @@map("crm_sales_goals")
+}
+
+enum CrmSalesGoalKind {
+  /// Desired operational metric — informal, not a formal attainment threshold.
+  TARGET
+  /// Formal performance threshold.
+  QUOTA
+
+  @@map("crm_sales_goal_kind")
+}
+
+enum CrmSalesGoalMetric {
+  REVENUE_WON
+  DEALS_WON
+  CALLS_LOGGED
+  APPOINTMENTS_LOGGED
+  LEAD_CONVERSION_RATE
+
+  @@map("crm_sales_goal_metric")
+}
+
+enum CrmSalesGoalStatus {
+  ACTIVE
+  ARCHIVED
+
+  @@map("crm_sales_goal_status")
 }

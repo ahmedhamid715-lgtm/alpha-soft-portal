@@ -44,7 +44,8 @@ import { db } from "@/lib/db/client";
  * uppercase, matches `src/lib/utils/money.ts`'s own ISO 4217 assumption
  * without hard-coding one fixed currency list here.
  */
-const currencyCodeSchema = z
+/** Exported for reuse by Build 21's `crm-sales-goal-service.ts` — the exact same currency-shape validation, not a duplicate. */
+export const currencyCodeSchema = z
   .string()
   .regex(/^[A-Za-z]{3}$/, "currency must be a 3-letter ISO 4217 code.")
   .transform((v) => v.toUpperCase());

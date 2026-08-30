@@ -400,3 +400,47 @@ events.on<CrmDealAssignedPayload>("crm.deal.assigned", async (event) => {
     templateData: { dealTitle: title },
   });
 });
+
+// --- Build 21 — Sales Team Management (Roadmap Module 15). The two
+// justified Sales Team notifications — see `crm-sales-team-service.ts`/
+// `crm-sales-goal-service.ts`'s own comments on why manager changes and
+// goal archival don't get one.
+
+interface CrmSalesTeamMemberAddedPayload {
+  memberId: string;
+  organizationId: string;
+  userId: string;
+}
+
+events.on<CrmSalesTeamMemberAddedPayload>("crm.sales_team.member_added", async (event) => {
+  const { memberId, organizationId, userId } = event.payload;
+  await notificationService.notify({
+    templateKey: "crm.sales_team.member_added",
+    recipientUserId: userId,
+    organizationId,
+    sourceEventType: "crm.sales_team.member_added",
+    sourceEntityType: "crm_sales_team_member",
+    sourceEntityId: memberId,
+    templateData: {},
+  });
+});
+
+interface CrmSalesGoalAssignedPayload {
+  goalId: string;
+  organizationId: string;
+  assignedToUserId: string;
+  metricLabel: string;
+}
+
+events.on<CrmSalesGoalAssignedPayload>("crm.sales_team.goal_assigned", async (event) => {
+  const { goalId, organizationId, assignedToUserId, metricLabel } = event.payload;
+  await notificationService.notify({
+    templateKey: "crm.sales_team.goal_assigned",
+    recipientUserId: assignedToUserId,
+    organizationId,
+    sourceEventType: "crm.sales_team.goal_assigned",
+    sourceEntityType: "crm_sales_goal",
+    sourceEntityId: goalId,
+    templateData: { metricLabel },
+  });
+});

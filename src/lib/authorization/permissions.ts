@@ -484,6 +484,29 @@ export const PERMISSION_CATALOG = {
     false,
   ),
 
+  // --- crm.sales_team (Build 21 — Sales Team Management, Canonical
+  // Roadmap Module 15). Its own sub-resource, same reasoning
+  // `crm.pipeline` above already establishes: rep performance/target/
+  // quota data is a distinct sensitivity tier from plain contact/lead
+  // browsing, and this codebase's own fine-grained-sub-resource
+  // precedent (not one blanket pair per module) continues here. Same
+  // PLATFORM scope and same audience split as `crm.read`/`crm.pipeline.
+  // read` — see docs/architecture/sales-team-management.md.
+  "crm.sales_team.read": permission(
+    "crm.sales_team",
+    "read",
+    "PLATFORM",
+    "View the sales team roster, rep performance, leaderboard, and targets/quotas (Alpha Page Rankers' own internal sales team — never a customer organization's own data).",
+    false,
+  ),
+  "crm.sales_team.manage": permission(
+    "crm.sales_team",
+    "manage",
+    "PLATFORM",
+    "Add/remove sales team members, change manager assignments, and create/archive targets and quotas.",
+    false,
+  ),
+
   // --- integrations (ORGANIZATION, reserved — Module 54)
   "integrations.read": permission("integrations", "read", "ORGANIZATION", "View configured integrations.", true),
   "integrations.manage": permission(

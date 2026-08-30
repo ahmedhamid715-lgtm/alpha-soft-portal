@@ -226,6 +226,21 @@ export const AUDIT_CATALOG = {
   "crm.deal.won": action("CRM", "A sales deal was marked won."),
   "crm.deal.lost": action("CRM", "A sales deal was marked lost."),
   "crm.deal.reopened": action("CRM", "A won or lost sales deal was reopened."),
+
+  // --- Build 21 (Roadmap Module 15) — Sales Team Management. Extends the
+  // CRM category above, same audience/reasoning as Build 20's own
+  // extension comment. Team membership/manager changes and target/quota
+  // creation/archival are audited — real management actions with
+  // governance stakes (who is authorized to see whose performance data,
+  // what threshold a rep is being held to). Aggregated performance/
+  // leaderboard queries are deliberately NOT audited — a read of already-
+  // authorized data, not a mutation, the same "audit the outcome, not
+  // every read" discipline every prior CRM extension already establishes.
+  "crm.sales_team.member_added": action("CRM", "A user was added to the sales team."),
+  "crm.sales_team.member_removed": action("CRM", "A user was removed from the sales team."),
+  "crm.sales_team.manager_changed": action("CRM", "A sales team member's manager changed."),
+  "crm.sales_team.goal_created": action("CRM", "A sales target or quota was created."),
+  "crm.sales_team.goal_archived": action("CRM", "A sales target or quota was archived."),
 } as const satisfies Record<string, AuditActionDefinition>;
 
 export type AuditActionKey = keyof typeof AUDIT_CATALOG;
