@@ -376,3 +376,27 @@ events.on<CrmTaskAssignedPayload>("crm.task.assigned", async (event) => {
     templateData: { taskTitle: title },
   });
 });
+
+// --- Build 20 — Sales Pipeline (Roadmap Module 14). The one justified
+// Sales Pipeline notification — see `crm-deal-service.ts`'s own comment
+// on why ordinary stage/value edits don't get one.
+
+interface CrmDealAssignedPayload {
+  dealId: string;
+  organizationId: string;
+  assignedToUserId: string;
+  title: string;
+}
+
+events.on<CrmDealAssignedPayload>("crm.deal.assigned", async (event) => {
+  const { dealId, organizationId, assignedToUserId, title } = event.payload;
+  await notificationService.notify({
+    templateKey: "crm.deal.assigned",
+    recipientUserId: assignedToUserId,
+    organizationId,
+    sourceEventType: "crm.deal.assigned",
+    sourceEntityType: "crm_deal",
+    sourceEntityId: dealId,
+    templateData: { dealTitle: title },
+  });
+});

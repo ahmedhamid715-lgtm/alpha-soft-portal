@@ -20,6 +20,8 @@ import { LogActivityForm } from "@/components/crm/log-activity-form";
 import { LeadStatusForm } from "@/components/crm/lead-status-form";
 import { NewTaskForm } from "@/components/crm/new-task-form";
 import { CrmTaskList } from "@/components/crm/task-list";
+import { ConvertLeadToDealForm } from "@/components/crm/pipeline/convert-lead-to-deal-form";
+import { listPipelines } from "@/server/services/crm-pipeline-service";
 import type { CrmLeadStatus } from "@/generated/prisma/client";
 
 export const metadata: Metadata = { title: "CRM Lead" };
@@ -63,12 +65,14 @@ export default async function CrmLeadDetailPage({ params }: { params: Promise<{ 
   }
 
   const canManage = context.permissions.has("crm.manage");
-  const [company, primaryContact, activities, tasks, users] = await Promise.all([
+  const canConvertToDeal = canManage && context.permissions.has("crm.pipeline.manage") && lead.status === "QUALIFIED";
+  const [company, primaryContact, activities, tasks, users, pipelines] = await Promise.all([
     getCompany({ companyId: lead.companyId }),
     lead.primaryContactId ? getContact({ contactId: lead.primaryContactId }) : Promise.resolve(null),
     listActivitiesForLead({ leadId: id, limit: 25 }),
     listTasks({ leadId: id, limit: 50 }),
     listAssignableUsers(),
+    canConvertToDeal ? listPipelines({ status: "ACTIVE" }) : Promise.resolve([]),
   ]);
   const assignedUser = lead.assignedToUserId ? (users.find((u) => u.id === lead.assignedToUserId) ?? null) : null;
 
@@ -127,6 +131,17 @@ export default async function CrmLeadDetailPage({ params }: { params: Promise<{ 
           </Card>
         ) : null}
       </section>
+
+      {canConvertToDeal ? (
+        <section className="flex flex-col gap-4">
+          <SectionHeader title="Convert to deal" description="Creates a sales deal for this company (and this contact, if set) in the pipeline you choose, and marks this lead CONVERTED." />
+          <Card className="max-w-xl">
+            <CardContent>
+              <ConvertLeadToDealForm leadId={lead.id} pipelines={pipelines} />
+            </CardContent>
+          </Card>
+        </section>
+      ) : null}
 
       <section className="flex flex-col gap-4">
         <SectionHeader title="Tasks" description="Follow-ups scoped to this lead." />

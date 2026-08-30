@@ -78,6 +78,10 @@ const PLATFORM_FULL: PermissionKey[] = [
   // records) stays a separate, narrower grant — see each role's own
   // permissions list below.
   "crm.read",
+  // Build 20 — day-to-day Sales Pipeline visibility, same reasoning as
+  // crm.read above. `crm.pipeline.manage` stays a separate, narrower
+  // grant — see each role's own permissions list below.
+  "crm.pipeline.read",
 ];
 
 const ORGANIZATION_FULL: PermissionKey[] = [
@@ -168,6 +172,10 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       // editing sales data) is the narrower, real business-development
       // capability, same tier as `knowledge.platform.manage` above.
       "crm.manage",
+      // Build 20 — Sales Pipeline. `crm.pipeline.read` also granted via
+      // PLATFORM_FULL below; `crm.pipeline.manage` is the narrower deal-
+      // creating/editing/won-lost capability, same tier as `crm.manage`.
+      "crm.pipeline.manage",
     ],
   },
   platform_admin: {
@@ -212,6 +220,10 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "billing.compliance.read",
       "knowledge.platform.manage",
       "crm.manage",
+      // Build 20 — same tier/reasoning as `crm.manage` immediately
+      // above — deliberately NOT held by `support_admin` (see that
+      // role's own comment).
+      "crm.pipeline.manage",
     ],
   },
   support_admin: {
@@ -251,6 +263,8 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     // need to see a customer-in-progress's own CRM history for context.
     // Deliberately NOT `crm.manage` — same "visibility, not content-
     // management power" line as `knowledge.platform.manage` above.
+    // Build 20 — `crm.pipeline.read` ALSO granted, same reasoning;
+    // deliberately NOT `crm.pipeline.manage`.
     permissions: [
       "users.read",
       "organizations.read",
@@ -265,6 +279,7 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "ai.observability",
       "knowledge.observability",
       "crm.read",
+      "crm.pipeline.read",
     ],
   },
   support_agent: {

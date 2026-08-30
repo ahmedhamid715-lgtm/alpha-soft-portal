@@ -207,6 +207,25 @@ export const AUDIT_CATALOG = {
   "crm.lead.created": action("CRM", "A CRM lead was created."),
   "crm.lead.status_changed": action("CRM", "A CRM lead's status changed."),
   "crm.lead.converted": action("CRM", "A CRM lead was converted (marked CONVERTED)."),
+
+  // --- Build 20 (Roadmap Module 14) — Sales Pipeline. Extends the CRM
+  // category above rather than adding a new one — same platform-internal
+  // sales workspace, same audience. Pipeline/stage configuration and deal
+  // lifecycle transitions (creation, ownership change, won/lost/reopened)
+  // are audited — real business-significant events with real financial
+  // stakes. Routine value/probability/expected-close-date edits and deal
+  // notes are deliberately NOT separately audited — `CrmDealHistory` is
+  // itself the durable business-chronology record of those (see
+  // docs/architecture/sales-pipeline.md "Deal history" for the explicit
+  // AuditEvent-vs-DealHistory distinction), the same "audit the outcome,
+  // not every routine action" discipline `crm.lead.*` above establishes.
+  "crm.pipeline.created": action("CRM", "A sales pipeline was created."),
+  "crm.pipeline.archived": action("CRM", "A sales pipeline was archived."),
+  "crm.deal.created": action("CRM", "A sales deal was created."),
+  "crm.deal.owner_changed": action("CRM", "A sales deal's assigned owner changed."),
+  "crm.deal.won": action("CRM", "A sales deal was marked won."),
+  "crm.deal.lost": action("CRM", "A sales deal was marked lost."),
+  "crm.deal.reopened": action("CRM", "A won or lost sales deal was reopened."),
 } as const satisfies Record<string, AuditActionDefinition>;
 
 export type AuditActionKey = keyof typeof AUDIT_CATALOG;

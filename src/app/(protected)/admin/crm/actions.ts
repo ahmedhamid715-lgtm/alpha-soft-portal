@@ -9,7 +9,23 @@ import * as activityService from "@/server/services/crm-activity-service";
 import * as taskService from "@/server/services/crm-task-service";
 import * as leadSourceService from "@/server/services/crm-lead-source-service";
 import * as customFieldService from "@/server/services/crm-custom-field-service";
-import type { CrmCompany, CrmContact, CrmLead, CrmActivity, CrmTask, CrmLeadSource, CrmCustomFieldDefinition, CrmCustomFieldValue } from "@/generated/prisma/client";
+import * as pipelineService from "@/server/services/crm-pipeline-service";
+import * as pipelineStageService from "@/server/services/crm-pipeline-stage-service";
+import * as dealService from "@/server/services/crm-deal-service";
+import type {
+  CrmCompany,
+  CrmContact,
+  CrmLead,
+  CrmActivity,
+  CrmTask,
+  CrmLeadSource,
+  CrmCustomFieldDefinition,
+  CrmCustomFieldValue,
+  CrmPipeline,
+  CrmPipelineStage,
+  CrmDeal,
+  CrmDealHistory,
+} from "@/generated/prisma/client";
 
 /**
  * Every CRM mutation the UI needs, in one shared file (`/admin/crm/*`
@@ -160,6 +176,99 @@ export async function setCustomFieldValueAction(input: unknown): Promise<ActionR
     if (result.data.leadId) revalidatePath(`/admin/crm/leads/${result.data.leadId}`);
     if (result.data.companyId) revalidatePath(`/admin/crm/companies/${result.data.companyId}`);
     if (result.data.contactId) revalidatePath(`/admin/crm/contacts/${result.data.contactId}`);
+  }
+  return result;
+}
+
+// --- Sales Pipeline (Build 20 / Roadmap 14) ---
+
+export async function createPipelineAction(input: unknown): Promise<ActionResult<CrmPipeline>> {
+  return run(() => pipelineService.createPipeline(input), ["/admin/crm/pipeline", "/admin/crm/settings", "/admin/crm"]);
+}
+
+export async function updatePipelineAction(input: unknown): Promise<ActionResult<CrmPipeline>> {
+  return run(() => pipelineService.updatePipeline(input), ["/admin/crm/pipeline", "/admin/crm/settings"]);
+}
+
+export async function archivePipelineAction(input: unknown): Promise<ActionResult<CrmPipeline>> {
+  return run(() => pipelineService.archivePipeline(input), ["/admin/crm/pipeline", "/admin/crm/settings"]);
+}
+
+export async function reactivatePipelineAction(input: unknown): Promise<ActionResult<CrmPipeline>> {
+  return run(() => pipelineService.reactivatePipeline(input), ["/admin/crm/pipeline", "/admin/crm/settings"]);
+}
+
+export async function createStageAction(input: unknown): Promise<ActionResult<CrmPipelineStage>> {
+  return run(() => pipelineStageService.createStage(input), ["/admin/crm/pipeline", "/admin/crm/settings"]);
+}
+
+export async function updateStageAction(input: unknown): Promise<ActionResult<CrmPipelineStage>> {
+  return run(() => pipelineStageService.updateStage(input), ["/admin/crm/pipeline", "/admin/crm/settings"]);
+}
+
+export async function moveStageAction(input: unknown): Promise<ActionResult<CrmPipelineStage>> {
+  return run(() => pipelineStageService.moveStage(input), ["/admin/crm/pipeline", "/admin/crm/settings"]);
+}
+
+export async function archiveStageAction(input: unknown): Promise<ActionResult<CrmPipelineStage>> {
+  return run(() => pipelineStageService.archiveStage(input), ["/admin/crm/pipeline", "/admin/crm/settings"]);
+}
+
+export async function reactivateStageAction(input: unknown): Promise<ActionResult<CrmPipelineStage>> {
+  return run(() => pipelineStageService.reactivateStage(input), ["/admin/crm/pipeline", "/admin/crm/settings"]);
+}
+
+export async function createDealAction(input: unknown): Promise<ActionResult<CrmDeal>> {
+  return run(() => dealService.createDeal(input), ["/admin/crm/pipeline", "/admin/crm"]);
+}
+
+export async function updateDealAction(input: unknown): Promise<ActionResult<CrmDeal>> {
+  const result = await run(() => dealService.updateDeal(input), ["/admin/crm/pipeline"]);
+  if (result.data) revalidatePath(`/admin/crm/deals/${result.data.id}`);
+  return result;
+}
+
+export async function moveDealStageAction(input: unknown): Promise<ActionResult<CrmDeal>> {
+  const result = await run(() => dealService.moveDealStage(input), ["/admin/crm/pipeline"]);
+  if (result.data) revalidatePath(`/admin/crm/deals/${result.data.id}`);
+  return result;
+}
+
+export async function winDealAction(input: unknown): Promise<ActionResult<CrmDeal>> {
+  const result = await run(() => dealService.winDeal(input), ["/admin/crm/pipeline", "/admin/crm"]);
+  if (result.data) revalidatePath(`/admin/crm/deals/${result.data.id}`);
+  return result;
+}
+
+export async function loseDealAction(input: unknown): Promise<ActionResult<CrmDeal>> {
+  const result = await run(() => dealService.loseDeal(input), ["/admin/crm/pipeline", "/admin/crm"]);
+  if (result.data) revalidatePath(`/admin/crm/deals/${result.data.id}`);
+  return result;
+}
+
+export async function reopenDealAction(input: unknown): Promise<ActionResult<CrmDeal>> {
+  const result = await run(() => dealService.reopenDeal(input), ["/admin/crm/pipeline", "/admin/crm"]);
+  if (result.data) revalidatePath(`/admin/crm/deals/${result.data.id}`);
+  return result;
+}
+
+export async function changeDealOwnerAction(input: unknown): Promise<ActionResult<CrmDeal>> {
+  const result = await run(() => dealService.changeDealOwner(input), ["/admin/crm/pipeline"]);
+  if (result.data) revalidatePath(`/admin/crm/deals/${result.data.id}`);
+  return result;
+}
+
+export async function logDealNoteAction(input: unknown): Promise<ActionResult<CrmDealHistory>> {
+  const result = await run(() => dealService.logDealNote(input), []);
+  if (result.data) revalidatePath(`/admin/crm/deals/${result.data.dealId}`);
+  return result;
+}
+
+export async function convertLeadToDealAction(input: unknown): Promise<ActionResult<CrmDeal>> {
+  const result = await run(() => dealService.convertLeadToDeal(input), ["/admin/crm/pipeline", "/admin/crm/leads", "/admin/crm"]);
+  if (result.data) {
+    revalidatePath(`/admin/crm/deals/${result.data.id}`);
+    if (result.data.sourceLeadId) revalidatePath(`/admin/crm/leads/${result.data.sourceLeadId}`);
   }
   return result;
 }

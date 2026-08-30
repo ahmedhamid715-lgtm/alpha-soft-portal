@@ -169,6 +169,12 @@ model Organization {
   crmActivities             CrmActivity[]
   crmTasks                  CrmTask[]
   crmCustomFieldDefinitions CrmCustomFieldDefinition[]
+  /// Build 20 (Sales Pipeline) — extends the CRM domain above; same
+  /// exclusive platform-organization ownership.
+  crmPipelines              CrmPipeline[]
+  crmPipelineStages         CrmPipelineStage[]
+  crmDeals                  CrmDeal[]
+  crmDealHistory            CrmDealHistory[]
 
   @@index([status])
   @@index([isPlatform])
@@ -269,6 +275,10 @@ model User {
   crmTasksAssigned             CrmTask[]                @relation("CrmTaskAssignedTo")
   crmTasksCreated              CrmTask[]                @relation("CrmTaskCreatedBy")
   crmActivitiesLogged          CrmActivity[]            @relation("CrmActivityActor")
+  /// Build 20 (Sales Pipeline) — deals assigned to this user, deal
+  /// history entries this user's actions produced.
+  crmDealsAssigned             CrmDeal[]                @relation("CrmDealAssignedTo")
+  crmDealHistoryLogged         CrmDealHistory[]         @relation("CrmDealHistoryActor")
 
   @@index([status])
   @@map("users")
@@ -2252,6 +2262,7 @@ model CrmCompany {
   activities              CrmActivity[]
   tasks                   CrmTask[]
   customFieldValues       CrmCustomFieldValue[]
+  deals                   CrmDeal[]
 
   @@index([organizationId, createdAt])
   @@index([organizationId, status, createdAt])
@@ -2287,6 +2298,7 @@ model CrmContact {
   activities            CrmActivity[]
   tasks                 CrmTask[]
   customFieldValues     CrmCustomFieldValue[]
+  dealsAsPrimaryContact CrmDeal[]             @relation("CrmDealPrimaryContact")
 
   @@index([organizationId, createdAt])
   @@index([organizationId, status, createdAt])
@@ -2341,6 +2353,7 @@ model CrmLead {
   activities        CrmActivity[]
   tasks             CrmTask[]
   customFieldValues CrmCustomFieldValue[]
+  dealsSourced      CrmDeal[]             @relation("CrmDealSourceLead")
 
   @@index([organizationId, createdAt])
   @@index([organizationId, status, createdAt])
@@ -2509,4 +2522,190 @@ model CrmCustomFieldValue {
   @@index([companyId])
   @@index([contactId])
   @@map("crm_custom_field_values")
+}
+
+// =============================================================================
+// Sales Pipeline — Build 20 (Canonical Roadmap Module 14)
+// =============================================================================
+// Extends the CRM domain above (Build 19 / Roadmap Module 13) — see
+// docs/architecture/sales-pipeline.md. Every row here is owned exclusively
+// by the one platform organization, exactly like every CRM table above;
+// never a customer organization, never client-supplied. "Deal" is this
+// codebase's one canonical term for a sales opportunity (see that doc's
+// own "Terminology" section for why "Deal", not "Opportunity").
+
+model CrmPipeline {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  name      String
+  status    CrmPipelineStatus @default(ACTIVE)
+  isDefault Boolean           @default(false) @map("is_default")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stages       CrmPipelineStage[]
+  deals        CrmDeal[]
+
+  // A partial unique index enforcing "at most one default pipeline per
+  // organization" is hand-written in the migration (Prisma has no
+  // `@@unique` filtered-index syntax) — see that migration's own comment.
+  @@unique([organizationId, name])
+  @@index([organizationId, status])
+  @@map("crm_pipelines")
+}
+
+enum CrmPipelineStatus {
+  ACTIVE
+  ARCHIVED
+
+  @@map("crm_pipeline_status")
+}
+
+model CrmPipelineStage {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  pipelineId     String @map("pipeline_id") @db.Uuid
+
+  name               String
+  /// Gap-based ordering (seeded in increments of 1000) — see
+  /// `crm-pipeline-stage-service.ts`'s own `moveStage()` comment for the
+  /// midpoint-renumber strategy this enables without a full-table
+  /// renumber on every reorder.
+  sortOrder          Int                    @default(0) @map("sort_order")
+  status             CrmPipelineStageStatus @default(ACTIVE)
+  /// Descriptive/board-display hints only — NOT the lifecycle authority.
+  /// `CrmDeal.status` is authoritative; the deal service keeps a deal's
+  /// status consistent with these flags via `winDeal()`/`loseDeal()`,
+  /// never via a bare stage move. See sales-pipeline.md "Won/lost
+  /// semantics."
+  isWon              Boolean                @default(false) @map("is_won")
+  isLost             Boolean                @default(false) @map("is_lost")
+  /// Pre-fills a new/moved-into deal's own `probability` — never
+  /// silently overwrites a deal's existing, user-set probability. Null
+  /// means "no default for this stage."
+  defaultProbability Int?                   @map("default_probability")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  pipeline     CrmPipeline  @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  deals        CrmDeal[]
+
+  @@unique([pipelineId, name])
+  @@index([organizationId, pipelineId, sortOrder])
+  @@map("crm_pipeline_stages")
+}
+
+enum CrmPipelineStageStatus {
+  ACTIVE
+  ARCHIVED
+
+  @@map("crm_pipeline_stage_status")
+}
+
+model CrmDeal {
+  id               String  @id @db.Uuid
+  organizationId   String  @map("organization_id") @db.Uuid
+  pipelineId       String  @map("pipeline_id") @db.Uuid
+  stageId          String  @map("stage_id") @db.Uuid
+  companyId        String  @map("company_id") @db.Uuid
+  primaryContactId String? @map("primary_contact_id") @db.Uuid
+  sourceLeadId     String? @map("source_lead_id") @db.Uuid
+
+  title             String
+  /// Integer minor units — see src/lib/utils/money.ts. Never a
+  /// JavaScript float. CHECK (value_minor_units >= 0) in the migration.
+  valueMinorUnits   Int           @default(0) @map("value_minor_units")
+  /// ISO 4217 — same free-string convention as `Organization.currency`/
+  /// `BillingAccount.currency` (not an enum).
+  currency          String        @default("USD")
+  /// Integer percentage, 0-100 — see sales-pipeline.md "Probability."
+  /// CHECK (probability IS NULL OR probability BETWEEN 0 AND 100).
+  probability       Int?
+  expectedCloseDate DateTime?     @map("expected_close_date") @db.Timestamptz(3)
+  status            CrmDealStatus @default(OPEN)
+  assignedToUserId  String?       @map("assigned_to_user_id") @db.Uuid
+  lossReason        String?       @map("loss_reason")
+  wonAt             DateTime?     @map("won_at") @db.Timestamptz(3)
+  lostAt            DateTime?     @map("lost_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  pipeline       CrmPipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  stage          CrmPipelineStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  company        CrmCompany       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  primaryContact CrmContact?      @relation("CrmDealPrimaryContact", fields: [primaryContactId], references: [id], onDelete: SetNull)
+  sourceLead     CrmLead?         @relation("CrmDealSourceLead", fields: [sourceLeadId], references: [id], onDelete: SetNull)
+  assignedToUser User?            @relation("CrmDealAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  history        CrmDealHistory[]
+
+  @@index([organizationId, status, createdAt])
+  @@index([organizationId, pipelineId, stageId])
+  @@index([organizationId, pipelineId, status, createdAt])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, expectedCloseDate])
+  @@index([companyId, createdAt])
+  @@index([assignedToUserId, status])
+  @@index([sourceLeadId])
+  // A further partial index, `crm_deals_organization_id_won_at_idx`
+  // (`organization_id, won_at WHERE status = 'WON'`), backs
+  // `wonValueByCurrency()`'s forecast query — Prisma cannot express a
+  // partial index via `@@index`, so it's hand-written directly in the
+  // `sales_pipeline_query_indexes` migration only (same limitation as
+  // `crm_pipelines_one_default_per_org` above).
+  @@map("crm_deals")
+}
+
+enum CrmDealStatus {
+  OPEN
+  WON
+  LOST
+
+  @@map("crm_deal_status")
+}
+
+model CrmDealHistory {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  dealId         String @map("deal_id") @db.Uuid
+
+  type        CrmDealHistoryType
+  /// Small, bounded field-level detail only — never a full row dump.
+  /// E.g. `{"from":"NEW","to":"CONTACTED"}` for STAGE_CHANGED,
+  /// `{"fromMinorUnits":..,"toMinorUnits":..,"currency":"USD"}` for
+  /// VALUE_CHANGED. See sales-pipeline.md "Deal history."
+  metadata    Json?
+  /// Free-text body — populated for the one user-authorable type, NOTE;
+  /// system-generated types leave this null and rely on `metadata`.
+  note        String?
+  actorUserId String             @map("actor_user_id") @db.Uuid
+  occurredAt  DateTime           @default(now()) @map("occurred_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deal         CrmDeal      @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  actorUser    User         @relation("CrmDealHistoryActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, dealId, occurredAt])
+  @@map("crm_deal_history")
+}
+
+enum CrmDealHistoryType {
+  CREATED
+  STAGE_CHANGED
+  VALUE_CHANGED
+  PROBABILITY_CHANGED
+  EXPECTED_CLOSE_DATE_CHANGED
+  OWNER_CHANGED
+  WON
+  LOST
+  REOPENED
+  NOTE
+
+  @@map("crm_deal_history_type")
 }

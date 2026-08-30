@@ -460,6 +460,30 @@ export const PERMISSION_CATALOG = {
     "crm.manage",
   ),
 
+  // --- crm.pipeline (Build 20 — Sales Pipeline, Canonical Roadmap
+  // Module 14). Its own resource, not folded into `crm.read`/
+  // `crm.manage` above: deal values are financially sensitive in a way
+  // plain contact/lead browsing isn't, and this codebase's own
+  // precedent (`knowledge.source.*` vs `knowledge.retrieve`,
+  // `billing.read` vs `billing.analytics.read`) is fine-grained
+  // sub-resource permissions, not one blanket pair per module. Same
+  // PLATFORM scope and same audience split as `crm.read`/`crm.manage`
+  // — see docs/architecture/sales-pipeline.md.
+  "crm.pipeline.read": permission(
+    "crm.pipeline",
+    "read",
+    "PLATFORM",
+    "View sales pipelines, stages, deals, deal history, and forecasts (Alpha Page Rankers' own internal sales pipeline — never a customer organization's own data).",
+    false,
+  ),
+  "crm.pipeline.manage": permission(
+    "crm.pipeline",
+    "manage",
+    "PLATFORM",
+    "Create/archive pipelines and stages; create, edit, move, win, lose, and reopen deals; log deal notes.",
+    false,
+  ),
+
   // --- integrations (ORGANIZATION, reserved — Module 54)
   "integrations.read": permission("integrations", "read", "ORGANIZATION", "View configured integrations.", true),
   "integrations.manage": permission(

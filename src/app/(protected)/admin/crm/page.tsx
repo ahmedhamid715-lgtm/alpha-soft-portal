@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ShieldAlert, Building2, Users, Target, ListChecks, ArrowRight } from "lucide-react";
+import { ShieldAlert, Building2, Users, Target, ListChecks, ArrowRight, Handshake } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { SectionHeader } from "@/components/layout/section-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -11,6 +11,7 @@ import { listCompanies } from "@/server/services/crm-company-service";
 import { listContacts } from "@/server/services/crm-contact-service";
 import { listLeads } from "@/server/services/crm-lead-service";
 import { listTasks } from "@/server/services/crm-task-service";
+import { listDeals } from "@/server/services/crm-deal-service";
 import { formatInTimeZone } from "@/lib/utils/datetime";
 import type { CrmLeadStatus } from "@/generated/prisma/client";
 
@@ -40,11 +41,13 @@ export default async function CrmDashboardPage() {
     );
   }
 
-  const [companies, contacts, leadCounts, myOpenTasks] = await Promise.all([
+  const canSeePipeline = context.permissions.has("crm.pipeline.read");
+  const [companies, contacts, leadCounts, myOpenTasks, openDeals] = await Promise.all([
     listCompanies({ limit: 1, status: "ACTIVE" }),
     listContacts({ limit: 1, status: "ACTIVE" }),
     Promise.all(LEAD_STATUSES.map((status) => listLeads({ limit: 1, status }).then((r) => [status, r.pageInfo.totalCount ?? 0] as const))),
     listTasks({ limit: 10, status: "OPEN", assignedToUserId: context.user!.id }),
+    canSeePipeline ? listDeals({ limit: 1, status: "OPEN" }) : null,
   ]);
 
   const openLeadCount = leadCounts.filter(([status]) => status !== "CONVERTED" && status !== "DISQUALIFIED").reduce((sum, [, count]) => sum + count, 0);
@@ -53,7 +56,7 @@ export default async function CrmDashboardPage() {
     <div className="flex flex-col gap-8">
       <PageHeader title="CRM" description="Alpha Page Rankers' own sales pipeline — companies, contacts, leads, and follow-ups. Never a customer organization's own data." />
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Card>
           <CardContent>
             <Link href="/admin/crm/companies" className="flex flex-col gap-1">
@@ -94,10 +97,35 @@ export default async function CrmDashboardPage() {
             </Link>
           </CardContent>
         </Card>
+        {canSeePipeline ? (
+          <Card>
+            <CardContent>
+              <Link href="/admin/crm/pipeline" className="flex flex-col gap-1">
+                <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Handshake className="size-4" aria-hidden="true" /> Open deals
+                </span>
+                <span className="text-2xl font-semibold tabular-nums">{openDeals?.pageInfo.totalCount ?? 0}</span>
+              </Link>
+            </CardContent>
+          </Card>
+        ) : null}
       </section>
 
       <section className="flex flex-col gap-4">
-        <SectionHeader title="Pipeline" description="Leads by status." />
+        {/* "Lead pipeline" — distinct from the real Sales Pipeline board
+            (`/admin/crm/pipeline`, Build 20); this section is purely
+            lead-status counts, unrelated to `CrmPipeline`/`CrmDeal`. */}
+        <SectionHeader
+          title="Lead pipeline"
+          description="Leads by status."
+          actions={
+            canSeePipeline ? (
+              <Link href="/admin/crm/pipeline" className="flex items-center gap-1 text-sm text-muted-foreground hover:underline">
+                Sales pipeline <ArrowRight className="size-3.5" aria-hidden="true" />
+              </Link>
+            ) : undefined
+          }
+        />
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
           {leadCounts.map(([status, count]) => (
             <Card key={status}>

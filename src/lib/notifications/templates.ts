@@ -317,6 +317,22 @@ export const NOTIFICATION_TEMPLATES = {
       actionUrl: "/admin/crm/tasks",
     }),
   }),
+  /// Build 20 — reacts to `crm.deal.assigned` (`crm-deal-service.ts`).
+  /// The one justified Sales Pipeline notification (see
+  /// sales-pipeline.md "Notification strategy") — same reasoning
+  /// `crm.task.assigned` above already establishes; ordinary stage
+  /// moves/value edits are deliberately NOT notified.
+  "crm.deal.assigned": template({
+    version: 1,
+    active: true,
+    category: "CRM_ACTIVITY",
+    severity: "INFO",
+    render: (data: { dealTitle: string }) => ({
+      title: "Deal assigned to you",
+      body: `You were assigned a sales deal: "${data.dealTitle}".`,
+      actionUrl: "/admin/crm/pipeline",
+    }),
+  }),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as const satisfies Record<string, NotificationTemplateDefinition<any>>;
 
