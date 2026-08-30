@@ -300,6 +300,23 @@ export const NOTIFICATION_TEMPLATES = {
       actionUrl: "/organizations",
     }),
   }),
+  /// Module 19 — reacts to `crm.task.assigned` (`crm-task-service.ts`).
+  /// The one justified CRM notification (see crm-architecture.md
+  /// "Notification strategy") — every other CRM event is either
+  /// immutable-activity-as-its-own-record or routine settings CRUD, not
+  /// a "something now needs YOUR attention" event the way a task
+  /// assignment is.
+  "crm.task.assigned": template({
+    version: 1,
+    active: true,
+    category: "CRM_ACTIVITY",
+    severity: "INFO",
+    render: (data: { taskTitle: string }) => ({
+      title: "CRM task assigned to you",
+      body: `You were assigned a CRM follow-up task: "${data.taskTitle}".`,
+      actionUrl: "/admin/crm/tasks",
+    }),
+  }),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as const satisfies Record<string, NotificationTemplateDefinition<any>>;
 

@@ -105,15 +105,15 @@ model Organization {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  memberships            OrganizationMembership[]
+  memberships               OrganizationMembership[]
   /// Custom (organization-scoped) roles this organization has created — see Role below. System roles have `organizationId = null` and aren't reachable through this relation.
-  roles                  Role[]
+  roles                     Role[]
   /// Module 07 — invitations issued by this organization (pending, accepted, or revoked).
-  invitations            Invitation[]
+  invitations               Invitation[]
   /// Module 07 — this organization's onboarding progress, if it has any (see OrganizationOnboarding).
-  onboarding             OrganizationOnboarding?
+  onboarding                OrganizationOnboarding?
   /// Module 12 — this organization's invitation governance policy, if it has customized one (see OrganizationInvitationPolicy — lazily created, most organizations have none).
-  invitationPolicy       OrganizationInvitationPolicy?
+  invitationPolicy          OrganizationInvitationPolicy?
   /// Module 08 — this organization's audit trail. `SetNull`, never
   /// `Cascade` (see tenancy-foundation.md "Audit foundation" — an audit
   /// trail that disappears when the thing it describes is deleted has
@@ -126,14 +126,14 @@ model Organization {
   /// `resourceName`/`actorDisplayName` snapshot fields — the actual
   /// evidence — without permanently pinning the organization row in
   /// place.
-  auditEvents            AuditEvent[]
+  auditEvents               AuditEvent[]
   /// Module 09 — notifications associated with this organization
   /// (grouping/filtering/observability only, never the SELECT boundary —
   /// see `docs/architecture/notifications.md` "Notification —
   /// recipient-owned, organization-*associated*"). `SetNull`, same
   /// Module-08-learned reasoning as `auditEvents` above.
-  notifications          Notification[]
-  notificationDeliveries NotificationDelivery[]
+  notifications             Notification[]
+  notificationDeliveries    NotificationDelivery[]
   /// Module 13 — this organization's billing relationship, if it has
   /// one (see BillingAccount — lazily created on first checkout, same
   /// "not every organization has customized/activated this yet" shape
@@ -142,23 +142,33 @@ model Organization {
   /// (denormalized from `billingAccountId` for RLS/query simplicity —
   /// see billing-data-model.md "Ownership classification"), so each
   /// needs its own reverse-relation array here too.
-  billingAccount         BillingAccount?
-  subscriptions          Subscription[]
-  invoices               Invoice[]
-  payments               Payment[]
-  creditLedgerEntries    CreditLedgerEntry[]
+  billingAccount            BillingAccount?
+  subscriptions             Subscription[]
+  invoices                  Invoice[]
+  payments                  Payment[]
+  creditLedgerEntries       CreditLedgerEntry[]
   /// Module 17 — this organization's AI support-chat conversations.
   /// `Cascade`, same shape as the billing relations above (real,
   /// organization-owned business data — not evidentiary like
   /// `auditEvents`, which stay `SetNull`).
-  aiConversations        AiConversation[]
+  aiConversations           AiConversation[]
   /// Module 18 — this organization's own knowledge sources/documents
   /// (nullable-`organizationId` platform-level rows are NOT reachable
   /// through this relation, the same shape `roles`' own `organizationId
   /// IS NULL` system rows aren't a `Role[]` on any one `Organization`).
   /// `Cascade`, same reasoning as `aiConversations` above.
-  knowledgeSources       KnowledgeSource[]
-  knowledgeDocuments     KnowledgeDocument[]
+  knowledgeSources          KnowledgeSource[]
+  knowledgeDocuments        KnowledgeDocument[]
+  /// Module 19 (CRM) — Alpha Page Rankers' internal CRM records, all
+  /// owned exclusively by this platform organization.
+  crmCompanies              CrmCompany[]
+  crmCompaniesConverted     CrmCompany[]                  @relation("CrmCompanyConvertedOrganization")
+  crmContacts               CrmContact[]
+  crmLeadSources            CrmLeadSource[]
+  crmLeads                  CrmLead[]
+  crmActivities             CrmActivity[]
+  crmTasks                  CrmTask[]
+  crmCustomFieldDefinitions CrmCustomFieldDefinition[]
 
   @@index([status])
   @@index([isPlatform])
@@ -254,6 +264,11 @@ model User {
   /// production path" reasoning as `notifications` above, and a
   /// conversation with no owning user is meaningless (same logic).
   aiConversations              AiConversation[]
+  /// Module 19 (CRM) — leads/tasks assigned to this user, activities this user logged.
+  crmLeadsAssigned             CrmLead[]                @relation("CrmLeadAssignedTo")
+  crmTasksAssigned             CrmTask[]                @relation("CrmTaskAssignedTo")
+  crmTasksCreated              CrmTask[]                @relation("CrmTaskCreatedBy")
+  crmActivitiesLogged          CrmActivity[]            @relation("CrmActivityActor")
 
   @@index([status])
   @@map("users")
@@ -859,6 +874,12 @@ enum AuditCategory {
   /// AI usage/cost, the same reasoning that already separates BILLING
   /// from ORGANIZATION.
   KNOWLEDGE
+  /// Module 19 (Build 19 / Roadmap 13) — CRM lifecycle events (company,
+  /// contact, lead created/archived/status-changed/converted). Its own
+  /// category for the same reason BILLING/AI/KNOWLEDGE are: CRM is Alpha
+  /// Page Rankers' own internal sales-pipeline data, independently
+  /// filterable/reportable from every other subsystem.
+  CRM
 
   @@map("audit_category")
 }
@@ -2202,4 +2223,290 @@ model KnowledgeEmbedding {
 
   @@unique([chunkId, provider, model])
   @@map("knowledge_embeddings")
+}
+
+// =============================================================================
+// CRM — Module 19
+// =============================================================================
+
+model CrmCompany {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  name     String
+  domain   String?
+  industry String?
+  website  String?
+  phone    String?
+  status   CrmCompanyStatus @default(ACTIVE)
+
+  archivedAt                DateTime? @map("archived_at") @db.Timestamptz(3)
+  convertedToOrganizationId String?   @map("converted_to_organization_id") @db.Uuid
+  createdAt                 DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                 DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization            Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  convertedToOrganization Organization?         @relation("CrmCompanyConvertedOrganization", fields: [convertedToOrganizationId], references: [id], onDelete: SetNull)
+  contacts                CrmContact[]
+  leads                   CrmLead[]
+  activities              CrmActivity[]
+  tasks                   CrmTask[]
+  customFieldValues       CrmCustomFieldValue[]
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, status, createdAt])
+  @@map("crm_companies")
+}
+
+enum CrmCompanyStatus {
+  ACTIVE
+  ARCHIVED
+
+  @@map("crm_company_status")
+}
+
+model CrmContact {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @map("company_id") @db.Uuid
+
+  firstName String           @map("first_name")
+  lastName  String           @map("last_name")
+  email     String?
+  phone     String?
+  jobTitle  String?          @map("job_title")
+  status    CrmContactStatus @default(ACTIVE)
+
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization          Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company               CrmCompany            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  leadsAsPrimaryContact CrmLead[]             @relation("CrmLeadPrimaryContact")
+  activities            CrmActivity[]
+  tasks                 CrmTask[]
+  customFieldValues     CrmCustomFieldValue[]
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, status, createdAt])
+  @@index([companyId, createdAt])
+  @@map("crm_contacts")
+}
+
+enum CrmContactStatus {
+  ACTIVE
+  ARCHIVED
+
+  @@map("crm_contact_status")
+}
+
+model CrmLeadSource {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  name      String
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leads        CrmLead[]
+
+  @@unique([organizationId, name])
+  @@map("crm_lead_sources")
+}
+
+model CrmLead {
+  id               String  @id @db.Uuid
+  organizationId   String  @map("organization_id") @db.Uuid
+  companyId        String  @map("company_id") @db.Uuid
+  primaryContactId String? @map("primary_contact_id") @db.Uuid
+  sourceId         String? @map("source_id") @db.Uuid
+
+  title              String
+  status             CrmLeadStatus @default(NEW)
+  assignedToUserId   String?       @map("assigned_to_user_id") @db.Uuid
+  description        String?
+  disqualifiedReason String?       @map("disqualified_reason")
+  convertedAt        DateTime?     @map("converted_at") @db.Timestamptz(3)
+  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization      Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company           CrmCompany            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  primaryContact    CrmContact?           @relation("CrmLeadPrimaryContact", fields: [primaryContactId], references: [id], onDelete: SetNull)
+  source            CrmLeadSource?        @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  assignedToUser    User?                 @relation("CrmLeadAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  activities        CrmActivity[]
+  tasks             CrmTask[]
+  customFieldValues CrmCustomFieldValue[]
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, status, createdAt])
+  @@index([companyId, createdAt])
+  @@index([primaryContactId, createdAt])
+  @@index([assignedToUserId, createdAt])
+  @@map("crm_leads")
+}
+
+enum CrmLeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  CONVERTED
+  DISQUALIFIED
+
+  @@map("crm_lead_status")
+}
+
+model CrmActivity {
+  id             String  @id @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  leadId         String? @map("lead_id") @db.Uuid
+  companyId      String? @map("company_id") @db.Uuid
+  contactId      String? @map("contact_id") @db.Uuid
+
+  type                CrmActivityType
+  body                String?
+  callDurationSeconds Int?            @map("call_duration_seconds")
+  callOutcome         CrmCallOutcome? @map("call_outcome")
+  actorUserId         String          @map("actor_user_id") @db.Uuid
+  occurredAt          DateTime        @default(now()) @map("occurred_at") @db.Timestamptz(3)
+  createdAt           DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lead         CrmLead?     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  company      CrmCompany?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contact      CrmContact?  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  actorUser    User         @relation("CrmActivityActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, occurredAt])
+  @@index([leadId, occurredAt])
+  @@index([companyId, occurredAt])
+  @@index([contactId, occurredAt])
+  @@map("crm_activities")
+}
+
+enum CrmActivityType {
+  NOTE
+  CALL
+  EMAIL
+  MEETING
+  STATUS_CHANGE
+
+  @@map("crm_activity_type")
+}
+
+enum CrmCallOutcome {
+  CONNECTED
+  VOICEMAIL
+  NO_ANSWER
+  WRONG_NUMBER
+
+  @@map("crm_call_outcome")
+}
+
+model CrmTask {
+  id             String  @id @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  leadId         String? @map("lead_id") @db.Uuid
+  companyId      String? @map("company_id") @db.Uuid
+  contactId      String? @map("contact_id") @db.Uuid
+
+  title            String
+  description      String?
+  dueAt            DateTime?     @map("due_at") @db.Timestamptz(3)
+  status           CrmTaskStatus @default(OPEN)
+  assignedToUserId String?       @map("assigned_to_user_id") @db.Uuid
+  createdByUserId  String        @map("created_by_user_id") @db.Uuid
+  completedAt      DateTime?     @map("completed_at") @db.Timestamptz(3)
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lead           CrmLead?     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  company        CrmCompany?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contact        CrmContact?  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  assignedToUser User?        @relation("CrmTaskAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  createdByUser  User         @relation("CrmTaskCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, status, dueAt])
+  @@index([assignedToUserId, status, dueAt])
+  @@index([leadId, status, dueAt])
+  @@index([companyId, status, dueAt])
+  @@index([contactId, status, dueAt])
+  @@map("crm_tasks")
+}
+
+enum CrmTaskStatus {
+  OPEN
+  COMPLETED
+  CANCELLED
+
+  @@map("crm_task_status")
+}
+
+model CrmCustomFieldDefinition {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  entityType CrmCustomFieldEntityType @map("entity_type")
+  key        String
+  label      String
+  fieldType  CrmCustomFieldType       @map("field_type")
+  options    Json?
+  isActive   Boolean                  @default(true) @map("is_active")
+  createdAt  DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  values       CrmCustomFieldValue[]
+
+  @@unique([organizationId, entityType, key])
+  @@index([organizationId, entityType, label])
+  @@map("crm_custom_field_definitions")
+}
+
+enum CrmCustomFieldEntityType {
+  LEAD
+  COMPANY
+  CONTACT
+
+  @@map("crm_custom_field_entity_type")
+}
+
+enum CrmCustomFieldType {
+  TEXT
+  NUMBER
+  DATE
+  BOOLEAN
+  SELECT
+
+  @@map("crm_custom_field_type")
+}
+
+model CrmCustomFieldValue {
+  id           String  @id @db.Uuid
+  definitionId String  @map("definition_id") @db.Uuid
+  leadId       String? @map("lead_id") @db.Uuid
+  companyId    String? @map("company_id") @db.Uuid
+  contactId    String? @map("contact_id") @db.Uuid
+
+  valueText    String?   @map("value_text")
+  valueNumber  Decimal?  @map("value_number") @db.Decimal(20, 4)
+  valueDate    DateTime? @map("value_date") @db.Timestamptz(3)
+  valueBoolean Boolean?  @map("value_boolean")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  definition CrmCustomFieldDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  lead       CrmLead?                 @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  company    CrmCompany?              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contact    CrmContact?              @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@index([companyId])
+  @@index([contactId])
+  @@map("crm_custom_field_values")
 }

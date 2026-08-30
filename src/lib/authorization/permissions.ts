@@ -431,6 +431,35 @@ export const PERMISSION_CATALOG = {
     "knowledge.platform.manage",
   ),
 
+  // --- crm (Module 19 — CRM Foundation). PLATFORM-scope, both keys —
+  // unlike every other business-capability module so far (billing/AI/
+  // knowledge, all ORGANIZATION-scope, offered TO each customer
+  // organization), CRM is Alpha Page Rankers' own internal sales tool:
+  // every CrmCompany/Contact/Lead/Activity/Task belongs exclusively to
+  // the one platform organization, never a customer org. Two keys, not
+  // one, mirroring the exact `knowledge.observability`/
+  // `knowledge.platform.manage` read-vs-manage split: `crm.read` for
+  // day-to-day sales visibility (broader audience), `crm.manage` for
+  // actually creating/editing CRM records (narrower — a real business-
+  // development action, not support triage). See
+  // docs/architecture/crm-architecture.md.
+  "crm.read": permission(
+    "crm",
+    "read",
+    "PLATFORM",
+    "View CRM companies, contacts, leads, activities, and tasks (Alpha Page Rankers' own internal sales data — never a customer organization's own data).",
+    false,
+    "crm.read",
+  ),
+  "crm.manage": permission(
+    "crm",
+    "manage",
+    "PLATFORM",
+    "Create, update, or archive CRM companies/contacts/leads; log activities; manage tasks; manage lead sources and custom field definitions.",
+    false,
+    "crm.manage",
+  ),
+
   // --- integrations (ORGANIZATION, reserved — Module 54)
   "integrations.read": permission("integrations", "read", "ORGANIZATION", "View configured integrations.", true),
   "integrations.manage": permission(

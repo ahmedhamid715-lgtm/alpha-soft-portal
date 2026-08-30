@@ -352,3 +352,27 @@ events.on<BillingCreditEventPayload>("billing.credit.issued", async (event) => {
     amountFormatted: formatMoney(amount, currency),
   });
 });
+
+// --- Module 19 — CRM (Build 19 / Roadmap 13). The one justified CRM
+// notification — see `crm-task-service.ts`'s own comment on why every
+// other CRM event doesn't get one.
+
+interface CrmTaskAssignedPayload {
+  taskId: string;
+  organizationId: string;
+  assignedToUserId: string;
+  title: string;
+}
+
+events.on<CrmTaskAssignedPayload>("crm.task.assigned", async (event) => {
+  const { taskId, organizationId, assignedToUserId, title } = event.payload;
+  await notificationService.notify({
+    templateKey: "crm.task.assigned",
+    recipientUserId: assignedToUserId,
+    organizationId,
+    sourceEventType: "crm.task.assigned",
+    sourceEntityType: "crm_task",
+    sourceEntityId: taskId,
+    templateData: { taskTitle: title },
+  });
+});

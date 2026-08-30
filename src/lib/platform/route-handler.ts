@@ -34,7 +34,7 @@ import { getOrCreateRequestId, REQUEST_ID_HEADER } from "./request-id";
 export function createRouteHandler<TParams = Record<string, string>>(
   handler: (request: NextRequest, ctx: { requestId: string; params: Promise<TParams> }) => Promise<Response>,
 ) {
-  return async (request: NextRequest, routeContext?: { params: Promise<TParams> }): Promise<Response> => {
+  return async (request: NextRequest, routeContext: { params: Promise<TParams> }): Promise<Response> => {
     const requestId = getOrCreateRequestId(request);
     const requestLogger = logger.child({
       requestId,
@@ -46,7 +46,7 @@ export function createRouteHandler<TParams = Record<string, string>>(
     try {
       const response = await handler(request, {
         requestId,
-        params: routeContext?.params ?? Promise.resolve({} as TParams),
+        params: routeContext.params,
       });
       response.headers.set(REQUEST_ID_HEADER, requestId);
       return response;

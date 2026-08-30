@@ -59,6 +59,16 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     { key: "admin-plans", label: "Plans", href: "/admin/plans", icon: "plans", permission: "billing.plan.manage" as const },
     { key: "admin-ai", label: "AI usage", href: "/admin/ai", icon: "ai", permission: "ai.observability" as const },
     { key: "admin-ai-knowledge", label: "Knowledge", href: "/admin/ai/knowledge", icon: "documents", permission: "knowledge.observability" as const },
+    // Deliberately flat (no `children`) — `NavMenuItem` (app-sidebar.tsx)
+    // renders an item WITH `children` as a `CollapsibleTrigger` BUTTON,
+    // not a `<Link>` to its own `href`; giving "CRM" a sub-nav would make
+    // clicking it only expand/collapse instead of navigating to
+    // `/admin/crm` at all. Found live by Build 19's own Phase 6 E2E run
+    // (the sidebar "CRM" link genuinely didn't exist), not by
+    // inspection — same single-link pattern "Knowledge" already uses;
+    // company/contact/lead/task/settings sub-pages stay reachable via
+    // the CRM dashboard's own links instead of a sidebar sub-menu.
+    { key: "admin-crm", label: "CRM", href: "/admin/crm", icon: "crm", permission: "crm.read" as const },
   ].filter((item) => platformContext.permissions.has(item.permission));
 
   if (platformItems.length > 0) {

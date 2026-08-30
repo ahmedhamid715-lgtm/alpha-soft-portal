@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Users, Building2, ShieldCheck, Bell, KeyRound, CreditCard, Tags, Bot, FileText } from "lucide-react";
+import { Users, Building2, ShieldCheck, Bell, KeyRound, CreditCard, Tags, Bot, FileText, Handshake } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,6 +18,7 @@ const TOOLS = [
   { href: "/admin/plans", label: "Plans", description: "The platform-wide plan catalog.", icon: Tags, permission: "billing.plan.manage" as const },
   { href: "/admin/ai", label: "AI usage", description: "Platform-wide AI message/token/cost activity, by organization.", icon: Bot, permission: "ai.observability" as const },
   { href: "/admin/ai/knowledge", label: "Knowledge", description: "Platform-wide knowledge/ingestion health, and platform-level knowledge sources.", icon: FileText, permission: "knowledge.observability" as const },
+  { href: "/admin/crm", label: "CRM", description: "Alpha Page Rankers' own sales pipeline — companies, contacts, leads, and follow-ups.", icon: Handshake, permission: "crm.read" as const },
 ];
 
 /**

@@ -19,7 +19,11 @@ const statusBadgeVariants = cva(
       status: {
         neutral: "border-border bg-muted text-muted-foreground",
         success: "border-success/20 bg-success/10 text-success",
-        warning: "border-warning/20 bg-warning/10 text-warning",
+        // The light-theme warning token clears AA on a plain surface but
+        // only reaches 4.32:1 after this badge's own translucent warning
+        // tint is composited underneath it. Darken the label only for the
+        // light badge; the dot and the dark-theme token remain unchanged.
+        warning: "border-warning/20 bg-warning/10 text-[#8c4f06] dark:text-warning",
         destructive: "border-destructive/20 bg-destructive/10 text-destructive",
         info: "border-info/20 bg-info/10 text-info",
         // `text-link` alone (#c34eff) clears 4.5:1 against a PLAIN dark

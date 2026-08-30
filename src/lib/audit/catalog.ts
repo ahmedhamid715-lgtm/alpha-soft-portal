@@ -187,6 +187,26 @@ export const AUDIT_CATALOG = {
   "knowledge.document.deleted": action("KNOWLEDGE", "A document was deleted (soft-deleted — see knowledge-security.md)."),
   "knowledge.document.reindexed": action("KNOWLEDGE", "A document was re-indexed under a new chunking strategy or embedding model."),
   "knowledge.rate_limit.exceeded": action("KNOWLEDGE", "An organization's knowledge-retrieval rate limit was exceeded — the query was rejected before any retrieval ran."),
+
+  // --- Module 19 (Build 19 / Roadmap 13) — CRM Foundation. This is Alpha
+  // Page Rankers' own internal sales tool (see docs/architecture/
+  // crm-architecture.md) — every event below concerns the platform's own
+  // sales pipeline, never a customer organization's data. Company/contact/
+  // lead lifecycle and lead disposition are audited — real business-
+  // development-significant events. Individual activity logs (notes,
+  // calls, status-change activity records) and task CRUD are deliberately
+  // NOT separately audited — CrmActivity is itself the durable record of
+  // that history (the same "audit the outcome, not every routine action"
+  // discipline `ai.conversation.*` and `knowledge.*` already establish),
+  // and CRM tasks are routine day-to-day sales-rep bookkeeping, not a
+  // security- or governance-significant event.
+  "crm.company.created": action("CRM", "A CRM company was created."),
+  "crm.company.archived": action("CRM", "A CRM company was archived."),
+  "crm.contact.created": action("CRM", "A CRM contact was created."),
+  "crm.contact.archived": action("CRM", "A CRM contact was archived."),
+  "crm.lead.created": action("CRM", "A CRM lead was created."),
+  "crm.lead.status_changed": action("CRM", "A CRM lead's status changed."),
+  "crm.lead.converted": action("CRM", "A CRM lead was converted (marked CONVERTED)."),
 } as const satisfies Record<string, AuditActionDefinition>;
 
 export type AuditActionKey = keyof typeof AUDIT_CATALOG;

@@ -111,6 +111,21 @@ export const NOTIFICATION_CATEGORIES = {
     mandatoryChannels: ["IN_APP"],
     defaultEnabled: { IN_APP: true, EMAIL: false },
   }),
+  /// Module 19 — CRM task assignment. This is Alpha Page Rankers' own
+  /// internal sales tool (see crm-architecture.md); recipients are
+  /// always platform staff, never a customer organization's members —
+  /// grouped under "Platform," not "Organization." IN_APP mandatory
+  /// (same uniform reasoning as every other category); EMAIL default-on
+  /// like BILLING's own reasoning — a missed follow-up assignment is a
+  /// real, actionable miss, not routine noise — but still user-optional.
+  CRM_ACTIVITY: category({
+    label: "CRM task assignments",
+    description: "When a CRM follow-up task is assigned to you.",
+    group: "Platform",
+    supportedChannels: ["IN_APP", "EMAIL"],
+    mandatoryChannels: ["IN_APP"],
+    defaultEnabled: { IN_APP: true, EMAIL: true },
+  }),
 } as const satisfies Record<string, NotificationCategoryDefinition>;
 
 export type NotificationCategoryKey = keyof typeof NOTIFICATION_CATEGORIES;

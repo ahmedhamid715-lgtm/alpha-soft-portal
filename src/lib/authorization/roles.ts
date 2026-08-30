@@ -73,6 +73,11 @@ const PLATFORM_FULL: PermissionKey[] = [
   "ai.observability",
   // Module 18 — same reasoning as ai.observability above.
   "knowledge.observability",
+  // Module 19 — day-to-day CRM visibility, same reasoning as
+  // knowledge.observability above. `crm.manage` (creating/editing CRM
+  // records) stays a separate, narrower grant — see each role's own
+  // permissions list below.
+  "crm.read",
 ];
 
 const ORGANIZATION_FULL: PermissionKey[] = [
@@ -158,6 +163,11 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       // (product docs, policies) — see platform_admin's own comment
       // below for why this is narrower than `PLATFORM_FULL`.
       "knowledge.platform.manage",
+      // Module 19 — Alpha Page Rankers' own internal CRM. `crm.read` is
+      // also granted via PLATFORM_FULL below; `crm.manage` (creating/
+      // editing sales data) is the narrower, real business-development
+      // capability, same tier as `knowledge.platform.manage` above.
+      "crm.manage",
     ],
   },
   platform_admin: {
@@ -189,6 +199,9 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     // `billing.compliance.read`-tier reasoning already applied to
     // platform_admin above) — deliberately NOT held by `support_admin`
     // (see that role's own comment).
+    // Module 19 — `crm.manage` IS granted here, same reasoning as
+    // `knowledge.platform.manage` immediately above — deliberately NOT
+    // held by `support_admin` (see that role's own comment).
     permissions: [
       ...PLATFORM_FULL,
       "billing.readPlatform",
@@ -198,6 +211,7 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "billing.controls.read",
       "billing.compliance.read",
       "knowledge.platform.manage",
+      "crm.manage",
     ],
   },
   support_admin: {
@@ -233,6 +247,10 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     // "support triage needs visibility, not content-management power"
     // line `billing.reports.export`/`billing.compliance.read` already
     // draw for this role.
+    // Module 19 — `crm.read` is ALSO granted: support staff plausibly
+    // need to see a customer-in-progress's own CRM history for context.
+    // Deliberately NOT `crm.manage` — same "visibility, not content-
+    // management power" line as `knowledge.platform.manage` above.
     permissions: [
       "users.read",
       "organizations.read",
@@ -246,6 +264,7 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "billing.controls.read",
       "ai.observability",
       "knowledge.observability",
+      "crm.read",
     ],
   },
   support_agent: {
