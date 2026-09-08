@@ -17,6 +17,9 @@ import * as salesGoalService from "@/server/services/crm-sales-goal-service";
 import * as proposalService from "@/server/services/crm-proposal-service";
 import * as proposalTemplateService from "@/server/services/crm-proposal-template-service";
 import * as contractService from "@/server/services/crm-contract-service";
+import * as onboardingService from "@/server/services/crm-client-onboarding-service";
+import * as onboardingChecklistService from "@/server/services/crm-client-onboarding-checklist-service";
+import * as onboardingIntakeService from "@/server/services/crm-client-onboarding-intake-service";
 import type {
   CrmCompany,
   CrmContact,
@@ -36,6 +39,12 @@ import type {
   CrmProposalVersion,
   CrmProposalTemplate,
   CrmContract,
+  CrmClientOnboarding,
+  CrmClientOnboardingRequirement,
+  CrmClientOnboardingChecklistItem,
+  CrmClientOnboardingDocument,
+  CrmClientOnboardingIntakeField,
+  CrmClientOnboardingIntakeResponse,
 } from "@/generated/prisma/client";
 
 /**
@@ -432,5 +441,130 @@ export async function cancelContractAction(input: unknown): Promise<ActionResult
 export async function expireContractAction(input: unknown): Promise<ActionResult<CrmContract>> {
   const result = await run(() => contractService.expireContract(input), ["/admin/crm/contracts"]);
   if (result.data) revalidatePath(`/admin/crm/contracts/${result.data.id}`);
+  return result;
+}
+
+// --- Client Onboarding (Build 23 — Roadmap Module 17). Every mutation
+// revalidates the onboarding's own workspace route plus the list, and the
+// originating deal's own detail route (the "Deal -> Onboarding" surface).
+
+function onboardingPaths(onboardingId?: string, dealId?: string): string[] {
+  const paths = ["/admin/crm/onboarding"];
+  if (onboardingId) paths.push(`/admin/crm/onboarding/${onboardingId}`);
+  if (dealId) paths.push(`/admin/crm/deals/${dealId}`);
+  return paths;
+}
+
+export async function convertDealToClientAction(input: unknown): Promise<ActionResult<CrmClientOnboarding>> {
+  const result = await run(() => onboardingService.convertDealToClient(input), ["/admin/crm/onboarding"]);
+  if (result.data) revalidatePath(`/admin/crm/deals/${result.data.dealId}`);
+  return result;
+}
+
+export async function setOnboardingStatusAction(input: unknown): Promise<ActionResult<CrmClientOnboarding>> {
+  const result = await run(() => onboardingService.setOnboardingStatus(input), []);
+  if (result.data) revalidatePath(`/admin/crm/onboarding/${result.data.id}`);
+  return result;
+}
+
+export async function scheduleKickoffAction(input: unknown): Promise<ActionResult<CrmClientOnboarding>> {
+  const result = await run(() => onboardingService.scheduleKickoff(input), []);
+  if (result.data) revalidatePath(`/admin/crm/onboarding/${result.data.id}`);
+  return result;
+}
+
+export async function completeKickoffAction(input: unknown): Promise<ActionResult<CrmClientOnboarding>> {
+  const result = await run(() => onboardingService.completeKickoff(input), []);
+  if (result.data) revalidatePath(`/admin/crm/onboarding/${result.data.id}`);
+  return result;
+}
+
+export async function cancelOnboardingAction(input: unknown): Promise<ActionResult<CrmClientOnboarding>> {
+  const result = await run(() => onboardingService.cancelOnboarding(input), ["/admin/crm/onboarding"]);
+  if (result.data) revalidatePath(`/admin/crm/onboarding/${result.data.id}`);
+  return result;
+}
+
+export async function completeOnboardingAction(input: unknown): Promise<ActionResult<CrmClientOnboarding>> {
+  const result = await run(() => onboardingService.completeOnboarding(input), ["/admin/crm/onboarding"]);
+  if (result.data) revalidatePath(`/admin/crm/onboarding/${result.data.id}`);
+  return result;
+}
+
+export async function forceCompleteOnboardingAction(input: unknown): Promise<ActionResult<CrmClientOnboarding>> {
+  const result = await run(() => onboardingService.forceCompleteOnboarding(input), ["/admin/crm/onboarding"]);
+  if (result.data) revalidatePath(`/admin/crm/onboarding/${result.data.id}`);
+  return result;
+}
+
+export async function assignOnboardingRoleAction(input: unknown): Promise<ActionResult<void>> {
+  return run(() => onboardingService.assignOnboardingRole(input), onboardingPaths((input as { onboardingId?: string })?.onboardingId));
+}
+
+// --- Onboarding requirements ---
+
+export async function createRequirementAction(input: unknown): Promise<ActionResult<CrmClientOnboardingRequirement>> {
+  return run(() => onboardingChecklistService.createRequirement(input), onboardingPaths((input as { onboardingId?: string })?.onboardingId));
+}
+
+export async function completeRequirementAction(input: unknown): Promise<ActionResult<CrmClientOnboardingRequirement>> {
+  const result = await run(() => onboardingChecklistService.completeRequirement(input), []);
+  if (result.data) revalidatePath(`/admin/crm/onboarding/${result.data.onboardingId}`);
+  return result;
+}
+
+export async function linkRequirementDocumentAction(input: unknown): Promise<ActionResult<CrmClientOnboardingRequirement>> {
+  const result = await run(() => onboardingChecklistService.linkRequirementDocument(input), []);
+  if (result.data) revalidatePath(`/admin/crm/onboarding/${result.data.onboardingId}`);
+  return result;
+}
+
+// --- Onboarding checklist ---
+
+export async function createChecklistItemAction(input: unknown): Promise<ActionResult<CrmClientOnboardingChecklistItem>> {
+  return run(() => onboardingChecklistService.createChecklistItem(input), onboardingPaths((input as { onboardingId?: string })?.onboardingId));
+}
+
+export async function completeChecklistItemAction(input: unknown): Promise<ActionResult<CrmClientOnboardingChecklistItem>> {
+  const result = await run(() => onboardingChecklistService.completeChecklistItem(input), []);
+  if (result.data) revalidatePath(`/admin/crm/onboarding/${result.data.onboardingId}`);
+  return result;
+}
+
+export async function reopenChecklistItemAction(input: unknown): Promise<ActionResult<CrmClientOnboardingChecklistItem>> {
+  const result = await run(() => onboardingChecklistService.reopenChecklistItem(input), []);
+  if (result.data) revalidatePath(`/admin/crm/onboarding/${result.data.onboardingId}`);
+  return result;
+}
+
+// --- Onboarding documents ---
+
+export async function createDocumentRequestAction(input: unknown): Promise<ActionResult<CrmClientOnboardingDocument>> {
+  return run(() => onboardingChecklistService.createDocumentRequest(input), onboardingPaths((input as { onboardingId?: string })?.onboardingId));
+}
+
+export async function markDocumentReceivedAction(input: unknown): Promise<ActionResult<CrmClientOnboardingDocument>> {
+  const result = await run(() => onboardingChecklistService.markDocumentReceived(input), []);
+  if (result.data) revalidatePath(`/admin/crm/onboarding/${result.data.onboardingId}`);
+  return result;
+}
+
+// --- Onboarding intake ---
+
+export async function createIntakeFieldAction(input: unknown): Promise<ActionResult<CrmClientOnboardingIntakeField>> {
+  return run(() => onboardingIntakeService.createIntakeField(input), ["/admin/crm/onboarding/intake-fields"]);
+}
+
+export async function archiveIntakeFieldAction(input: unknown): Promise<ActionResult<CrmClientOnboardingIntakeField>> {
+  return run(() => onboardingIntakeService.archiveIntakeField(input), ["/admin/crm/onboarding/intake-fields"]);
+}
+
+export async function reactivateIntakeFieldAction(input: unknown): Promise<ActionResult<CrmClientOnboardingIntakeField>> {
+  return run(() => onboardingIntakeService.reactivateIntakeField(input), ["/admin/crm/onboarding/intake-fields"]);
+}
+
+export async function recordIntakeResponseAction(input: unknown): Promise<ActionResult<CrmClientOnboardingIntakeResponse>> {
+  const result = await run(() => onboardingIntakeService.recordIntakeResponse(input), []);
+  if (result.data) revalidatePath(`/admin/crm/onboarding/${result.data.onboardingId}`);
   return result;
 }

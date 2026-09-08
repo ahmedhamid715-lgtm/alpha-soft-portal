@@ -105,15 +105,15 @@ model Organization {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  memberships               OrganizationMembership[]
+  memberships                        OrganizationMembership[]
   /// Custom (organization-scoped) roles this organization has created — see Role below. System roles have `organizationId = null` and aren't reachable through this relation.
-  roles                     Role[]
+  roles                              Role[]
   /// Module 07 — invitations issued by this organization (pending, accepted, or revoked).
-  invitations               Invitation[]
+  invitations                        Invitation[]
   /// Module 07 — this organization's onboarding progress, if it has any (see OrganizationOnboarding).
-  onboarding                OrganizationOnboarding?
+  onboarding                         OrganizationOnboarding?
   /// Module 12 — this organization's invitation governance policy, if it has customized one (see OrganizationInvitationPolicy — lazily created, most organizations have none).
-  invitationPolicy          OrganizationInvitationPolicy?
+  invitationPolicy                   OrganizationInvitationPolicy?
   /// Module 08 — this organization's audit trail. `SetNull`, never
   /// `Cascade` (see tenancy-foundation.md "Audit foundation" — an audit
   /// trail that disappears when the thing it describes is deleted has
@@ -126,14 +126,14 @@ model Organization {
   /// `resourceName`/`actorDisplayName` snapshot fields — the actual
   /// evidence — without permanently pinning the organization row in
   /// place.
-  auditEvents               AuditEvent[]
+  auditEvents                        AuditEvent[]
   /// Module 09 — notifications associated with this organization
   /// (grouping/filtering/observability only, never the SELECT boundary —
   /// see `docs/architecture/notifications.md` "Notification —
   /// recipient-owned, organization-*associated*"). `SetNull`, same
   /// Module-08-learned reasoning as `auditEvents` above.
-  notifications             Notification[]
-  notificationDeliveries    NotificationDelivery[]
+  notifications                      Notification[]
+  notificationDeliveries             NotificationDelivery[]
   /// Module 13 — this organization's billing relationship, if it has
   /// one (see BillingAccount — lazily created on first checkout, same
   /// "not every organization has customized/activated this yet" shape
@@ -142,50 +142,75 @@ model Organization {
   /// (denormalized from `billingAccountId` for RLS/query simplicity —
   /// see billing-data-model.md "Ownership classification"), so each
   /// needs its own reverse-relation array here too.
-  billingAccount            BillingAccount?
-  subscriptions             Subscription[]
-  invoices                  Invoice[]
-  payments                  Payment[]
-  creditLedgerEntries       CreditLedgerEntry[]
+  billingAccount                     BillingAccount?
+  subscriptions                      Subscription[]
+  invoices                           Invoice[]
+  payments                           Payment[]
+  creditLedgerEntries                CreditLedgerEntry[]
   /// Module 17 — this organization's AI support-chat conversations.
   /// `Cascade`, same shape as the billing relations above (real,
   /// organization-owned business data — not evidentiary like
   /// `auditEvents`, which stay `SetNull`).
-  aiConversations           AiConversation[]
+  aiConversations                    AiConversation[]
   /// Module 18 — this organization's own knowledge sources/documents
   /// (nullable-`organizationId` platform-level rows are NOT reachable
   /// through this relation, the same shape `roles`' own `organizationId
   /// IS NULL` system rows aren't a `Role[]` on any one `Organization`).
   /// `Cascade`, same reasoning as `aiConversations` above.
-  knowledgeSources          KnowledgeSource[]
-  knowledgeDocuments        KnowledgeDocument[]
+  knowledgeSources                   KnowledgeSource[]
+  knowledgeDocuments                 KnowledgeDocument[]
   /// Module 19 (CRM) — Alpha Page Rankers' internal CRM records, all
   /// owned exclusively by this platform organization.
-  crmCompanies              CrmCompany[]
-  crmCompaniesConverted     CrmCompany[]                  @relation("CrmCompanyConvertedOrganization")
-  crmContacts               CrmContact[]
-  crmLeadSources            CrmLeadSource[]
-  crmLeads                  CrmLead[]
-  crmActivities             CrmActivity[]
-  crmTasks                  CrmTask[]
-  crmCustomFieldDefinitions CrmCustomFieldDefinition[]
+  crmCompanies                       CrmCompany[]
+  crmCompaniesConverted              CrmCompany[]                        @relation("CrmCompanyConvertedOrganization")
+  crmContacts                        CrmContact[]
+  crmLeadSources                     CrmLeadSource[]
+  crmLeads                           CrmLead[]
+  crmActivities                      CrmActivity[]
+  crmTasks                           CrmTask[]
+  crmCustomFieldDefinitions          CrmCustomFieldDefinition[]
   /// Build 20 (Sales Pipeline) — extends the CRM domain above; same
   /// exclusive platform-organization ownership.
-  crmPipelines              CrmPipeline[]
-  crmPipelineStages         CrmPipelineStage[]
-  crmDeals                  CrmDeal[]
-  crmDealHistory            CrmDealHistory[]
+  crmPipelines                       CrmPipeline[]
+  crmPipelineStages                  CrmPipelineStage[]
+  crmDeals                           CrmDeal[]
+  crmDealHistory                     CrmDealHistory[]
   /// Build 21 (Sales Team Management) — extends the CRM domain above;
   /// same exclusive platform-organization ownership.
-  crmSalesTeamMembers       CrmSalesTeamMember[]
-  crmSalesGoals             CrmSalesGoal[]
+  crmSalesTeamMembers                CrmSalesTeamMember[]
+  crmSalesGoals                      CrmSalesGoal[]
   /// Build 22 (Proposals & Contracts) — extends the CRM domain above;
   /// same exclusive platform-organization ownership.
-  crmProposals              CrmProposal[]
-  crmProposalVersions       CrmProposalVersion[]
-  crmProposalLineItems      CrmProposalLineItem[]
-  crmProposalTemplates      CrmProposalTemplate[]
-  crmContracts              CrmContract[]
+  crmProposals                       CrmProposal[]
+  crmProposalVersions                CrmProposalVersion[]
+  crmProposalLineItems               CrmProposalLineItem[]
+  crmProposalTemplates               CrmProposalTemplate[]
+  crmContracts                       CrmContract[]
+  /// Build 23 (Client Onboarding) — extends the CRM domain above; same
+  /// exclusive platform-organization ownership (this is Alpha OS's own
+  /// internal record OF an onboarding engagement, not the customer
+  /// organization's own tenant data — see `crmClientOnboardingAsCustomer`
+  /// below for the OTHER, distinct role `Organization` plays here).
+  crmClientOnboardings               CrmClientOnboarding[]               @relation("CrmClientOnboardingPlatformOwner")
+  /// The customer-side role: onboarding engagement(s) whose
+  /// `linkedOrganizationId` points AT this organization (i.e. this
+  /// organization IS the converted client). `[]`, not singular — see
+  /// `CrmClientOnboarding`'s own "cancelled never resurrects, retry
+  /// creates a new row" comment; in practice at most one non-cancelled
+  /// row, enforced by the partial unique index on `dealId`, not here.
+  crmClientOnboardingAsCustomer      CrmClientOnboarding[]               @relation("CrmClientOnboardingLinkedOrganization")
+  /// Every Build 23 child table's own `organizationId` relation also
+  /// points here (always the PLATFORM organization) — one array field per
+  /// child table, required since each already has a differently-named
+  /// relation to `CrmClientOnboarding` itself and Prisma needs an explicit
+  /// opposite for every relation field, not just the root's own.
+  crmClientOnboardingServiceItems    CrmClientOnboardingServiceItem[]
+  crmClientOnboardingIntakeFields    CrmClientOnboardingIntakeField[]
+  crmClientOnboardingIntakeResponses CrmClientOnboardingIntakeResponse[]
+  crmClientOnboardingRequirements    CrmClientOnboardingRequirement[]
+  crmClientOnboardingDocuments       CrmClientOnboardingDocument[]
+  crmClientOnboardingChecklistItems  CrmClientOnboardingChecklistItem[]
+  crmClientOnboardingAssignments     CrmClientOnboardingAssignment[]
 
   @@index([status])
   @@index([isPlatform])
@@ -242,8 +267,8 @@ model User {
 
   memberships                          OrganizationMembership[]
   /// Module 07 — invitations this user has sent (as an org admin/owner) or accepted.
-  invitationsSent                      Invitation[]             @relation("InvitationsSent")
-  invitationsAccepted                  Invitation[]             @relation("InvitationsAccepted")
+  invitationsSent                      Invitation[]                        @relation("InvitationsSent")
+  invitationsAccepted                  Invitation[]                        @relation("InvitationsAccepted")
   credential                           UserCredential?
   sessions                             UserSession[]
   authTokens                           AuthToken[]
@@ -282,27 +307,37 @@ model User {
   /// conversation with no owning user is meaningless (same logic).
   aiConversations                      AiConversation[]
   /// Module 19 (CRM) — leads/tasks assigned to this user, activities this user logged.
-  crmLeadsAssigned                     CrmLead[]                @relation("CrmLeadAssignedTo")
-  crmTasksAssigned                     CrmTask[]                @relation("CrmTaskAssignedTo")
-  crmTasksCreated                      CrmTask[]                @relation("CrmTaskCreatedBy")
-  crmActivitiesLogged                  CrmActivity[]            @relation("CrmActivityActor")
+  crmLeadsAssigned                     CrmLead[]                           @relation("CrmLeadAssignedTo")
+  crmTasksAssigned                     CrmTask[]                           @relation("CrmTaskAssignedTo")
+  crmTasksCreated                      CrmTask[]                           @relation("CrmTaskCreatedBy")
+  crmActivitiesLogged                  CrmActivity[]                       @relation("CrmActivityActor")
   /// Build 20 (Sales Pipeline) — deals assigned to this user, deal
   /// history entries this user's actions produced.
-  crmDealsAssigned                     CrmDeal[]                @relation("CrmDealAssignedTo")
-  crmDealHistoryLogged                 CrmDealHistory[]         @relation("CrmDealHistoryActor")
+  crmDealsAssigned                     CrmDeal[]                           @relation("CrmDealAssignedTo")
+  crmDealHistoryLogged                 CrmDealHistory[]                    @relation("CrmDealHistoryActor")
   /// Build 21 (Sales Team Management) — this user's own sales-team
   /// participation row(s) (one per join/leave cycle — see
   /// `CrmSalesTeamMember`'s own comment), and goals this user created.
-  crmSalesTeamMemberships              CrmSalesTeamMember[]     @relation("CrmSalesTeamMemberUser")
-  crmSalesGoalsCreated                 CrmSalesGoal[]           @relation("CrmSalesGoalCreatedBy")
+  crmSalesTeamMemberships              CrmSalesTeamMember[]                @relation("CrmSalesTeamMemberUser")
+  crmSalesGoalsCreated                 CrmSalesGoal[]                      @relation("CrmSalesGoalCreatedBy")
   /// Build 22 (Proposals & Contracts).
-  crmProposalsAssigned                 CrmProposal[]            @relation("CrmProposalAssignedTo")
-  crmProposalVersionsCreated           CrmProposalVersion[]     @relation("CrmProposalVersionCreatedBy")
-  crmProposalVersionsApprovalSubmitted CrmProposalVersion[]     @relation("CrmProposalVersionApprovalSubmittedBy")
-  crmProposalVersionsApprovalDecided   CrmProposalVersion[]     @relation("CrmProposalVersionApprovalDecidedBy")
-  crmProposalVersionsSent              CrmProposalVersion[]     @relation("CrmProposalVersionSentBy")
-  crmProposalVersionsAcceptedByStaff   CrmProposalVersion[]     @relation("CrmProposalVersionAcceptedByStaff")
-  crmContractsCreated                  CrmContract[]            @relation("CrmContractCreatedBy")
+  crmProposalsAssigned                 CrmProposal[]                       @relation("CrmProposalAssignedTo")
+  crmProposalVersionsCreated           CrmProposalVersion[]                @relation("CrmProposalVersionCreatedBy")
+  crmProposalVersionsApprovalSubmitted CrmProposalVersion[]                @relation("CrmProposalVersionApprovalSubmittedBy")
+  crmProposalVersionsApprovalDecided   CrmProposalVersion[]                @relation("CrmProposalVersionApprovalDecidedBy")
+  crmProposalVersionsSent              CrmProposalVersion[]                @relation("CrmProposalVersionSentBy")
+  crmProposalVersionsAcceptedByStaff   CrmProposalVersion[]                @relation("CrmProposalVersionAcceptedByStaff")
+  crmContractsCreated                  CrmContract[]                       @relation("CrmContractCreatedBy")
+  /// Build 23 (Client Onboarding).
+  crmClientOnboardingsCreated          CrmClientOnboarding[]               @relation("CrmClientOnboardingCreatedBy")
+  crmClientOnboardingsCancelled        CrmClientOnboarding[]               @relation("CrmClientOnboardingCancelledBy")
+  crmClientOnboardingsCompleted        CrmClientOnboarding[]               @relation("CrmClientOnboardingCompletedBy")
+  crmClientOnboardingsKickoffOwned     CrmClientOnboarding[]               @relation("CrmClientOnboardingKickoffOwner")
+  crmClientOnboardingAssignments       CrmClientOnboardingAssignment[]     @relation("CrmClientOnboardingAssignmentUser")
+  crmClientOnboardingAssignmentsMade   CrmClientOnboardingAssignment[]     @relation("CrmClientOnboardingAssignmentAssignedBy")
+  crmClientOnboardingRequirementsOwned CrmClientOnboardingRequirement[]    @relation("CrmClientOnboardingRequirementResponsible")
+  crmClientOnboardingChecklistAssigned CrmClientOnboardingChecklistItem[]  @relation("CrmClientOnboardingChecklistAssignee")
+  crmClientOnboardingIntakeResponses   CrmClientOnboardingIntakeResponse[] @relation("CrmClientOnboardingIntakeResponseRespondedBy")
 
   @@index([status])
   @@map("users")
@@ -2289,6 +2324,7 @@ model CrmCompany {
   deals                   CrmDeal[]
   proposals               CrmProposal[]
   contracts               CrmContract[]
+  onboardings             CrmClientOnboarding[]
 
   @@index([organizationId, createdAt])
   @@index([organizationId, status, createdAt])
@@ -2664,16 +2700,21 @@ model CrmDeal {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  pipeline       CrmPipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  stage          CrmPipelineStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
-  company        CrmCompany       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  primaryContact CrmContact?      @relation("CrmDealPrimaryContact", fields: [primaryContactId], references: [id], onDelete: SetNull)
-  sourceLead     CrmLead?         @relation("CrmDealSourceLead", fields: [sourceLeadId], references: [id], onDelete: SetNull)
-  assignedToUser User?            @relation("CrmDealAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  pipeline       CrmPipeline           @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  stage          CrmPipelineStage      @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  company        CrmCompany            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  primaryContact CrmContact?           @relation("CrmDealPrimaryContact", fields: [primaryContactId], references: [id], onDelete: SetNull)
+  sourceLead     CrmLead?              @relation("CrmDealSourceLead", fields: [sourceLeadId], references: [id], onDelete: SetNull)
+  assignedToUser User?                 @relation("CrmDealAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
   history        CrmDealHistory[]
   proposals      CrmProposal[]
   contracts      CrmContract[]
+  /// Build 23 — `[]`, not a singular relation: a cancelled onboarding
+  /// never resurrects, a retry creates a NEW row (see
+  /// `CrmClientOnboarding`'s own comment), so a deal can legitimately
+  /// have more than one over time, historically.
+  onboardings    CrmClientOnboarding[]
 
   @@index([organizationId, status, createdAt])
   @@index([organizationId, pipelineId, stageId])
@@ -2960,15 +3001,19 @@ model CrmProposal {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  deal           CrmDeal              @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  company        CrmCompany           @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  primaryContact CrmContact?          @relation("CrmProposalPrimaryContact", fields: [primaryContactId], references: [id], onDelete: SetNull)
-  template       CrmProposalTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  assignedToUser User?                @relation("CrmProposalAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
-  currentVersion CrmProposalVersion?  @relation("CrmProposalCurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
-  versions       CrmProposalVersion[] @relation("CrmProposalVersions")
-  contracts      CrmContract[]
+  organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deal                 CrmDeal               @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  company              CrmCompany            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  primaryContact       CrmContact?           @relation("CrmProposalPrimaryContact", fields: [primaryContactId], references: [id], onDelete: SetNull)
+  template             CrmProposalTemplate?  @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  assignedToUser       User?                 @relation("CrmProposalAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  currentVersion       CrmProposalVersion?   @relation("CrmProposalCurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+  versions             CrmProposalVersion[]  @relation("CrmProposalVersions")
+  contracts            CrmContract[]
+  /// Build 23 — onboarding engagements that used THIS proposal directly
+  /// as their trigger (the no-contract-yet path — see
+  /// `CrmClientOnboarding.originatingProposalId`'s own comment).
+  onboardingsTriggered CrmClientOnboarding[] @relation("CrmClientOnboardingOriginatingProposal")
 
   /// Widened from a bare `[organizationId, dealId]` — flagged by the
   /// Build 22 performance review: `listForOrganization({ dealId })`
@@ -3207,8 +3252,12 @@ model CrmProposalLineItem {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  version      CrmProposalVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  organization           Organization                     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  version                CrmProposalVersion               @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  /// Build 23 — onboarding service-item snapshots that trace their own
+  /// provenance back to this line item (`SetNull` on delete, provenance
+  /// only — see `CrmClientOnboardingServiceItem`'s own comment).
+  onboardingServiceItems CrmClientOnboardingServiceItem[]
 
   @@index([organizationId, versionId, sortOrder])
   @@map("crm_proposal_line_items")
@@ -3295,12 +3344,16 @@ model CrmContract {
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  organization               Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  deal                       CrmDeal             @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  company                    CrmCompany          @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  originatingProposal        CrmProposal?        @relation(fields: [originatingProposalId], references: [id], onDelete: SetNull)
-  originatingProposalVersion CrmProposalVersion? @relation(fields: [originatingProposalVersionId], references: [id], onDelete: SetNull)
-  createdByUser              User                @relation("CrmContractCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  organization               Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deal                       CrmDeal               @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  company                    CrmCompany            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  originatingProposal        CrmProposal?          @relation(fields: [originatingProposalId], references: [id], onDelete: SetNull)
+  originatingProposalVersion CrmProposalVersion?   @relation(fields: [originatingProposalVersionId], references: [id], onDelete: SetNull)
+  createdByUser              User                  @relation("CrmContractCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  /// Build 23 — onboarding engagements triggered by THIS contract (the
+  /// common, preferred path — see `CrmClientOnboarding.originatingContractId`'s
+  /// own comment).
+  onboardingsTriggered       CrmClientOnboarding[] @relation("CrmClientOnboardingOriginatingContract")
 
   /// Widened, and the unfiltered index added below — same reasoning as
   /// `CrmProposal`'s own identical Build 22 performance-review fix.
@@ -3319,4 +3372,402 @@ enum CrmContractStatus {
   CANCELLED
 
   @@map("crm_contract_status")
+}
+
+// =============================================================================
+// Build 23 — Client Onboarding (Canonical Roadmap Module 17)
+// =============================================================================
+// Converts a WON deal (with an ACCEPTED proposal and/or ACTIVE contract) into
+// an operational onboarding engagement. See docs/architecture/client-onboarding.md
+// for the full design — summarized here at each model's own point of use.
+//
+// Tenant ownership: every table below is owned by the PLATFORM organization
+// (`organizationId`), exactly like every CRM table since Build 19 — this is
+// Alpha OS's own internal record OF an onboarding engagement, not the
+// customer organization's own tenant data. The customer's own `Organization`
+// (`CrmClientOnboarding.linkedOrganizationId`) is a separate, linked row this
+// domain never writes application data into.
+
+/// The onboarding aggregate root. One row per onboarding ENGAGEMENT — a
+/// cancelled engagement is never resurrected; retrying creates a brand-new
+/// row (mirrors `CrmSalesTeamMember`'s own "rejoin gets a new row, not a
+/// reactivated one" precedent), which is exactly why `dealId` is NOT simply
+/// `@unique` — the partial unique index below (hand-added in the migration;
+/// Prisma cannot express a `WHERE` clause in `@@unique`) allows any number of
+/// historical CANCELLED rows per deal, but at most one non-cancelled row.
+model CrmClientOnboarding {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  dealId    String @map("deal_id") @db.Uuid
+  companyId String @map("company_id") @db.Uuid
+
+  /// The customer's own `Organization` — reused via `CrmCompany.
+  /// convertedToOrganizationId` if the company already converted, or newly
+  /// created by THIS onboarding's own conversion transaction otherwise.
+  /// Required, not nullable: the conversion step always runs BEFORE this
+  /// row is created (see `convertDealToClient()`'s own transaction
+  /// ordering) — there is no "onboarding exists but has no linked
+  /// organization yet" state.
+  linkedOrganizationId String @map("linked_organization_id") @db.Uuid
+
+  /// Trigger provenance — at least one of these two must be set (CHECK
+  /// constraint in the migration, mirroring `CrmContract`'s own origin-pair
+  /// discipline). `originatingContractId` is the preferred/common path
+  /// (the actual signed agreement); `originatingProposalId` covers the
+  /// legitimate case where a deal was WON and its proposal ACCEPTED before
+  /// any contract was ever created (Build 22 never requires one). Both may
+  /// be set together (the common case: a contract that itself originated
+  /// from this same proposal) — stored directly rather than derived
+  /// transitively through the contract's own `originatingProposalId`, the
+  /// same "store the direct reference" discipline Build 22's own
+  /// `CrmContract` establishes.
+  originatingContractId String? @map("originating_contract_id") @db.Uuid
+  originatingProposalId String? @map("originating_proposal_id") @db.Uuid
+
+  status CrmClientOnboardingStatus @default(NOT_STARTED)
+
+  kickoffScheduledAt DateTime? @map("kickoff_scheduled_at") @db.Timestamptz(3)
+  kickoffCompletedAt DateTime? @map("kickoff_completed_at") @db.Timestamptz(3)
+  /// Internal record only — never a real calendar invite. See
+  /// client-onboarding.md "Kickoff."
+  kickoffNotes       String?   @map("kickoff_notes")
+  kickoffOwnerUserId String?   @map("kickoff_owner_user_id") @db.Uuid
+
+  /// Terminal — CAS-guarded from any non-terminal status.
+  cancelledAt       DateTime? @map("cancelled_at") @db.Timestamptz(3)
+  cancelledReason   String?   @map("cancelled_reason")
+  cancelledByUserId String?   @map("cancelled_by_user_id") @db.Uuid
+
+  /// Terminal — server-calculated from completion criteria UNLESS
+  /// `completionOverride` is true, in which case a privileged actor forced
+  /// completion despite incomplete required work — `completionOverrideReason`
+  /// is required whenever `completionOverride` is true (CHECK in the
+  /// migration), and this action is separately audited
+  /// (`crm.onboarding.completed_override`) from an ordinary criteria-met
+  /// completion (`crm.onboarding.completed`).
+  completedAt              DateTime? @map("completed_at") @db.Timestamptz(3)
+  completedByUserId        String?   @map("completed_by_user_id") @db.Uuid
+  completionOverride       Boolean   @default(false) @map("completion_override")
+  completionOverrideReason String?   @map("completion_override_reason")
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization        Organization                        @relation("CrmClientOnboardingPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  deal                CrmDeal                             @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  company             CrmCompany                          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  linkedOrganization  Organization                        @relation("CrmClientOnboardingLinkedOrganization", fields: [linkedOrganizationId], references: [id], onDelete: Cascade)
+  originatingContract CrmContract?                        @relation("CrmClientOnboardingOriginatingContract", fields: [originatingContractId], references: [id], onDelete: SetNull)
+  originatingProposal CrmProposal?                        @relation("CrmClientOnboardingOriginatingProposal", fields: [originatingProposalId], references: [id], onDelete: SetNull)
+  kickoffOwnerUser    User?                               @relation("CrmClientOnboardingKickoffOwner", fields: [kickoffOwnerUserId], references: [id], onDelete: SetNull)
+  cancelledByUser     User?                               @relation("CrmClientOnboardingCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
+  completedByUser     User?                               @relation("CrmClientOnboardingCompletedBy", fields: [completedByUserId], references: [id], onDelete: SetNull)
+  createdByUser       User                                @relation("CrmClientOnboardingCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  serviceItems        CrmClientOnboardingServiceItem[]
+  intakeResponses     CrmClientOnboardingIntakeResponse[]
+  requirements        CrmClientOnboardingRequirement[]
+  checklistItems      CrmClientOnboardingChecklistItem[]
+  documents           CrmClientOnboardingDocument[]
+  assignments         CrmClientOnboardingAssignment[]
+
+  @@index([organizationId, dealId])
+  @@index([organizationId, status, createdAt])
+  // The default (unfiltered) `listForOrganization()` call orders by
+  // `createdAt DESC` alone — the `(organizationId, status, createdAt)`
+  // index above can't serve that ordering when `status` isn't part of the
+  // WHERE clause (Codex Performance Engineer review). This is the plain
+  // "list everything for this tenant, newest first" index every other
+  // CRM list repository has its own equivalent of.
+  @@index([organizationId, createdAt])
+  @@index([companyId, createdAt])
+  @@index([organizationId, linkedOrganizationId])
+  @@map("crm_client_onboardings")
+}
+
+enum CrmClientOnboardingStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  BLOCKED
+  COMPLETED
+  CANCELLED
+
+  @@map("crm_client_onboarding_status")
+}
+
+/// A snapshot of ONE sold service line for onboarding/operational purposes
+/// — never a live reference into the accepted proposal version (which stays
+/// immutable) and never the future canonical Service Management catalog
+/// (Roadmap Module 23, which doesn't exist yet). `sourceLineItemId` is
+/// provenance only (`SetNull` — a historical onboarding record must never
+/// break if the source line item's own row is ever affected).
+model CrmClientOnboardingServiceItem {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  onboardingId   String @map("onboarding_id") @db.Uuid
+
+  title              String
+  description        String?
+  quantity           Int     @default(1)
+  sourceLineItemId   String? @map("source_line_item_id") @db.Uuid
+  /// Whether THIS service genuinely needs its own onboarding attention
+  /// (vs. a line item that's purely commercial, e.g. a one-time discount
+  /// line) — an onboarding-only operational flag, never written back to
+  /// the commercial snapshot.
+  onboardingRequired Boolean @default(true) @map("onboarding_required")
+  notes              String?
+  sortOrder          Int     @default(0) @map("sort_order")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  onboarding     CrmClientOnboarding  @relation(fields: [onboardingId], references: [id], onDelete: Cascade)
+  sourceLineItem CrmProposalLineItem? @relation(fields: [sourceLineItemId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, onboardingId, sortOrder])
+  @@map("crm_client_onboarding_service_items")
+}
+
+/// Tenant-wide, reusable intake field CATALOG — deliberately NOT a generic
+/// Forms Builder (no arbitrary/executable schema): a small, fixed set of
+/// justified field types, defined once per organization and reused across
+/// every onboarding, the same "tenant-owned reusable content" shape
+/// `CrmProposalTemplate` already establishes. Archiving (not deleting) is
+/// the retirement path, same reasoning as that model.
+model CrmClientOnboardingIntakeField {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  label     String
+  fieldType CrmClientOnboardingIntakeFieldType   @map("field_type")
+  required  Boolean                              @default(true)
+  /// SELECT choices only — `null` for every other field type (CHECK in
+  /// the migration). A flat string array, not a structured options
+  /// schema — deliberately minimal.
+  options   Json?
+  sortOrder Int                                  @default(0) @map("sort_order")
+  status    CrmClientOnboardingIntakeFieldStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization                        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  responses    CrmClientOnboardingIntakeResponse[]
+
+  @@unique([organizationId, label])
+  @@index([organizationId, status, sortOrder])
+  @@map("crm_client_onboarding_intake_fields")
+}
+
+enum CrmClientOnboardingIntakeFieldType {
+  SHORT_TEXT
+  LONG_TEXT
+  EMAIL
+  PHONE
+  URL
+  SELECT
+  CHECKBOX
+  DATE
+
+  @@map("crm_client_onboarding_intake_field_type")
+}
+
+enum CrmClientOnboardingIntakeFieldStatus {
+  ACTIVE
+  ARCHIVED
+
+  @@map("crm_client_onboarding_intake_field_status")
+}
+
+/// One response per field per onboarding — staff-recorded only in Build 23
+/// (no customer self-service intake surface exists yet). Stored as a plain
+/// string regardless of field type (CHECKBOX as `"true"`/`"false"`, DATE as
+/// an ISO date string) — type-specific validation happens at the service
+/// layer against the field's own `fieldType`, matching the discipline
+/// `proposal-pricing.ts` already established for "validate structurally at
+/// the application layer, keep the storage shape simple."
+model CrmClientOnboardingIntakeResponse {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  onboardingId   String @map("onboarding_id") @db.Uuid
+  fieldId        String @map("field_id") @db.Uuid
+
+  value             String?
+  respondedByUserId String?   @map("responded_by_user_id") @db.Uuid
+  respondedAt       DateTime? @map("responded_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization    Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  onboarding      CrmClientOnboarding            @relation(fields: [onboardingId], references: [id], onDelete: Cascade)
+  field           CrmClientOnboardingIntakeField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  respondedByUser User?                          @relation("CrmClientOnboardingIntakeResponseRespondedBy", fields: [respondedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([onboardingId, fieldId])
+  @@index([organizationId, onboardingId])
+  @@map("crm_client_onboarding_intake_responses")
+}
+
+/// Information/assets/actions needed before delivery — NOT global Task
+/// Management, onboarding-scoped only. `documentId` links to the actual
+/// evidence once received (see `CrmClientOnboardingDocument`).
+model CrmClientOnboardingRequirement {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  onboardingId   String @map("onboarding_id") @db.Uuid
+
+  title             String
+  description       String?
+  required          Boolean                              @default(true)
+  status            CrmClientOnboardingRequirementStatus @default(PENDING)
+  responsibleUserId String?                              @map("responsible_user_id") @db.Uuid
+  dueDate           DateTime?                            @map("due_date") @db.Timestamptz(3)
+  completedAt       DateTime?                            @map("completed_at") @db.Timestamptz(3)
+  documentId        String?                              @map("document_id") @db.Uuid
+  sortOrder         Int                                  @default(0) @map("sort_order")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization    Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  onboarding      CrmClientOnboarding          @relation(fields: [onboardingId], references: [id], onDelete: Cascade)
+  responsibleUser User?                        @relation("CrmClientOnboardingRequirementResponsible", fields: [responsibleUserId], references: [id], onDelete: SetNull)
+  document        CrmClientOnboardingDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  /// Explicit `map` names — the auto-generated names for these two indexes
+  /// truncate (Postgres's 63-byte identifier limit) to the same string,
+  /// which `prisma validate` correctly rejects as a collision.
+  @@index([organizationId, onboardingId, sortOrder], map: "crm_onboarding_requirements_org_onboarding_sort_idx")
+  @@index([organizationId, onboardingId, status], map: "crm_onboarding_requirements_org_onboarding_status_idx")
+  @@map("crm_client_onboarding_requirements")
+}
+
+enum CrmClientOnboardingRequirementStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETE
+
+  @@map("crm_client_onboarding_requirement_status")
+}
+
+/// Onboarding-scoped document/file REFERENCE only — metadata, never a real
+/// upload. `storage.ts` (Roadmap Module 56) is still unconfigured (every
+/// `StorageProvider` method throws `StorageNotConfiguredError` — confirmed
+/// live during this build's own reconnaissance, same finding Build 22's own
+/// PDF-generation section documents), so `fileKey` stays `null` throughout
+/// Build 23 — ready for Module 56 to populate later, never faked now. Staff
+/// may only RECORD that a document was requested/received (with an
+/// optional external reference note), never upload one through this build.
+model CrmClientOnboardingDocument {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  onboardingId   String @map("onboarding_id") @db.Uuid
+
+  title        String
+  description  String?
+  status       CrmClientOnboardingDocumentStatus @default(REQUESTED)
+  /// A real `StorageProvider` key once Module 56 exists — always `null`
+  /// in Build 23.
+  fileKey      String?                           @map("file_key")
+  /// Free-text note on how the document was actually received (e.g. "via
+  /// email, filed externally") — honest about the absence of real upload,
+  /// never a fabricated delivery claim.
+  receivedNote String?                           @map("received_note")
+  receivedAt   DateTime?                         @map("received_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization                     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  onboarding   CrmClientOnboarding              @relation(fields: [onboardingId], references: [id], onDelete: Cascade)
+  requirements CrmClientOnboardingRequirement[]
+
+  @@index([organizationId, onboardingId])
+  @@map("crm_client_onboarding_documents")
+}
+
+enum CrmClientOnboardingDocumentStatus {
+  REQUESTED
+  RECEIVED
+
+  @@map("crm_client_onboarding_document_status")
+}
+
+/// Onboarding-scoped checklist — NOT the future global Task Management
+/// system. No dependency graph (not genuinely required for Build 23's own
+/// scope). Completion is idempotent/race-safe via a CAS `updateMany()` at
+/// the repository layer (guarded on `status <> 'COMPLETE'`), never a bare
+/// `update()`.
+model CrmClientOnboardingChecklistItem {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  onboardingId   String @map("onboarding_id") @db.Uuid
+
+  title            String
+  description      String?
+  sortOrder        Int                                    @default(0) @map("sort_order")
+  status           CrmClientOnboardingChecklistItemStatus @default(PENDING)
+  required         Boolean                                @default(true)
+  assignedToUserId String?                                @map("assigned_to_user_id") @db.Uuid
+  dueDate          DateTime?                              @map("due_date") @db.Timestamptz(3)
+  completedAt      DateTime?                              @map("completed_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  onboarding     CrmClientOnboarding @relation(fields: [onboardingId], references: [id], onDelete: Cascade)
+  assignedToUser User?               @relation("CrmClientOnboardingChecklistAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+
+  /// Explicit `map` names — same truncation collision as
+  /// `CrmClientOnboardingRequirement`'s own identical pair above.
+  @@index([organizationId, onboardingId, sortOrder], map: "crm_onboarding_checklist_items_org_onboarding_sort_idx")
+  @@index([organizationId, onboardingId, status], map: "crm_onboarding_checklist_items_org_onboarding_status_idx")
+  @@map("crm_client_onboarding_checklist_items")
+}
+
+enum CrmClientOnboardingChecklistItemStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETE
+
+  @@map("crm_client_onboarding_checklist_item_status")
+}
+
+/// Internal staff assigned to an onboarding role — reuses Build 21's own
+/// `assertPlatformStaffMember` validation (inactive/suspended/deactivated
+/// users cannot become new assignees) at the service layer; the DB layer
+/// only enforces "at most one person per role per onboarding" (unique
+/// below), the same "app-layer identity validation, DB-layer shape
+/// validation" split every other CRM assignee FK in this project already
+/// uses (`CrmDeal.assignedToUserId`, `CrmProposal.assignedToUserId`, ...).
+model CrmClientOnboardingAssignment {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  onboardingId   String @map("onboarding_id") @db.Uuid
+
+  userId           String                            @map("user_id") @db.Uuid
+  role             CrmClientOnboardingAssignmentRole
+  assignedByUserId String                            @map("assigned_by_user_id") @db.Uuid
+  assignedAt       DateTime                          @default(now()) @map("assigned_at") @db.Timestamptz(3)
+
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  onboarding     CrmClientOnboarding @relation(fields: [onboardingId], references: [id], onDelete: Cascade)
+  user           User                @relation("CrmClientOnboardingAssignmentUser", fields: [userId], references: [id], onDelete: Cascade)
+  assignedByUser User                @relation("CrmClientOnboardingAssignmentAssignedBy", fields: [assignedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([onboardingId, role])
+  @@index([organizationId, userId])
+  @@map("crm_client_onboarding_assignments")
+}
+
+enum CrmClientOnboardingAssignmentRole {
+  ACCOUNT_MANAGER
+  ONBOARDING_OWNER
+  SERVICE_LEAD
+
+  @@map("crm_client_onboarding_assignment_role")
 }

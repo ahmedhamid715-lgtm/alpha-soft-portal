@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ShieldAlert, Building2, Users, Target, ListChecks, ArrowRight, Handshake, Trophy, FileText, FileSignature } from "lucide-react";
+import { ShieldAlert, Building2, Users, Target, ListChecks, ArrowRight, Handshake, Trophy, FileText, FileSignature, Users2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { SectionHeader } from "@/components/layout/section-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -15,6 +15,7 @@ import { listDeals } from "@/server/services/crm-deal-service";
 import { listSalesTeam } from "@/server/services/crm-sales-team-service";
 import { listProposals } from "@/server/services/crm-proposal-service";
 import { listContracts } from "@/server/services/crm-contract-service";
+import { listOnboardings } from "@/server/services/crm-client-onboarding-service";
 import { formatInTimeZone } from "@/lib/utils/datetime";
 import type { CrmLeadStatus } from "@/generated/prisma/client";
 
@@ -48,7 +49,8 @@ export default async function CrmDashboardPage() {
   const canSeeSalesTeam = context.permissions.has("crm.sales_team.read");
   const canSeeProposals = context.permissions.has("crm.proposal.read");
   const canSeeContracts = context.permissions.has("crm.contract.read");
-  const [companies, contacts, leadCounts, myOpenTasks, openDeals, salesTeamCount, sentProposals, activeContracts] = await Promise.all([
+  const canSeeOnboarding = context.permissions.has("crm.onboarding.read");
+  const [companies, contacts, leadCounts, myOpenTasks, openDeals, salesTeamCount, sentProposals, activeContracts, activeOnboardings] = await Promise.all([
     listCompanies({ limit: 1, status: "ACTIVE" }),
     listContacts({ limit: 1, status: "ACTIVE" }),
     Promise.all(LEAD_STATUSES.map((status) => listLeads({ limit: 1, status }).then((r) => [status, r.pageInfo.totalCount ?? 0] as const))),
@@ -57,6 +59,7 @@ export default async function CrmDashboardPage() {
     canSeeSalesTeam ? listSalesTeam({ status: "ACTIVE" }) : null,
     canSeeProposals ? listProposals({ status: "SENT" }) : null,
     canSeeContracts ? listContracts({ status: "ACTIVE" }) : null,
+    canSeeOnboarding ? listOnboardings({ status: "IN_PROGRESS" }) : null,
   ]);
 
   const openLeadCount = leadCounts.filter(([status]) => status !== "CONVERTED" && status !== "DISQUALIFIED").reduce((sum, [, count]) => sum + count, 0);
@@ -150,6 +153,18 @@ export default async function CrmDashboardPage() {
                   <FileSignature className="size-4" aria-hidden="true" /> Active contracts
                 </span>
                 <span className="text-2xl font-semibold tabular-nums">{activeContracts?.length ?? 0}</span>
+              </Link>
+            </CardContent>
+          </Card>
+        ) : null}
+        {canSeeOnboarding ? (
+          <Card>
+            <CardContent>
+              <Link href="/admin/crm/onboarding?status=IN_PROGRESS" className="flex flex-col gap-1">
+                <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Users2 className="size-4" aria-hidden="true" /> Onboarding in progress
+                </span>
+                <span className="text-2xl font-semibold tabular-nums">{activeOnboardings?.length ?? 0}</span>
               </Link>
             </CardContent>
           </Card>

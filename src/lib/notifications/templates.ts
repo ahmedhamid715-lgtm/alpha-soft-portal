@@ -412,6 +412,62 @@ export const NOTIFICATION_TEMPLATES = {
       actionUrl: "/admin/crm/proposals",
     }),
   }),
+  /// Build 23 — reacts to `crm.onboarding.assigned`, to the newly
+  /// assigned staff member. Same "something now needs YOUR attention"
+  /// reasoning `crm.task.assigned`/`crm.deal.assigned` already establish.
+  "crm.onboarding.assigned": template({
+    version: 1,
+    active: true,
+    category: "CRM_ACTIVITY",
+    severity: "INFO",
+    render: (data: { companyName: string; role: string }) => ({
+      title: "Onboarding role assigned",
+      body: `You were assigned as ${data.role} for ${data.companyName}'s onboarding.`,
+      actionUrl: "/admin/crm/onboarding",
+    }),
+  }),
+  /// Build 23 — reacts to `crm.onboarding.requirement_assigned`, to the
+  /// requirement's own responsible staff member.
+  "crm.onboarding.requirement_assigned": template({
+    version: 1,
+    active: true,
+    category: "CRM_ACTIVITY",
+    severity: "INFO",
+    render: (data: { companyName: string; requirementTitle: string }) => ({
+      title: "Onboarding requirement assigned",
+      body: `"${data.requirementTitle}" (${data.companyName}) needs your attention.`,
+      actionUrl: "/admin/crm/onboarding",
+    }),
+  }),
+  /// Build 23 — reacts to `crm.onboarding.ready_for_kickoff`, to every
+  /// current assignee, once every required requirement/checklist/intake
+  /// item is complete but no kickoff has been scheduled yet — a genuine
+  /// "this now needs a human decision" moment, not a routine progress
+  /// update (no notification fires on every individual item completion).
+  "crm.onboarding.ready_for_kickoff": template({
+    version: 1,
+    active: true,
+    category: "CRM_ACTIVITY",
+    severity: "INFO",
+    render: (data: { companyName: string }) => ({
+      title: "Onboarding ready for kickoff",
+      body: `${data.companyName}'s onboarding has completed its required work and is ready to schedule kickoff.`,
+      actionUrl: "/admin/crm/onboarding",
+    }),
+  }),
+  /// Build 23 — reacts to `crm.onboarding.completed`, to every current
+  /// assignee.
+  "crm.onboarding.completed": template({
+    version: 1,
+    active: true,
+    category: "CRM_ACTIVITY",
+    severity: "INFO",
+    render: (data: { companyName: string }) => ({
+      title: "Onboarding completed",
+      body: `${data.companyName}'s onboarding is complete.`,
+      actionUrl: "/admin/crm/onboarding",
+    }),
+  }),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as const satisfies Record<string, NotificationTemplateDefinition<any>>;
 

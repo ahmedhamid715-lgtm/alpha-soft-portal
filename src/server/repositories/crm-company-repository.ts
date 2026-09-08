@@ -62,4 +62,22 @@ export const crmCompanyRepository = {
   async reactivate(id: string, tx: TransactionClient | typeof db = db): Promise<CrmCompany> {
     return withDbErrorTranslation(() => tx.crmCompany.update({ where: { id }, data: { status: "ACTIVE", archivedAt: null } }));
   },
+
+  /**
+   * Build 23 — the ONE write path for `convertedToOrganizationId`. A real
+   * CAS: guarded on `convertedToOrganizationId IS NULL`, so a concurrent
+   * double-conversion attempt for the same company can only ever win
+   * once — the loser gets `count === 0` back (never a thrown unique-
+   * constraint error from the database's own `crm_companies_converted_to_
+   * organization_id_key`, which exists as a second, structural layer of
+   * the same guarantee, not the primary mechanism the service layer
+   * relies on). See `convertDealToClient()`'s own comment for how the
+   * caller uses this to detect and recover from a lost race (delete its
+   * own just-created, now-orphaned Organization and reuse the winner's).
+   */
+  async linkToOrganization(id: string, organizationId: string, tx: TransactionClient): Promise<CrmCompany | null> {
+    const result = await withDbErrorTranslation(() => tx.crmCompany.updateMany({ where: { id, convertedToOrganizationId: null }, data: { convertedToOrganizationId: organizationId } }));
+    if (result.count === 0) return null;
+    return withDbErrorTranslation(() => tx.crmCompany.findUnique({ where: { id } }));
+  },
 };

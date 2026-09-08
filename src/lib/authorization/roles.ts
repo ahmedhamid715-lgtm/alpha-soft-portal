@@ -93,6 +93,11 @@ const PLATFORM_FULL: PermissionKey[] = [
   // see each role's own permissions list below.
   "crm.proposal.read",
   "crm.contract.read",
+  // Build 23 — day-to-day Client Onboarding visibility, same reasoning
+  // as crm.proposal.read above. `crm.onboarding.manage`/`.complete`
+  // stay separate, narrower grants — see each role's own permissions
+  // list below.
+  "crm.onboarding.read",
 ];
 
 const ORGANIZATION_FULL: PermissionKey[] = [
@@ -207,6 +212,14 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "crm.proposal.manage",
       "crm.proposal.approve",
       "crm.contract.manage",
+      // Build 23 — Client Onboarding. `crm.onboarding.read` also granted
+      // via PLATFORM_FULL below. `.manage`/`.complete` are the narrower
+      // lifecycle/override capabilities, same tier as `crm.proposal.approve`
+      // above — a completion override is a real business judgment call,
+      // not an irreversible money movement, so it stays at this shared
+      // tier rather than owner-only.
+      "crm.onboarding.manage",
+      "crm.onboarding.complete",
     ],
   },
   platform_admin: {
@@ -267,6 +280,11 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "crm.proposal.manage",
       "crm.proposal.approve",
       "crm.contract.manage",
+      // Build 23 — same tier/reasoning as `crm.proposal.approve`
+      // immediately above — deliberately NOT held by `support_admin`
+      // (see that role's own comment).
+      "crm.onboarding.manage",
+      "crm.onboarding.complete",
     ],
   },
   support_admin: {
@@ -314,6 +332,8 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     // reason); deliberately NOT `crm.sales_team.manage`.
     // Build 22 — `crm.proposal.read`/`crm.contract.read` ALSO granted,
     // same reasoning; deliberately NOT `.manage`/`.approve`.
+    // Build 23 — `crm.onboarding.read` ALSO granted, same reasoning;
+    // deliberately NOT `.manage`/`.complete`.
     permissions: [
       "users.read",
       "organizations.read",
@@ -332,6 +352,7 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "crm.sales_team.read",
       "crm.proposal.read",
       "crm.contract.read",
+      "crm.onboarding.read",
     ],
   },
   support_agent: {

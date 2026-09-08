@@ -513,3 +513,97 @@ events.on<CrmProposalAcceptedPayload>("crm.proposal.accepted", async (event) => 
     templateData: { proposalNumber },
   });
 });
+
+// --- Build 23 — Client Onboarding (Roadmap Module 17). The four
+// justified onboarding notifications — see `crm-client-onboarding-service.ts`'s
+// own comments on why individual item completions don't get one.
+
+interface CrmOnboardingAssignedPayload {
+  onboardingId: string;
+  organizationId: string;
+  recipientUserId: string;
+  companyName: string;
+  role: string;
+}
+
+events.on<CrmOnboardingAssignedPayload>("crm.onboarding.assigned", async (event) => {
+  const { onboardingId, organizationId, recipientUserId, companyName, role } = event.payload;
+  await notificationService.notify({
+    templateKey: "crm.onboarding.assigned",
+    recipientUserId,
+    organizationId,
+    sourceEventType: "crm.onboarding.assigned",
+    sourceEntityType: "crm_client_onboarding",
+    sourceEntityId: onboardingId,
+    templateData: { companyName, role },
+  });
+});
+
+interface CrmOnboardingRequirementAssignedPayload {
+  onboardingId: string;
+  organizationId: string;
+  recipientUserId: string;
+  companyName: string;
+  requirementTitle: string;
+}
+
+events.on<CrmOnboardingRequirementAssignedPayload>("crm.onboarding.requirement_assigned", async (event) => {
+  const { onboardingId, organizationId, recipientUserId, companyName, requirementTitle } = event.payload;
+  await notificationService.notify({
+    templateKey: "crm.onboarding.requirement_assigned",
+    recipientUserId,
+    organizationId,
+    sourceEventType: "crm.onboarding.requirement_assigned",
+    sourceEntityType: "crm_client_onboarding",
+    sourceEntityId: onboardingId,
+    templateData: { companyName, requirementTitle },
+  });
+});
+
+interface CrmOnboardingReadyForKickoffPayload {
+  onboardingId: string;
+  organizationId: string;
+  recipientUserIds: string[];
+  companyName: string;
+}
+
+events.on<CrmOnboardingReadyForKickoffPayload>("crm.onboarding.ready_for_kickoff", async (event) => {
+  const { onboardingId, organizationId, recipientUserIds, companyName } = event.payload;
+  await Promise.all(
+    recipientUserIds.map((recipientUserId) =>
+      notificationService.notify({
+        templateKey: "crm.onboarding.ready_for_kickoff",
+        recipientUserId,
+        organizationId,
+        sourceEventType: "crm.onboarding.ready_for_kickoff",
+        sourceEntityType: "crm_client_onboarding",
+        sourceEntityId: onboardingId,
+        templateData: { companyName },
+      }),
+    ),
+  );
+});
+
+interface CrmOnboardingCompletedPayload {
+  onboardingId: string;
+  organizationId: string;
+  recipientUserIds: string[];
+  companyName: string;
+}
+
+events.on<CrmOnboardingCompletedPayload>("crm.onboarding.completed", async (event) => {
+  const { onboardingId, organizationId, recipientUserIds, companyName } = event.payload;
+  await Promise.all(
+    recipientUserIds.map((recipientUserId) =>
+      notificationService.notify({
+        templateKey: "crm.onboarding.completed",
+        recipientUserId,
+        organizationId,
+        sourceEventType: "crm.onboarding.completed",
+        sourceEntityType: "crm_client_onboarding",
+        sourceEntityId: onboardingId,
+        templateData: { companyName },
+      }),
+    ),
+  );
+});

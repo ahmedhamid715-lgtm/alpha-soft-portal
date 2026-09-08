@@ -15,6 +15,8 @@ import { listContactsForCompany } from "@/server/services/crm-contact-service";
 import { listAssignableUsers } from "@/server/services/crm-shared";
 import { listProposals } from "@/server/services/crm-proposal-service";
 import { listContracts } from "@/server/services/crm-contract-service";
+import { listOnboardings, checkOnboardingEligibility } from "@/server/services/crm-client-onboarding-service";
+import { listAssignableUsers as listOnboardingAssignableUsers } from "@/server/services/crm-shared";
 import { toAppError } from "@/lib/errors/app-error";
 import { formatMoney } from "@/lib/utils/money";
 import { formatInTimeZone } from "@/lib/utils/datetime";
@@ -25,6 +27,8 @@ import { LogDealNoteForm } from "@/components/crm/pipeline/log-deal-note-form";
 import { DealHistoryList } from "@/components/crm/pipeline/deal-history-list";
 import { Button } from "@/components/ui/button";
 import { proposalStatusVariant, contractStatusVariant } from "@/components/crm/proposals/proposal-status";
+import { onboardingStatusVariant } from "@/components/crm/onboarding/onboarding-status";
+import { StartOnboardingForm } from "@/components/crm/onboarding/start-onboarding-form";
 
 export const metadata: Metadata = { title: "Deal" };
 
@@ -46,6 +50,8 @@ export default async function CrmDealDetailPage({ params }: { params: Promise<{ 
   const canSeeProposals = context.permissions.has("crm.proposal.read");
   const canManageProposals = context.permissions.has("crm.proposal.manage");
   const canSeeContracts = context.permissions.has("crm.contract.read");
+  const canSeeOnboarding = context.permissions.has("crm.onboarding.read");
+  const canManageOnboarding = context.permissions.has("crm.onboarding.manage");
 
   // Stage 1 — everything needing only the route `id`/permissions (not
   // the resolved deal's own `pipelineId`/`companyId`) starts alongside
@@ -53,7 +59,7 @@ export default async function CrmDealDetailPage({ params }: { params: Promise<{ 
   // review: `listAssignableUsers()`/`listDealHistory()`/`listProposals()`/
   // `listContracts()` previously all waited on the deal fetch first for
   // no real reason.
-  const [deal, users, history, proposals, contracts] = await Promise.all([
+  const [deal, users, history, proposals, contracts, dealOnboardings] = await Promise.all([
     getDealWithRelations({ dealId: id }).catch((error) => {
       if (toAppError(error).code === "NOT_FOUND") notFound();
       throw error;
@@ -62,6 +68,23 @@ export default async function CrmDealDetailPage({ params }: { params: Promise<{ 
     listDealHistory({ dealId: id, limit: 25 }),
     canSeeProposals ? listProposals({ dealId: id }) : Promise.resolve([]),
     canSeeContracts ? listContracts({ dealId: id }) : Promise.resolve([]),
+    // Filtered server-side by `dealId` (Codex Performance Engineer
+    // review) — this used to fetch up to 200 tenant-wide onboardings
+    // and their full relations, then filter down to this one deal in
+    // memory, which got slower with every OTHER onboarding in the
+    // tenant regardless of this page's own needs.
+    canSeeOnboarding ? listOnboardings({ dealId: id }) : Promise.resolve([]),
+  ]);
+
+  // The onboarding-eligibility check and its own optional assignee list
+  // genuinely depend on the deal's own WON status (only worth resolving
+  // for a WON deal with no existing onboarding at all — every other case
+  // renders nothing here) — kept out of Stage 1 above deliberately, since
+  // most deal views (any deal not yet WON) never need either.
+  const showStartOnboarding = canManageOnboarding && deal.status === "WON" && dealOnboardings.every((o) => o.status === "CANCELLED");
+  const [eligibility, onboardingAssignableUsers] = await Promise.all([
+    showStartOnboarding ? checkOnboardingEligibility({ dealId: id }) : Promise.resolve(null),
+    showStartOnboarding ? listOnboardingAssignableUsers() : Promise.resolve([]),
   ]);
 
   // Stage 2 — genuinely depends on the now-resolved deal.
@@ -223,6 +246,35 @@ export default async function CrmDealDetailPage({ params }: { params: Promise<{ 
               </Link>
             ))}
           </div>
+        </section>
+      ) : null}
+
+      {canSeeOnboarding && dealOnboardings.length > 0 ? (
+        <section className="flex flex-col gap-4">
+          <SectionHeader title="Onboarding" description="Client onboarding engagements started from this deal." />
+          <div className="flex flex-col gap-2">
+            {dealOnboardings.map((onboarding) => (
+              <Link key={onboarding.id} href={`/admin/crm/onboarding/${onboarding.id}`} className="flex items-center justify-between rounded-lg border border-border px-4 py-2.5 text-sm hover:bg-muted/30">
+                <span className="font-medium">{onboarding.linkedOrganization.displayName}</span>
+                <StatusBadge status={onboardingStatusVariant(onboarding.status)}>{onboarding.status.replace("_", " ")}</StatusBadge>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {showStartOnboarding && eligibility ? (
+        <section className="flex flex-col gap-4">
+          <SectionHeader title="Start Onboarding" description="Convert this won deal into an operational client onboarding engagement." />
+          <Card>
+            <CardContent>
+              {eligibility.eligible ? (
+                <StartOnboardingForm dealId={deal.id} users={onboardingAssignableUsers} />
+              ) : (
+                <p className="text-sm text-muted-foreground">{eligibility.reason}</p>
+              )}
+            </CardContent>
+          </Card>
         </section>
       ) : null}
 

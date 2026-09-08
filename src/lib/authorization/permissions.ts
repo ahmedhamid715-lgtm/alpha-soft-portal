@@ -34,6 +34,14 @@ export const PERMISSION_ACTIONS = [
   "remove",
   "execute",
   "reactivate",
+  // Build 23 — a genuinely new, generically reusable verb: forcing an
+  // aggregate to a terminal state despite incomplete required criteria
+  // (`crm.onboarding.complete`). Distinct from "approve" (deciding on a
+  // request someone else submitted) and "manage" (ordinary lifecycle
+  // operations) — a future module needing the same "override normal
+  // completion criteria" shape reuses this verb rather than inventing
+  // its own.
+  "complete",
 ] as const;
 export type PermissionAction = (typeof PERMISSION_ACTIONS)[number];
 
@@ -552,6 +560,38 @@ export const PERMISSION_CATALOG = {
     "manage",
     "PLATFORM",
     "Create contracts (from an accepted proposal or manually recorded); activate, terminate, or cancel them.",
+    false,
+  ),
+
+  // --- crm.onboarding (Build 23 — Client Onboarding, Canonical Roadmap
+  // Module 17). Own sub-resource, same reasoning `crm.proposal`/
+  // `crm.contract` above establish. `crm.onboarding.complete` is its own
+  // permission, deliberately separate from `crm.onboarding.manage` — an
+  // ordinary criteria-met completion happens automatically wherever the
+  // last required item is completed (no separate permission needed for
+  // that), but FORCING completion despite incomplete required work
+  // (`completionOverride`) is a materially higher-stakes action that
+  // should be independently grantable, the same "approval is its own
+  // permission" precedent `crm.proposal.approve` already establishes.
+  "crm.onboarding.read": permission(
+    "crm.onboarding",
+    "read",
+    "PLATFORM",
+    "View client onboarding engagements, their services, intake, requirements, checklist, documents, and assignments.",
+    false,
+  ),
+  "crm.onboarding.manage": permission(
+    "crm.onboarding",
+    "manage",
+    "PLATFORM",
+    "Start onboarding from an eligible deal, manage intake/requirements/checklist/documents/assignments/kickoff, and cancel an engagement.",
+    false,
+  ),
+  "crm.onboarding.complete": permission(
+    "crm.onboarding",
+    "complete",
+    "PLATFORM",
+    "Force an onboarding to COMPLETED despite incomplete required work. Requires a reason; always audited separately from an ordinary criteria-met completion.",
     false,
   ),
 

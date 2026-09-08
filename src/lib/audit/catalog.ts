@@ -265,6 +265,21 @@ export const AUDIT_CATALOG = {
   "crm.contract.activated": action("CRM", "A contract was activated."),
   "crm.contract.terminated": action("CRM", "A contract was terminated."),
   "crm.contract.cancelled": action("CRM", "A contract was cancelled."),
+  // Build 23 (Client Onboarding, Roadmap Module 17). Intake-response and
+  // checklist/requirement-item CREATION are deliberately NOT separately
+  // audited — the same "audit the outcome, not every draft edit"
+  // discipline Build 22's own comment establishes; completion/status
+  // transitions are the real business events.
+  "crm.onboarding.started": action("CRM", "A client onboarding engagement was started from a deal."),
+  "crm.onboarding.organization_linked": action("CRM", "A CRM company was linked to a customer organization (reused an existing one or created a new one) as part of starting onboarding."),
+  "crm.onboarding.assigned": action("CRM", "A platform staff member was assigned an onboarding role."),
+  "crm.onboarding.requirement_completed": action("CRM", "An onboarding requirement was marked complete."),
+  "crm.onboarding.checklist_item_completed": action("CRM", "An onboarding checklist item was marked complete."),
+  "crm.onboarding.kickoff_scheduled": action("CRM", "An onboarding kickoff was scheduled."),
+  "crm.onboarding.kickoff_completed": action("CRM", "An onboarding kickoff was marked complete."),
+  "crm.onboarding.completed": action("CRM", "An onboarding engagement was completed (all required criteria met)."),
+  "crm.onboarding.completed_override": action("CRM", "An onboarding engagement was force-completed despite incomplete required work."),
+  "crm.onboarding.cancelled": action("CRM", "An onboarding engagement was cancelled."),
 } as const satisfies Record<string, AuditActionDefinition>;
 
 export type AuditActionKey = keyof typeof AUDIT_CATALOG;
