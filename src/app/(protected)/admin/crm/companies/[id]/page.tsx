@@ -63,6 +63,11 @@ export default async function CrmCompanyDetailPage({ params }: { params: Promise
         title={company.name}
         description={company.domain ?? undefined}
         breadcrumbs={[{ label: "CRM", href: "/admin/crm" }, { label: "Companies", href: "/admin/crm/companies" }, { label: company.name }]}
+        actions={
+          <Link href={`/admin/crm/customers/${company.id}`} className="text-sm font-medium text-link hover:underline">
+            View Customer 360 →
+          </Link>
+        }
       />
 
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">

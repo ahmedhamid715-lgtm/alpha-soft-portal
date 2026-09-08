@@ -71,9 +71,14 @@ export default async function CrmOnboardingDetailPage({ params }: { params: Prom
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Company</span>
-              <Link href={`/admin/crm/companies/${onboarding.company.id}`} className="hover:underline">
-                {onboarding.company.name}
-              </Link>
+              <span className="flex items-center gap-2">
+                <Link href={`/admin/crm/companies/${onboarding.company.id}`} className="hover:underline">
+                  {onboarding.company.name}
+                </Link>
+                <Link href={`/admin/crm/customers/${onboarding.company.id}`} className="text-xs text-link hover:underline">
+                  (Customer 360)
+                </Link>
+              </span>
             </div>
             <OnboardingProgressDisplay progress={progress} completion={completion} />
           </CardContent>

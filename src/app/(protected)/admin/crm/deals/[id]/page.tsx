@@ -119,9 +119,14 @@ export default async function CrmDealDetailPage({ params }: { params: Promise<{ 
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Company</span>
-              <Link href={`/admin/crm/companies/${deal.company.id}`} className="hover:underline">
-                {deal.company.name}
-              </Link>
+              <span className="flex items-center gap-2">
+                <Link href={`/admin/crm/companies/${deal.company.id}`} className="hover:underline">
+                  {deal.company.name}
+                </Link>
+                <Link href={`/admin/crm/customers/${deal.company.id}`} className="text-xs text-link hover:underline">
+                  (Customer 360)
+                </Link>
+              </span>
             </div>
             {deal.primaryContact ? (
               <div className="flex items-center justify-between">
