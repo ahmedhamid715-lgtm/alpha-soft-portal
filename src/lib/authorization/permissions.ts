@@ -507,6 +507,54 @@ export const PERMISSION_CATALOG = {
     false,
   ),
 
+  // --- crm.proposal / crm.contract (Build 22 — Proposals & Contracts,
+  // Canonical Roadmap Module 16). Own sub-resources, same reasoning
+  // `crm.pipeline`/`crm.sales_team` above already establish. `crm.
+  // proposal.approve` is its own permission, deliberately separate from
+  // `crm.proposal.manage` — an author submitting a proposal for approval
+  // and the person who approves it must be independently grantable (and
+  // self-approval is prohibited server-side regardless of which
+  // permissions one user holds — see proposals-contracts.md
+  // "Approval boundary"). `crm.contract.*` is its own resource, not
+  // folded into `crm.proposal.*` — a contract's own lifecycle (activate/
+  // terminate/cancel) is a materially different, higher-stakes action
+  // than editing a proposal draft.
+  "crm.proposal.read": permission(
+    "crm.proposal",
+    "read",
+    "PLATFORM",
+    "View proposals, versions, line items, and templates (Alpha Page Rankers' own internal sales proposals — never a customer organization's own data).",
+    false,
+  ),
+  "crm.proposal.manage": permission(
+    "crm.proposal",
+    "manage",
+    "PLATFORM",
+    "Create/edit/send/revise/reject/expire proposals; manage proposal templates.",
+    false,
+  ),
+  "crm.proposal.approve": permission(
+    "crm.proposal",
+    "approve",
+    "PLATFORM",
+    "Approve or reject a proposal version submitted for internal approval. Never the same user who submitted it (enforced server-side).",
+    false,
+  ),
+  "crm.contract.read": permission(
+    "crm.contract",
+    "read",
+    "PLATFORM",
+    "View contracts and their lifecycle (Alpha Page Rankers' own internal contract records — never a customer organization's own data).",
+    false,
+  ),
+  "crm.contract.manage": permission(
+    "crm.contract",
+    "manage",
+    "PLATFORM",
+    "Create contracts (from an accepted proposal or manually recorded); activate, terminate, or cancel them.",
+    false,
+  ),
+
   // --- integrations (ORGANIZATION, reserved — Module 54)
   "integrations.read": permission("integrations", "read", "ORGANIZATION", "View configured integrations.", true),
   "integrations.manage": permission(

@@ -9,6 +9,23 @@ import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 function Select({
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Root>) {
+  // Build 22 evaluated fixing the recurring shared `aria-hidden` defect
+  // here (first documented Build 20, reproduced Build 21, reproduced a
+  // third time during Build 22's own work) — see this file's own STILL
+  // DEFERRED note in the Build 22 completion report / proposals-
+  // contracts.md "Known limitations" for the full investigation and the
+  // exact reason a real fix was NOT safe to land in this build: the
+  // installed `@radix-ui/react-select` (2.3.7, via the `radix-ui`
+  // umbrella package) has no `modal` prop at all — unlike Dialog/Popover,
+  // its `SelectContent` calls the `aria-hidden` package's own
+  // `hideOthers(content)` unconditionally
+  // (`node_modules/@radix-ui/react-select/dist/index.mjs`, `SelectContent`'s
+  // own mount effect), with no prop-level escape hatch. A real fix would
+  // mean patching around a third-party library's hard-coded internal
+  // behavior across all 28 files using this shared primitive, with no
+  // way to verify it live before landing — genuinely riskier than the
+  // narrow, well-understood, already-verified fixes this build DID make
+  // (see the migration/service fixes from the Build 22 security review).
   return <SelectPrimitive.Root data-slot="select" {...props} />
 }
 

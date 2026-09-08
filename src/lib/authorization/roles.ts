@@ -87,6 +87,12 @@ const PLATFORM_FULL: PermissionKey[] = [
   // above. `crm.sales_team.manage` stays a separate, narrower grant —
   // see each role's own permissions list below.
   "crm.sales_team.read",
+  // Build 22 — day-to-day Proposals & Contracts visibility, same
+  // reasoning as crm.sales_team.read above. `crm.proposal.manage`/
+  // `.approve`/`crm.contract.manage` stay separate, narrower grants —
+  // see each role's own permissions list below.
+  "crm.proposal.read",
+  "crm.contract.read",
 ];
 
 const ORGANIZATION_FULL: PermissionKey[] = [
@@ -186,6 +192,21 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       // narrower rep/manager/target/quota-managing capability, same
       // tier as `crm.manage`/`crm.pipeline.manage`.
       "crm.sales_team.manage",
+      // Build 22 — Proposals & Contracts. `crm.proposal.read`/`crm.
+      // contract.read` also granted via PLATFORM_FULL below; `.manage`/
+      // `.approve` are the narrower authoring/approval/lifecycle
+      // capabilities, same tier as every other `crm.*.manage` above.
+      // `crm.proposal.approve` IS granted here (not owner-only) — the
+      // same reasoning `crm.pipeline.manage`/`crm.sales_team.manage`
+      // already establish for this tier: a real commercial commitment,
+      // but not an irreversible one (an approved-then-declined proposal
+      // can still be revised and re-sent) — unlike `billing.refund`'s
+      // own genuinely irreversible money movement, which stays
+      // owner-only. Self-approval is prohibited server-side regardless
+      // of which of these permissions one user holds.
+      "crm.proposal.manage",
+      "crm.proposal.approve",
+      "crm.contract.manage",
     ],
   },
   platform_admin: {
@@ -238,6 +259,14 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       // immediately above — deliberately NOT held by `support_admin`
       // (see that role's own comment).
       "crm.sales_team.manage",
+      // Build 22 — same tier/reasoning as `crm.sales_team.manage`
+      // immediately above — deliberately NOT held by `support_admin`
+      // (see that role's own comment). `crm.proposal.approve` is
+      // deliberately included here too, same as `platform_owner`'s own
+      // block — see that role's own comment for why it's not owner-only.
+      "crm.proposal.manage",
+      "crm.proposal.approve",
+      "crm.contract.manage",
     ],
   },
   support_admin: {
@@ -283,6 +312,8 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     // (support staff plausibly need visibility into rep
     // performance/pipeline ownership for the same customer-context
     // reason); deliberately NOT `crm.sales_team.manage`.
+    // Build 22 — `crm.proposal.read`/`crm.contract.read` ALSO granted,
+    // same reasoning; deliberately NOT `.manage`/`.approve`.
     permissions: [
       "users.read",
       "organizations.read",
@@ -299,6 +330,8 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "crm.read",
       "crm.pipeline.read",
       "crm.sales_team.read",
+      "crm.proposal.read",
+      "crm.contract.read",
     ],
   },
   support_agent: {

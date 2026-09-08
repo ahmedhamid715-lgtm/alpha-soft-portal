@@ -14,6 +14,9 @@ import * as pipelineStageService from "@/server/services/crm-pipeline-stage-serv
 import * as dealService from "@/server/services/crm-deal-service";
 import * as salesTeamService from "@/server/services/crm-sales-team-service";
 import * as salesGoalService from "@/server/services/crm-sales-goal-service";
+import * as proposalService from "@/server/services/crm-proposal-service";
+import * as proposalTemplateService from "@/server/services/crm-proposal-template-service";
+import * as contractService from "@/server/services/crm-contract-service";
 import type {
   CrmCompany,
   CrmContact,
@@ -29,6 +32,10 @@ import type {
   CrmDealHistory,
   CrmSalesTeamMember,
   CrmSalesGoal,
+  CrmProposal,
+  CrmProposalVersion,
+  CrmProposalTemplate,
+  CrmContract,
 } from "@/generated/prisma/client";
 
 /**
@@ -304,5 +311,126 @@ export async function createSalesGoalAction(input: unknown): Promise<ActionResul
 export async function archiveSalesGoalAction(input: unknown): Promise<ActionResult<CrmSalesGoal>> {
   const result = await run(() => salesGoalService.archiveGoal(input), ["/admin/crm/sales-team"]);
   if (result.data?.salesTeamMemberId) revalidatePath(`/admin/crm/sales-team/${result.data.salesTeamMemberId}`);
+  return result;
+}
+
+// --- Proposals & Contracts (Build 22 — Roadmap Module 16). Every mutation
+// revalidates the proposal's own detail route plus its originating deal's
+// detail route (the "Deal -> Proposals" surface) — mirroring
+// `logDealNoteAction`'s own "revalidate the parent too" pattern above.
+
+export async function createProposalAction(input: unknown): Promise<ActionResult<CrmProposal>> {
+  const result = await run(() => proposalService.createProposal(input), ["/admin/crm/proposals"]);
+  if (result.data) revalidatePath(`/admin/crm/deals/${result.data.dealId}`);
+  return result;
+}
+
+export async function updateProposalDraftAction(input: unknown): Promise<ActionResult<CrmProposalVersion>> {
+  const result = await run(() => proposalService.updateProposalDraft(input), []);
+  if (result.data) revalidatePath(`/admin/crm/proposals/${result.data.proposalId}`);
+  return result;
+}
+
+export async function reviseProposalAction(input: unknown): Promise<ActionResult<CrmProposalVersion>> {
+  const result = await run(() => proposalService.reviseProposal(input), []);
+  if (result.data) revalidatePath(`/admin/crm/proposals/${result.data.proposalId}`);
+  return result;
+}
+
+export async function sendProposalAction(input: unknown): Promise<ActionResult<CrmProposal>> {
+  const result = await run(() => proposalService.sendProposal(input), []);
+  if (result.data) revalidatePath(`/admin/crm/proposals/${result.data.id}`);
+  return result;
+}
+
+export async function submitProposalForApprovalAction(input: unknown): Promise<ActionResult<CrmProposalVersion>> {
+  const result = await run(() => proposalService.submitProposalForApproval(input), []);
+  if (result.data) revalidatePath(`/admin/crm/proposals/${result.data.proposalId}`);
+  return result;
+}
+
+export async function decideProposalApprovalAction(input: unknown): Promise<ActionResult<CrmProposalVersion>> {
+  const result = await run(() => proposalService.decideProposalApproval(input), []);
+  if (result.data) revalidatePath(`/admin/crm/proposals/${result.data.proposalId}`);
+  return result;
+}
+
+export async function rejectProposalAction(input: unknown): Promise<ActionResult<CrmProposal>> {
+  const result = await run(() => proposalService.rejectProposal(input), []);
+  if (result.data) revalidatePath(`/admin/crm/proposals/${result.data.id}`);
+  return result;
+}
+
+export async function expireProposalAction(input: unknown): Promise<ActionResult<CrmProposal>> {
+  const result = await run(() => proposalService.expireProposal(input), []);
+  if (result.data) revalidatePath(`/admin/crm/proposals/${result.data.id}`);
+  return result;
+}
+
+export async function acceptProposalAction(input: unknown): Promise<ActionResult<CrmProposal>> {
+  const result = await run(() => proposalService.acceptProposal(input), []);
+  if (result.data) revalidatePath(`/admin/crm/proposals/${result.data.id}`);
+  return result;
+}
+
+export async function assignProposalAction(input: unknown): Promise<ActionResult<CrmProposal>> {
+  const result = await run(() => proposalService.assignProposal(input), []);
+  if (result.data) revalidatePath(`/admin/crm/proposals/${result.data.id}`);
+  return result;
+}
+
+// --- Proposal templates ---
+
+export async function createProposalTemplateAction(input: unknown): Promise<ActionResult<CrmProposalTemplate>> {
+  return run(() => proposalTemplateService.createProposalTemplate(input), ["/admin/crm/proposals/templates"]);
+}
+
+export async function updateProposalTemplateAction(input: unknown): Promise<ActionResult<CrmProposalTemplate>> {
+  return run(() => proposalTemplateService.updateProposalTemplate(input), ["/admin/crm/proposals/templates"]);
+}
+
+export async function archiveProposalTemplateAction(input: unknown): Promise<ActionResult<CrmProposalTemplate>> {
+  return run(() => proposalTemplateService.archiveProposalTemplate(input), ["/admin/crm/proposals/templates"]);
+}
+
+export async function reactivateProposalTemplateAction(input: unknown): Promise<ActionResult<CrmProposalTemplate>> {
+  return run(() => proposalTemplateService.reactivateProposalTemplate(input), ["/admin/crm/proposals/templates"]);
+}
+
+// --- Contracts ---
+
+export async function createContractFromProposalAction(input: unknown): Promise<ActionResult<CrmContract>> {
+  const result = await run(() => contractService.createContractFromProposal(input), ["/admin/crm/contracts"]);
+  if (result.data) revalidatePath(`/admin/crm/deals/${result.data.dealId}`);
+  return result;
+}
+
+export async function createManualContractAction(input: unknown): Promise<ActionResult<CrmContract>> {
+  const result = await run(() => contractService.createManualContract(input), ["/admin/crm/contracts"]);
+  if (result.data) revalidatePath(`/admin/crm/deals/${result.data.dealId}`);
+  return result;
+}
+
+export async function activateContractAction(input: unknown): Promise<ActionResult<CrmContract>> {
+  const result = await run(() => contractService.activateContract(input), ["/admin/crm/contracts"]);
+  if (result.data) revalidatePath(`/admin/crm/contracts/${result.data.id}`);
+  return result;
+}
+
+export async function terminateContractAction(input: unknown): Promise<ActionResult<CrmContract>> {
+  const result = await run(() => contractService.terminateContract(input), ["/admin/crm/contracts"]);
+  if (result.data) revalidatePath(`/admin/crm/contracts/${result.data.id}`);
+  return result;
+}
+
+export async function cancelContractAction(input: unknown): Promise<ActionResult<CrmContract>> {
+  const result = await run(() => contractService.cancelContract(input), ["/admin/crm/contracts"]);
+  if (result.data) revalidatePath(`/admin/crm/contracts/${result.data.id}`);
+  return result;
+}
+
+export async function expireContractAction(input: unknown): Promise<ActionResult<CrmContract>> {
+  const result = await run(() => contractService.expireContract(input), ["/admin/crm/contracts"]);
+  if (result.data) revalidatePath(`/admin/crm/contracts/${result.data.id}`);
   return result;
 }

@@ -241,6 +241,30 @@ export const AUDIT_CATALOG = {
   "crm.sales_team.manager_changed": action("CRM", "A sales team member's manager changed."),
   "crm.sales_team.goal_created": action("CRM", "A sales target or quota was created."),
   "crm.sales_team.goal_archived": action("CRM", "A sales target or quota was archived."),
+
+  // --- Build 22 (Roadmap Module 16) — Proposals & Contracts. Extends the
+  // CRM category above, same audience/reasoning as Build 20/21's own
+  // extension comments. Every real lifecycle transition (creation, send,
+  // revision, approval submission/decision, acceptance, rejection,
+  // expiry, contract creation/activation/termination/cancellation) is
+  // audited — real business/legal-significant events. Line-item edits
+  // while still DRAFT are deliberately NOT separately audited — the
+  // immutable `CrmProposalVersion` itself, once sent, IS the durable
+  // commercial record (the same "audit the outcome, not every draft
+  // edit" discipline every prior CRM extension already establishes).
+  "crm.proposal.created": action("CRM", "A proposal was created."),
+  "crm.proposal.sent": action("CRM", "A proposal was sent."),
+  "crm.proposal.revised": action("CRM", "A new proposal version was created (revision)."),
+  "crm.proposal.approval_submitted": action("CRM", "A proposal version was submitted for internal approval."),
+  "crm.proposal.approved": action("CRM", "A proposal version was approved."),
+  "crm.proposal.approval_rejected": action("CRM", "A proposal version's approval request was rejected."),
+  "crm.proposal.accepted": action("CRM", "A proposal was accepted by the customer."),
+  "crm.proposal.rejected": action("CRM", "A proposal was rejected by the customer."),
+  "crm.proposal.expired": action("CRM", "A proposal was marked expired."),
+  "crm.contract.created": action("CRM", "A contract was created."),
+  "crm.contract.activated": action("CRM", "A contract was activated."),
+  "crm.contract.terminated": action("CRM", "A contract was terminated."),
+  "crm.contract.cancelled": action("CRM", "A contract was cancelled."),
 } as const satisfies Record<string, AuditActionDefinition>;
 
 export type AuditActionKey = keyof typeof AUDIT_CATALOG;

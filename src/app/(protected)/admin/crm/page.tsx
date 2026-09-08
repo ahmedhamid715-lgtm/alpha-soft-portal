@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ShieldAlert, Building2, Users, Target, ListChecks, ArrowRight, Handshake, Trophy } from "lucide-react";
+import { ShieldAlert, Building2, Users, Target, ListChecks, ArrowRight, Handshake, Trophy, FileText, FileSignature } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { SectionHeader } from "@/components/layout/section-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -13,6 +13,8 @@ import { listLeads } from "@/server/services/crm-lead-service";
 import { listTasks } from "@/server/services/crm-task-service";
 import { listDeals } from "@/server/services/crm-deal-service";
 import { listSalesTeam } from "@/server/services/crm-sales-team-service";
+import { listProposals } from "@/server/services/crm-proposal-service";
+import { listContracts } from "@/server/services/crm-contract-service";
 import { formatInTimeZone } from "@/lib/utils/datetime";
 import type { CrmLeadStatus } from "@/generated/prisma/client";
 
@@ -44,13 +46,17 @@ export default async function CrmDashboardPage() {
 
   const canSeePipeline = context.permissions.has("crm.pipeline.read");
   const canSeeSalesTeam = context.permissions.has("crm.sales_team.read");
-  const [companies, contacts, leadCounts, myOpenTasks, openDeals, salesTeamCount] = await Promise.all([
+  const canSeeProposals = context.permissions.has("crm.proposal.read");
+  const canSeeContracts = context.permissions.has("crm.contract.read");
+  const [companies, contacts, leadCounts, myOpenTasks, openDeals, salesTeamCount, sentProposals, activeContracts] = await Promise.all([
     listCompanies({ limit: 1, status: "ACTIVE" }),
     listContacts({ limit: 1, status: "ACTIVE" }),
     Promise.all(LEAD_STATUSES.map((status) => listLeads({ limit: 1, status }).then((r) => [status, r.pageInfo.totalCount ?? 0] as const))),
     listTasks({ limit: 10, status: "OPEN", assignedToUserId: context.user!.id }),
     canSeePipeline ? listDeals({ limit: 1, status: "OPEN" }) : null,
     canSeeSalesTeam ? listSalesTeam({ status: "ACTIVE" }) : null,
+    canSeeProposals ? listProposals({ status: "SENT" }) : null,
+    canSeeContracts ? listContracts({ status: "ACTIVE" }) : null,
   ]);
 
   const openLeadCount = leadCounts.filter(([status]) => status !== "CONVERTED" && status !== "DISQUALIFIED").reduce((sum, [, count]) => sum + count, 0);
@@ -120,6 +126,30 @@ export default async function CrmDashboardPage() {
                   <Trophy className="size-4" aria-hidden="true" /> Sales team
                 </span>
                 <span className="text-2xl font-semibold tabular-nums">{salesTeamCount?.length ?? 0}</span>
+              </Link>
+            </CardContent>
+          </Card>
+        ) : null}
+        {canSeeProposals ? (
+          <Card>
+            <CardContent>
+              <Link href="/admin/crm/proposals?status=SENT" className="flex flex-col gap-1">
+                <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <FileText className="size-4" aria-hidden="true" /> Proposals awaiting reply
+                </span>
+                <span className="text-2xl font-semibold tabular-nums">{sentProposals?.length ?? 0}</span>
+              </Link>
+            </CardContent>
+          </Card>
+        ) : null}
+        {canSeeContracts ? (
+          <Card>
+            <CardContent>
+              <Link href="/admin/crm/contracts?status=ACTIVE" className="flex flex-col gap-1">
+                <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <FileSignature className="size-4" aria-hidden="true" /> Active contracts
+                </span>
+                <span className="text-2xl font-semibold tabular-nums">{activeContracts?.length ?? 0}</span>
               </Link>
             </CardContent>
           </Card>

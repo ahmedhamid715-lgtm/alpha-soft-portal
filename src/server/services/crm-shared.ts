@@ -80,3 +80,27 @@ export async function assertPlatformStaffMember(userId: string, organizationId: 
     throw new ValidationError("assignedToUserId must be an active member of the platform organization.");
   }
 }
+
+/**
+ * Every ACTIVE platform-org member whose CURRENT role grants
+ * `permissionKey` — Build 22's own fan-out target for `crm.proposal.
+ * approval_requested` (there is no separate "approver assignment" list;
+ * whoever's role currently grants `crm.proposal.approve` is notified).
+ * Reads the live `role_permissions`/`roles`/`organization_memberships`
+ * tables directly (the same source of truth `requirePermission()` itself
+ * resolves from) rather than hardcoding a role-key list, so a future
+ * grant change is reflected here automatically. `Role`/`Permission`
+ * carry no RLS (global RBAC catalog, not tenant-scoped CRM data), so this
+ * reads the plain `db` client, not a tenant-scoped `tx`.
+ */
+export async function listUsersWithPermission(permissionKey: PermissionKey, organizationId: string): Promise<User[]> {
+  const roles = await db.role.findMany({
+    where: { rolePermissions: { some: { permission: { key: permissionKey } } } },
+    include: { memberships: { where: { organizationId, status: "ACTIVE" }, include: { user: true } } },
+  });
+  const users = new Map<string, User>();
+  for (const role of roles) {
+    for (const membership of role.memberships) users.set(membership.user.id, membership.user);
+  }
+  return [...users.values()];
+}

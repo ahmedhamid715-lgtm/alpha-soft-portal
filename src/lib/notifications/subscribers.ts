@@ -444,3 +444,72 @@ events.on<CrmSalesGoalAssignedPayload>("crm.sales_team.goal_assigned", async (ev
     templateData: { metricLabel },
   });
 });
+
+// --- Build 22 — Proposals & Contracts (Roadmap Module 16). The three
+// justified Proposal notifications — see `crm-proposal-service.ts`'s own
+// comments on why revision/rejection/expiry don't get one.
+
+interface CrmProposalApprovalRequestedPayload {
+  proposalId: string;
+  organizationId: string;
+  proposalNumber: string;
+  recipientUserIds: string[];
+}
+
+events.on<CrmProposalApprovalRequestedPayload>("crm.proposal.approval_requested", async (event) => {
+  const { proposalId, organizationId, proposalNumber, recipientUserIds } = event.payload;
+  await Promise.all(
+    recipientUserIds.map((recipientUserId) =>
+      notificationService.notify({
+        templateKey: "crm.proposal.approval_requested",
+        recipientUserId,
+        organizationId,
+        sourceEventType: "crm.proposal.approval_requested",
+        sourceEntityType: "crm_proposal",
+        sourceEntityId: proposalId,
+        templateData: { proposalNumber },
+      }),
+    ),
+  );
+});
+
+interface CrmProposalApprovalDecidedPayload {
+  proposalId: string;
+  organizationId: string;
+  proposalNumber: string;
+  submittedByUserId: string;
+  approved: boolean;
+}
+
+events.on<CrmProposalApprovalDecidedPayload>("crm.proposal.approval_decided", async (event) => {
+  const { proposalId, organizationId, proposalNumber, submittedByUserId, approved } = event.payload;
+  await notificationService.notify({
+    templateKey: "crm.proposal.approval_decided",
+    recipientUserId: submittedByUserId,
+    organizationId,
+    sourceEventType: "crm.proposal.approval_decided",
+    sourceEntityType: "crm_proposal",
+    sourceEntityId: proposalId,
+    templateData: { proposalNumber, approved },
+  });
+});
+
+interface CrmProposalAcceptedPayload {
+  proposalId: string;
+  organizationId: string;
+  proposalNumber: string;
+  assignedToUserId: string;
+}
+
+events.on<CrmProposalAcceptedPayload>("crm.proposal.accepted", async (event) => {
+  const { proposalId, organizationId, proposalNumber, assignedToUserId } = event.payload;
+  await notificationService.notify({
+    templateKey: "crm.proposal.accepted",
+    recipientUserId: assignedToUserId,
+    organizationId,
+    sourceEventType: "crm.proposal.accepted",
+    sourceEntityType: "crm_proposal",
+    sourceEntityId: proposalId,
+    templateData: { proposalNumber },
+  });
+});

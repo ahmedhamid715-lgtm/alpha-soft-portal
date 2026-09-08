@@ -365,6 +365,53 @@ export const NOTIFICATION_TEMPLATES = {
       actionUrl: "/admin/crm/sales-team",
     }),
   }),
+  /// Build 22 — reacts to `crm.proposal.approval_requested`
+  /// (`crm-proposal-service.ts`), fanned out to every ACTIVE platform
+  /// member whose role currently grants `crm.proposal.approve` — see
+  /// `crm-shared.ts`'s own `listUsersWithPermission()`. Same "something
+  /// now needs YOUR attention" reasoning `crm.task.assigned`/`crm.deal.
+  /// assigned` already establish.
+  "crm.proposal.approval_requested": template({
+    version: 1,
+    active: true,
+    category: "CRM_ACTIVITY",
+    severity: "INFO",
+    render: (data: { proposalNumber: string }) => ({
+      title: "Proposal awaiting your approval",
+      body: `Proposal ${data.proposalNumber} was submitted for approval.`,
+      actionUrl: "/admin/crm/proposals",
+    }),
+  }),
+  /// Build 22 — reacts to `crm.proposal.approval_decided`, to the ORIGINAL
+  /// submitter only (never a broader fan-out — this is their own
+  /// outcome, not a team-wide event).
+  "crm.proposal.approval_decided": template({
+    version: 1,
+    active: true,
+    category: "CRM_ACTIVITY",
+    severity: "INFO",
+    render: (data: { proposalNumber: string; approved: boolean }) => ({
+      title: data.approved ? "Proposal approved" : "Proposal approval declined",
+      body: data.approved ? `Proposal ${data.proposalNumber} was approved and can now be sent.` : `Proposal ${data.proposalNumber}'s approval request was declined.`,
+      actionUrl: "/admin/crm/proposals",
+    }),
+  }),
+  /// Build 22 — reacts to `crm.proposal.accepted`, to the proposal's own
+  /// assigned rep. Rejection/expiry are deliberately NOT notified — the
+  /// same "don't notify on every routine/negative-outcome event"
+  /// discipline `crm.deal.assigned`'s own comment establishes for stage
+  /// moves; an acceptance is the one genuinely actionable win.
+  "crm.proposal.accepted": template({
+    version: 1,
+    active: true,
+    category: "CRM_ACTIVITY",
+    severity: "INFO",
+    render: (data: { proposalNumber: string }) => ({
+      title: "Proposal accepted",
+      body: `Proposal ${data.proposalNumber} was accepted.`,
+      actionUrl: "/admin/crm/proposals",
+    }),
+  }),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as const satisfies Record<string, NotificationTemplateDefinition<any>>;
 

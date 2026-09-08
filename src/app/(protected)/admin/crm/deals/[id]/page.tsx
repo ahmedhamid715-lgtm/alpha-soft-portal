@@ -13,6 +13,8 @@ import { getPipeline } from "@/server/services/crm-pipeline-service";
 import { listStagesForPipeline } from "@/server/services/crm-pipeline-stage-service";
 import { listContactsForCompany } from "@/server/services/crm-contact-service";
 import { listAssignableUsers } from "@/server/services/crm-shared";
+import { listProposals } from "@/server/services/crm-proposal-service";
+import { listContracts } from "@/server/services/crm-contract-service";
 import { toAppError } from "@/lib/errors/app-error";
 import { formatMoney } from "@/lib/utils/money";
 import { formatInTimeZone } from "@/lib/utils/datetime";
@@ -21,6 +23,8 @@ import { DealEditForm } from "@/components/crm/pipeline/deal-edit-form";
 import { DealOwnerControl } from "@/components/crm/pipeline/deal-owner-control";
 import { LogDealNoteForm } from "@/components/crm/pipeline/log-deal-note-form";
 import { DealHistoryList } from "@/components/crm/pipeline/deal-history-list";
+import { Button } from "@/components/ui/button";
+import { proposalStatusVariant, contractStatusVariant } from "@/components/crm/proposals/proposal-status";
 
 export const metadata: Metadata = { title: "Deal" };
 
@@ -38,21 +42,33 @@ export default async function CrmDealDetailPage({ params }: { params: Promise<{ 
     );
   }
 
-  let deal;
-  try {
-    deal = await getDealWithRelations({ dealId: id });
-  } catch (error) {
-    if (toAppError(error).code === "NOT_FOUND") notFound();
-    throw error;
-  }
-
   const canManage = context.permissions.has("crm.pipeline.manage");
-  const [pipeline, stages, companyContacts, users, history] = await Promise.all([
+  const canSeeProposals = context.permissions.has("crm.proposal.read");
+  const canManageProposals = context.permissions.has("crm.proposal.manage");
+  const canSeeContracts = context.permissions.has("crm.contract.read");
+
+  // Stage 1 — everything needing only the route `id`/permissions (not
+  // the resolved deal's own `pipelineId`/`companyId`) starts alongside
+  // `getDealWithRelations()`. Flagged by the Build 22 performance
+  // review: `listAssignableUsers()`/`listDealHistory()`/`listProposals()`/
+  // `listContracts()` previously all waited on the deal fetch first for
+  // no real reason.
+  const [deal, users, history, proposals, contracts] = await Promise.all([
+    getDealWithRelations({ dealId: id }).catch((error) => {
+      if (toAppError(error).code === "NOT_FOUND") notFound();
+      throw error;
+    }),
+    canManage ? listAssignableUsers() : Promise.resolve([]),
+    listDealHistory({ dealId: id, limit: 25 }),
+    canSeeProposals ? listProposals({ dealId: id }) : Promise.resolve([]),
+    canSeeContracts ? listContracts({ dealId: id }) : Promise.resolve([]),
+  ]);
+
+  // Stage 2 — genuinely depends on the now-resolved deal.
+  const [pipeline, stages, companyContacts] = await Promise.all([
     getPipeline({ pipelineId: deal.pipelineId }),
     listStagesForPipeline({ pipelineId: deal.pipelineId, status: "ACTIVE" }),
     canManage ? listContactsForCompany({ companyId: deal.companyId }) : Promise.resolve([]),
-    canManage ? listAssignableUsers() : Promise.resolve([]),
-    listDealHistory({ dealId: id, limit: 25 }),
   ]);
 
   const stage = stages.find((s) => s.id === deal.stageId);
@@ -165,6 +181,48 @@ export default async function CrmDealDetailPage({ params }: { params: Promise<{ 
               <DealEditForm deal={deal} companyContacts={companyContacts} />
             </CardContent>
           </Card>
+        </section>
+      ) : null}
+
+      {canSeeProposals ? (
+        <section className="flex flex-col gap-4">
+          <SectionHeader
+            title="Proposals"
+            description="Quotes sent for this deal — Deal → Proposal → Accepted Proposal → Contract."
+            actions={
+              canManageProposals ? (
+                <Button asChild size="sm" variant="outline">
+                  <Link href={`/admin/crm/proposals/new?dealId=${deal.id}`}>New proposal</Link>
+                </Button>
+              ) : null
+            }
+          />
+          {proposals.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No proposals yet for this deal.</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {proposals.map((proposal) => (
+                <Link key={proposal.id} href={`/admin/crm/proposals/${proposal.id}`} className="flex items-center justify-between rounded-lg border border-border px-4 py-2.5 text-sm hover:bg-muted/30">
+                  <span className="font-medium">{proposal.proposalNumber}</span>
+                  <StatusBadge status={proposalStatusVariant(proposal.status)}>{proposal.status}</StatusBadge>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+      ) : null}
+
+      {canSeeContracts && contracts.length > 0 ? (
+        <section className="flex flex-col gap-4">
+          <SectionHeader title="Contracts" description="Commercial agreements resulting from this deal." />
+          <div className="flex flex-col gap-2">
+            {contracts.map((contract) => (
+              <Link key={contract.id} href={`/admin/crm/contracts/${contract.id}`} className="flex items-center justify-between rounded-lg border border-border px-4 py-2.5 text-sm hover:bg-muted/30">
+                <span className="font-medium">{contract.contractNumber}</span>
+                <StatusBadge status={contractStatusVariant(contract.status)}>{contract.status}</StatusBadge>
+              </Link>
+            ))}
+          </div>
         </section>
       ) : null}
 

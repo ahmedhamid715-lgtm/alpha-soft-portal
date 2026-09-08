@@ -179,6 +179,13 @@ model Organization {
   /// same exclusive platform-organization ownership.
   crmSalesTeamMembers       CrmSalesTeamMember[]
   crmSalesGoals             CrmSalesGoal[]
+  /// Build 22 (Proposals & Contracts) — extends the CRM domain above;
+  /// same exclusive platform-organization ownership.
+  crmProposals              CrmProposal[]
+  crmProposalVersions       CrmProposalVersion[]
+  crmProposalLineItems      CrmProposalLineItem[]
+  crmProposalTemplates      CrmProposalTemplate[]
+  crmContracts              CrmContract[]
 
   @@index([status])
   @@index([isPlatform])
@@ -233,18 +240,18 @@ model User {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  memberships                  OrganizationMembership[]
+  memberships                          OrganizationMembership[]
   /// Module 07 — invitations this user has sent (as an org admin/owner) or accepted.
-  invitationsSent              Invitation[]             @relation("InvitationsSent")
-  invitationsAccepted          Invitation[]             @relation("InvitationsAccepted")
-  credential                   UserCredential?
-  sessions                     UserSession[]
-  authTokens                   AuthToken[]
+  invitationsSent                      Invitation[]             @relation("InvitationsSent")
+  invitationsAccepted                  Invitation[]             @relation("InvitationsAccepted")
+  credential                           UserCredential?
+  sessions                             UserSession[]
+  authTokens                           AuthToken[]
   /// Module 08 — audit events where this user is the actor. `SetNull`,
   /// same reasoning as `Organization.auditEvents` — never `Cascade`.
   /// Never joined for display (see `AuditEvent.actorDisplayName`); this
   /// relation exists for referential integrity only.
-  auditEvents                  AuditEvent[]
+  auditEvents                          AuditEvent[]
   /// Module 09 — notifications addressed to this user. `Cascade`, NOT
   /// `SetNull` like `auditEvents` — deliberately different reasoning,
   /// not an oversight: `recipientUserId` is a required field (a
@@ -256,38 +263,46 @@ model User {
   /// "Deletion strategy" — deactivation, not deletion) — this FK choice
   /// matters for test-fixture cleanup ergonomics (the exact class of bug
   /// Module 08 hit with `Restrict`), not for any real production path.
-  notifications                Notification[]
-  notificationPreferences      NotificationPreference[]
+  notifications                        Notification[]
+  notificationPreferences              NotificationPreference[]
   /// Module 13 — refunds this platform-staff user personally issued
   /// (never a customer; see billing-security.md "Refunds are staff-
   /// initiated only"). `SetNull` — the refund record itself is the
   /// financial evidence and must survive independent of whether the
   /// staff account does (same reasoning as `auditEvents` above).
-  refundsInitiated             Refund[]
+  refundsInitiated                     Refund[]
   /// Module 14 — credit ledger entries this platform-staff user
   /// personally issued/adjusted. Same `SetNull` reasoning as
   /// `refundsInitiated` above.
-  creditLedgerEntriesInitiated CreditLedgerEntry[]
+  creditLedgerEntriesInitiated         CreditLedgerEntry[]
   /// Module 17 — AI support-chat conversations this user has started.
   /// `Cascade` — same "User is never hard-deleted in real operation;
   /// this FK matters for test-fixture cleanup ergonomics, not a real
   /// production path" reasoning as `notifications` above, and a
   /// conversation with no owning user is meaningless (same logic).
-  aiConversations              AiConversation[]
+  aiConversations                      AiConversation[]
   /// Module 19 (CRM) — leads/tasks assigned to this user, activities this user logged.
-  crmLeadsAssigned             CrmLead[]                @relation("CrmLeadAssignedTo")
-  crmTasksAssigned             CrmTask[]                @relation("CrmTaskAssignedTo")
-  crmTasksCreated              CrmTask[]                @relation("CrmTaskCreatedBy")
-  crmActivitiesLogged          CrmActivity[]            @relation("CrmActivityActor")
+  crmLeadsAssigned                     CrmLead[]                @relation("CrmLeadAssignedTo")
+  crmTasksAssigned                     CrmTask[]                @relation("CrmTaskAssignedTo")
+  crmTasksCreated                      CrmTask[]                @relation("CrmTaskCreatedBy")
+  crmActivitiesLogged                  CrmActivity[]            @relation("CrmActivityActor")
   /// Build 20 (Sales Pipeline) — deals assigned to this user, deal
   /// history entries this user's actions produced.
-  crmDealsAssigned             CrmDeal[]                @relation("CrmDealAssignedTo")
-  crmDealHistoryLogged         CrmDealHistory[]         @relation("CrmDealHistoryActor")
+  crmDealsAssigned                     CrmDeal[]                @relation("CrmDealAssignedTo")
+  crmDealHistoryLogged                 CrmDealHistory[]         @relation("CrmDealHistoryActor")
   /// Build 21 (Sales Team Management) — this user's own sales-team
   /// participation row(s) (one per join/leave cycle — see
   /// `CrmSalesTeamMember`'s own comment), and goals this user created.
-  crmSalesTeamMemberships      CrmSalesTeamMember[]     @relation("CrmSalesTeamMemberUser")
-  crmSalesGoalsCreated         CrmSalesGoal[]           @relation("CrmSalesGoalCreatedBy")
+  crmSalesTeamMemberships              CrmSalesTeamMember[]     @relation("CrmSalesTeamMemberUser")
+  crmSalesGoalsCreated                 CrmSalesGoal[]           @relation("CrmSalesGoalCreatedBy")
+  /// Build 22 (Proposals & Contracts).
+  crmProposalsAssigned                 CrmProposal[]            @relation("CrmProposalAssignedTo")
+  crmProposalVersionsCreated           CrmProposalVersion[]     @relation("CrmProposalVersionCreatedBy")
+  crmProposalVersionsApprovalSubmitted CrmProposalVersion[]     @relation("CrmProposalVersionApprovalSubmittedBy")
+  crmProposalVersionsApprovalDecided   CrmProposalVersion[]     @relation("CrmProposalVersionApprovalDecidedBy")
+  crmProposalVersionsSent              CrmProposalVersion[]     @relation("CrmProposalVersionSentBy")
+  crmProposalVersionsAcceptedByStaff   CrmProposalVersion[]     @relation("CrmProposalVersionAcceptedByStaff")
+  crmContractsCreated                  CrmContract[]            @relation("CrmContractCreatedBy")
 
   @@index([status])
   @@map("users")
@@ -2272,6 +2287,8 @@ model CrmCompany {
   tasks                   CrmTask[]
   customFieldValues       CrmCustomFieldValue[]
   deals                   CrmDeal[]
+  proposals               CrmProposal[]
+  contracts               CrmContract[]
 
   @@index([organizationId, createdAt])
   @@index([organizationId, status, createdAt])
@@ -2301,13 +2318,15 @@ model CrmContact {
   createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  organization          Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  company               CrmCompany            @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  leadsAsPrimaryContact CrmLead[]             @relation("CrmLeadPrimaryContact")
-  activities            CrmActivity[]
-  tasks                 CrmTask[]
-  customFieldValues     CrmCustomFieldValue[]
-  dealsAsPrimaryContact CrmDeal[]             @relation("CrmDealPrimaryContact")
+  organization              Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company                   CrmCompany            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  leadsAsPrimaryContact     CrmLead[]             @relation("CrmLeadPrimaryContact")
+  activities                CrmActivity[]
+  tasks                     CrmTask[]
+  customFieldValues         CrmCustomFieldValue[]
+  dealsAsPrimaryContact     CrmDeal[]             @relation("CrmDealPrimaryContact")
+  proposalsAsPrimaryContact CrmProposal[]         @relation("CrmProposalPrimaryContact")
+  proposalVersionsAccepted  CrmProposalVersion[]  @relation("CrmProposalVersionAcceptedByContact")
 
   @@index([organizationId, createdAt])
   @@index([organizationId, status, createdAt])
@@ -2653,6 +2672,8 @@ model CrmDeal {
   sourceLead     CrmLead?         @relation("CrmDealSourceLead", fields: [sourceLeadId], references: [id], onDelete: SetNull)
   assignedToUser User?            @relation("CrmDealAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
   history        CrmDealHistory[]
+  proposals      CrmProposal[]
+  contracts      CrmContract[]
 
   @@index([organizationId, status, createdAt])
   @@index([organizationId, pipelineId, stageId])
@@ -2877,4 +2898,425 @@ enum CrmSalesGoalStatus {
   ARCHIVED
 
   @@map("crm_sales_goal_status")
+}
+
+// --- Build 22 (Roadmap Module 16) — Proposals & Contracts. Bridges Sales
+// Pipeline (Build 20) into future Client Onboarding (Roadmap Module 17,
+// NOT built here) — never a duplicate opportunity record, never a
+// duplicate money abstraction, never a real e-signature integration, never
+// a customer-tenant/billing-subscription side effect. See
+// docs/architecture/proposals-contracts.md.
+
+/// The proposal ROOT — one per originating deal-quote lineage, never
+/// mutated for commercial content (that lives on `CrmProposalVersion`).
+/// Always originates from an existing `CrmDeal` (never a duplicate
+/// opportunity record) and always inherits that deal's own `companyId`
+/// (enforced by the relationship-integrity trigger). Multiple proposal
+/// ROOTS may exist for one deal (e.g. two genuinely different proposals
+/// offered in parallel); revisions to ONE proposal are versions of the
+/// SAME root, never a new root — see `CrmProposalVersion`'s own comment.
+model CrmProposal {
+  id               String  @id @db.Uuid
+  organizationId   String  @map("organization_id") @db.Uuid
+  dealId           String  @map("deal_id") @db.Uuid
+  companyId        String  @map("company_id") @db.Uuid
+  /// Who internally the proposal is addressed to — optional (a proposal
+  /// can exist before a specific contact is confirmed). Must belong to
+  /// `companyId` (relationship-integrity trigger, the same
+  /// "primary contact belongs to the same company" shape `CrmDeal`
+  /// already establishes).
+  primaryContactId String? @map("primary_contact_id") @db.Uuid
+
+  /// Server-generated, unique, non-user-controlled — see
+  /// `src/lib/crm/proposal-numbering.ts`'s own top comment (a real
+  /// Postgres SEQUENCE, the same pattern `invoice-numbering.ts`
+  /// established, never `MAX(number) + 1`).
+  proposalNumber String @unique @map("proposal_number")
+
+  /// The lifecycle authority — never inferred from version state alone.
+  /// DRAFT -> SENT -> ACCEPTED | REJECTED | EXPIRED. SENT/REJECTED/
+  /// EXPIRED may all "revise" back to DRAFT (a new version); ACCEPTED is
+  /// the one true terminal state — see sales-pipeline.md's own
+  /// CrmDeal.status precedent for "one column is the sole lifecycle
+  /// authority, never bare related-row state."
+  status CrmProposalStatus @default(DRAFT)
+
+  /// The version currently in effect — while DRAFT, this is the one
+  /// mutable version; once SENT, it's frozen and this pointer only ever
+  /// advances to a NEW version (via `reviseProposal()`), never back.
+  currentVersionId String? @unique @map("current_version_id") @db.Uuid
+
+  /// The template this proposal started from, if any — provenance only;
+  /// `SetNull` so archiving/deleting a template never breaks a
+  /// historical proposal that started from it.
+  templateId String? @map("template_id") @db.Uuid
+
+  assignedToUserId String? @map("assigned_to_user_id") @db.Uuid
+
+  acceptedAt DateTime? @map("accepted_at") @db.Timestamptz(3)
+  rejectedAt DateTime? @map("rejected_at") @db.Timestamptz(3)
+  expiredAt  DateTime? @map("expired_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deal           CrmDeal              @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  company        CrmCompany           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  primaryContact CrmContact?          @relation("CrmProposalPrimaryContact", fields: [primaryContactId], references: [id], onDelete: SetNull)
+  template       CrmProposalTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  assignedToUser User?                @relation("CrmProposalAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  currentVersion CrmProposalVersion?  @relation("CrmProposalCurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+  versions       CrmProposalVersion[] @relation("CrmProposalVersions")
+  contracts      CrmContract[]
+
+  /// Widened from a bare `[organizationId, dealId]` — flagged by the
+  /// Build 22 performance review: `listForOrganization({ dealId })`
+  /// orders `ORDER BY created_at DESC` after this filter, which the
+  /// narrower index couldn't satisfy without an extra sort step.
+  @@index([organizationId, dealId, createdAt])
+  @@index([organizationId, status, createdAt])
+  @@index([companyId, createdAt])
+  /// Added — flagged by the Build 22 performance review: the unfiltered
+  /// `listForOrganization({})` call (no status/dealId/companyId) orders
+  /// by `created_at` with only `organizationId` in its own WHERE clause
+  /// (RLS's own predicate), which none of the OTHER indexes above lead
+  /// with `organizationId` alone before `createdAt` — `[organizationId,
+  /// status, createdAt]` only helps once `status` is also present.
+  @@index([organizationId, createdAt])
+  /// Replaces the old `[assignedToUserId, status]` — flagged by the
+  /// Build 22 performance review: that index didn't lead with
+  /// `organizationId` (which RLS always adds to the effective WHERE
+  /// clause for every query against this table), so it couldn't be used
+  /// efficiently under the restricted role. This shape mirrors the
+  /// pattern above.
+  @@index([organizationId, assignedToUserId, createdAt])
+  @@map("crm_proposals")
+}
+
+enum CrmProposalStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+
+  @@map("crm_proposal_status")
+}
+
+/// The immutable-once-sent commercial snapshot — title, body, line items,
+/// totals, validity, approval, and acceptance state ALL live here, never
+/// on the root, so historical proposals stay stable evidence even after
+/// CRM data or later revisions change. COMMERCIAL fields (title/body/
+/// terms/currency/pricing/validUntil) are frozen once `status <> DRAFT`
+/// — enforced at the database boundary itself, by the relationship-
+/// integrity trigger's own column-level `IS DISTINCT FROM` check (NOT
+/// by RLS: RLS operates on whole rows and cannot cleanly express
+/// "these columns frozen, those columns not," so the ordinary
+/// tenant-scoped RLS UPDATE policy permits the row to be touched at
+/// all, and the trigger is the actual precision guarantee). LIFECYCLE
+/// fields (status, sent/approval/accepted/rejected timestamps and
+/// actors) remain legitimately writable through their own state
+/// machine after SENT — see `crm-proposal-version-repository.ts`'s own
+/// `updateDraftContent()` vs. lifecycle-transition method split, and
+/// the migration file's own NOTE comment for the full reasoning.
+/// `reviseProposal()` creates a new row with `versionNumber + 1`, never
+/// edits an existing SENT/ACCEPTED/REJECTED/EXPIRED row's commercial
+/// content.
+model CrmProposalVersion {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  proposalId     String @map("proposal_id") @db.Uuid
+
+  /// 1-based, per-proposal — the human-readable "Version 2" a staff
+  /// member sees; `proposalNumber` (on the root) is the stable external
+  /// identifier, this is the internal revision counter.
+  versionNumber Int @map("version_number")
+
+  /// This version's OWN lifecycle marker — mirrors the root's `status`
+  /// at the moment this version was current, frozen thereafter (a
+  /// superseded version keeps whatever status it had when superseded,
+  /// e.g. a version that was SENT and then revised stays `SENT` on its
+  /// own row forever — the root's own `status` is what actually reflects
+  /// the CURRENT state of the proposal as a whole).
+  status CrmProposalStatus @default(DRAFT)
+
+  title     String
+  /// Sanitized server-side before storage — see
+  /// `src/lib/crm/sanitize-proposal-html.ts`'s own top comment. Proposal
+  /// content is customer-facing business content, handled as untrusted
+  /// input regardless of who authored it.
+  bodyHtml  String  @map("body_html")
+  termsHtml String? @map("terms_html")
+
+  /// ISO 4217 — one currency per version, applies to every line item
+  /// (no mixed-currency proposals; same convention `CrmDeal.currency`
+  /// already establishes).
+  currency String @db.VarChar(3)
+
+  /// Sum of line totals (after each line's own discount), before the
+  /// proposal-level discount below. Integer minor units — never a float.
+  subtotalMinorUnits           Int                     @map("subtotal_minor_units")
+  discountType                 CrmProposalDiscountType @default(NONE) @map("discount_type")
+  /// Minor units for FIXED, integer 0-100 for PERCENT, null for NONE —
+  /// same exactly-one-of-value-matches-kind discipline
+  /// `CrmSalesGoal`'s own CHECK constraint already established.
+  discountValue                Int?                    @map("discount_value")
+  /// subtotal - the resolved discount amount. Never negative (CHECK).
+  discountedSubtotalMinorUnits Int                     @map("discounted_subtotal_minor_units")
+  /// Manually entered/externally supplied — NEVER computed. `null`
+  /// means "tax not entered," rendered as "Tax not calculated," a
+  /// genuinely different state from an entered `0`. See
+  /// proposals-contracts.md "Tax boundary."
+  taxAmountMinorUnits          Int?                    @map("tax_amount_minor_units")
+  /// discountedSubtotal + (taxAmount ?? 0) — the one number a customer
+  /// actually owes if they accept.
+  totalMinorUnits              Int                     @map("total_minor_units")
+
+  /// How long this quote is valid for — `acceptProposal()` refuses an
+  /// attempt after this instant, regardless of the root's own `status`.
+  validUntil DateTime @map("valid_until") @db.Timestamptz(3)
+
+  /// NOT_REQUIRED unless a real approval step was actually requested for
+  /// THIS version — see proposals-contracts.md "Approval boundary vs
+  /// Module 67." `sendProposal()` refuses unless this is NOT_REQUIRED or
+  /// APPROVED.
+  approvalStatus            CrmProposalApprovalStatus @default(NOT_REQUIRED) @map("approval_status")
+  approvalSubmittedByUserId String?                   @map("approval_submitted_by_user_id") @db.Uuid
+  approvalSubmittedAt       DateTime?                 @map("approval_submitted_at") @db.Timestamptz(3)
+  /// The approver — deliberately NEVER equal to
+  /// `approvalSubmittedByUserId` (self-approval is prohibited, enforced
+  /// server-side — see proposals-contracts.md).
+  approvalDecidedByUserId   String?                   @map("approval_decided_by_user_id") @db.Uuid
+  approvalDecidedAt         DateTime?                 @map("approval_decided_at") @db.Timestamptz(3)
+  approvalNote              String?                   @map("approval_note")
+
+  sentAt       DateTime? @map("sent_at") @db.Timestamptz(3)
+  sentByUserId String?   @map("sent_by_user_id") @db.Uuid
+
+  /// Acceptance is always `INTERNAL_RECORDED` in Build 22 — a staff
+  /// member honestly recording a real verbal/email/in-person acceptance,
+  /// never an external self-service action. `signature*` fields below
+  /// are separate, deliberately unused readiness columns — see
+  /// proposals-contracts.md "E-signature readiness."
+  acceptedAt            DateTime?                       @map("accepted_at") @db.Timestamptz(3)
+  acceptedByContactId   String?                         @map("accepted_by_contact_id") @db.Uuid
+  /// Snapshots — the ACTUAL typed name/email at acceptance, which may
+  /// legitimately differ from `acceptedByContactId`'s own current CRM
+  /// record (a different real-world signer, or the contact's own email
+  /// changing later). Never silently re-derived from the contact record.
+  acceptedSignerName    String?                         @map("accepted_signer_name")
+  acceptedSignerEmail   String?                         @map("accepted_signer_email")
+  acceptedByStaffUserId String?                         @map("accepted_by_staff_user_id") @db.Uuid
+  acceptanceMechanism   CrmProposalAcceptanceMechanism? @map("acceptance_mechanism")
+
+  /// Readiness-only — Build 22 never sets these beyond their own
+  /// defaults; a real future e-signature integration (its own dedicated
+  /// task, not this build) would populate them. Never claim a signature
+  /// happened that didn't.
+  signatureProvider   String?                    @map("signature_provider")
+  signatureEnvelopeId String?                    @map("signature_envelope_id")
+  signatureStatus     CrmProposalSignatureStatus @default(NONE) @map("signature_status")
+
+  rejectedAt     DateTime? @map("rejected_at") @db.Timestamptz(3)
+  rejectedReason String?   @map("rejected_reason")
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization            Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  proposal                CrmProposal           @relation("CrmProposalVersions", fields: [proposalId], references: [id], onDelete: Cascade)
+  currentForProposal      CrmProposal?          @relation("CrmProposalCurrentVersion")
+  approvalSubmittedByUser User?                 @relation("CrmProposalVersionApprovalSubmittedBy", fields: [approvalSubmittedByUserId], references: [id], onDelete: SetNull)
+  approvalDecidedByUser   User?                 @relation("CrmProposalVersionApprovalDecidedBy", fields: [approvalDecidedByUserId], references: [id], onDelete: SetNull)
+  sentByUser              User?                 @relation("CrmProposalVersionSentBy", fields: [sentByUserId], references: [id], onDelete: SetNull)
+  acceptedByContact       CrmContact?           @relation("CrmProposalVersionAcceptedByContact", fields: [acceptedByContactId], references: [id], onDelete: SetNull)
+  acceptedByStaffUser     User?                 @relation("CrmProposalVersionAcceptedByStaff", fields: [acceptedByStaffUserId], references: [id], onDelete: SetNull)
+  createdByUser           User                  @relation("CrmProposalVersionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  lineItems               CrmProposalLineItem[]
+  contracts               CrmContract[]
+
+  @@unique([proposalId, versionNumber])
+  @@index([organizationId, proposalId])
+  @@map("crm_proposal_versions")
+}
+
+enum CrmProposalDiscountType {
+  NONE
+  FIXED
+  PERCENT
+
+  @@map("crm_proposal_discount_type")
+}
+
+enum CrmProposalApprovalStatus {
+  NOT_REQUIRED
+  PENDING
+  APPROVED
+  REJECTED
+
+  @@map("crm_proposal_approval_status")
+}
+
+enum CrmProposalAcceptanceMechanism {
+  /// The only mechanism Build 22 implements — a platform-staff member
+  /// honestly recording a real acceptance obtained outside Alpha OS
+  /// (verbal, email, in-person). Never conflated with a cryptographic
+  /// digital signature.
+  INTERNAL_RECORDED
+
+  @@map("crm_proposal_acceptance_mechanism")
+}
+
+enum CrmProposalSignatureStatus {
+  /// The only value Build 22 ever actually sets. PENDING/COMPLETED are
+  /// reserved for a real future e-signature integration — never faked.
+  NONE
+  PENDING
+  COMPLETED
+
+  @@map("crm_proposal_signature_status")
+}
+
+/// One priced line within one proposal version — a commercial SNAPSHOT,
+/// not a live reference (Roadmap Module 23, Service Management, doesn't
+/// exist yet). `title`/`description` are what make this snapshot durable
+/// on their own; a future `serviceId` FK can be added by Module 23
+/// without rewriting any historical proposal.
+model CrmProposalLineItem {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  versionId      String @map("version_id") @db.Uuid
+
+  title                String
+  description          String?
+  quantity             Int     @default(1)
+  /// Integer minor units.
+  unitAmountMinorUnits Int     @map("unit_amount_minor_units")
+
+  discountType        CrmProposalDiscountType @default(NONE) @map("discount_type")
+  /// Minor units for FIXED, integer 0-100 for PERCENT, null for NONE.
+  discountValue       Int?                    @map("discount_value")
+  /// (quantity × unitAmountMinorUnits) minus this line's own resolved
+  /// discount. Never negative (CHECK).
+  lineTotalMinorUnits Int                     @map("line_total_minor_units")
+
+  sortOrder Int @default(0) @map("sort_order")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  version      CrmProposalVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, versionId, sortOrder])
+  @@map("crm_proposal_line_items")
+}
+
+/// Tenant-owned, RLS-protected starting content for a new proposal —
+/// title/body/terms/default validity only, deliberately NOT a global
+/// template CMS and NOT a document-management system (Roadmap Module 16
+/// scope, not 45/64). No template-level line items — line items are
+/// added per-proposal; a template is a content convenience, not a
+/// structural requirement.
+model CrmProposalTemplate {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  name                String
+  defaultTitle        String  @map("default_title")
+  /// Sanitized server-side before storage — same discipline as
+  /// `CrmProposalVersion.bodyHtml`.
+  defaultBodyHtml     String  @map("default_body_html")
+  defaultTermsHtml    String? @map("default_terms_html")
+  defaultValidityDays Int     @default(30) @map("default_validity_days")
+
+  status CrmProposalTemplateStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  proposals    CrmProposal[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, status])
+  @@map("crm_proposal_templates")
+}
+
+enum CrmProposalTemplateStatus {
+  ACTIVE
+  ARCHIVED
+
+  @@map("crm_proposal_template_status")
+}
+
+/// The commercial agreement resulting from an accepted proposal, OR a
+/// manually recorded agreement where justified (both explicitly
+/// permitted — see proposals-contracts.md). Deliberately NOT a document-
+/// management system: no file storage, no attachment versioning — the
+/// accepted `CrmProposalVersion` (when present) already IS the durable
+/// commercial/legal snapshot; this model does not re-copy its content.
+model CrmContract {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  dealId         String @map("deal_id") @db.Uuid
+  companyId      String @map("company_id") @db.Uuid
+
+  /// Both null together (manually recorded agreement) or both set
+  /// together (originated from an accepted proposal) — validated at the
+  /// service layer; the relationship-integrity trigger additionally
+  /// requires, when set, that the referenced version actually belongs to
+  /// `originatingProposalId` and is ACCEPTED.
+  originatingProposalId        String? @map("originating_proposal_id") @db.Uuid
+  originatingProposalVersionId String? @map("originating_proposal_version_id") @db.Uuid
+
+  /// Server-generated — reuses the SAME numbering pattern as proposals
+  /// (`src/lib/crm/contract-numbering.ts`, its own dedicated sequence),
+  /// never the proposal's own number reused as the contract's identifier.
+  contractNumber String @unique @map("contract_number")
+
+  status CrmContractStatus @default(DRAFT)
+
+  effectiveDate DateTime? @map("effective_date") @db.Timestamptz(3)
+  endDate       DateTime? @map("end_date") @db.Timestamptz(3)
+  /// Free-text summary only — e.g. "auto-renews annually unless 30 days'
+  /// notice." Not a structured renewal engine (out of Build 22's own
+  /// scope).
+  renewalTerms  String?   @map("renewal_terms")
+
+  activatedAt      DateTime? @map("activated_at") @db.Timestamptz(3)
+  terminatedAt     DateTime? @map("terminated_at") @db.Timestamptz(3)
+  terminatedReason String?   @map("terminated_reason")
+  cancelledAt      DateTime? @map("cancelled_at") @db.Timestamptz(3)
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization               Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deal                       CrmDeal             @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  company                    CrmCompany          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  originatingProposal        CrmProposal?        @relation(fields: [originatingProposalId], references: [id], onDelete: SetNull)
+  originatingProposalVersion CrmProposalVersion? @relation(fields: [originatingProposalVersionId], references: [id], onDelete: SetNull)
+  createdByUser              User                @relation("CrmContractCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  /// Widened, and the unfiltered index added below — same reasoning as
+  /// `CrmProposal`'s own identical Build 22 performance-review fix.
+  @@index([organizationId, dealId, createdAt])
+  @@index([organizationId, status, createdAt])
+  @@index([companyId, createdAt])
+  @@index([organizationId, createdAt])
+  @@map("crm_contracts")
+}
+
+enum CrmContractStatus {
+  DRAFT
+  ACTIVE
+  EXPIRED
+  TERMINATED
+  CANCELLED
+
+  @@map("crm_contract_status")
 }
