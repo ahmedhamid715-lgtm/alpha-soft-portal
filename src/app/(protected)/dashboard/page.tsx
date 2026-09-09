@@ -1,16 +1,12 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = { title: "Dashboard" };
-
-/** Placeholder — see (protected)/layout.tsx. Module 20 builds the real Customer Portal. */
-export default function DashboardPlaceholderPage() {
-  return (
-    <div className="flex flex-col gap-2">
-      <h1 className="text-2xl font-semibold">Dashboard</h1>
-      <p className="text-muted-foreground">
-        Authenticated and routed here as the default customer-facing destination. This is a Module 04
-        verification placeholder — Module 20 builds the real Customer Portal.
-      </p>
-    </div>
-  );
+/**
+ * Build 26 (Roadmap Module 20) built the real Customer Portal at
+ * `/portal` — this route stays only as a redirect for any stale
+ * bookmark/link (`resolveDestination()`'s own `DESTINATIONS.customer`
+ * already points new sessions straight at `/portal`; this covers
+ * anyone who still has the old URL).
+ */
+export default function DashboardRedirectPage() {
+  redirect("/portal");
 }

@@ -42,7 +42,8 @@ base.describe("Session revocation (real browser)", () => {
     await page.fill("input[name=email]", SEED_ACCOUNTS.customer.email);
     await page.fill("input[name=password]", SEED_ACCOUNTS.customer.password);
     await page.click("button[type=submit]");
-    await page.waitForURL("**/dashboard", { timeout: 30_000 });
+    // Build 26 — `DESTINATIONS.customer` now points at `/portal`.
+    await page.waitForURL("**/portal", { timeout: 30_000 });
 
     // The Auth.js cookie in this browser context is still fully valid
     // (unexpired, correctly signed) — only the app's own UserSession row

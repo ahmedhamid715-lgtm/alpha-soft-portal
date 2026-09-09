@@ -148,6 +148,10 @@ const ORGANIZATION_FULL: PermissionKey[] = [
   "knowledge.source.manage",
   "integrations.read",
   "integrations.manage",
+  // Build 26 — Customer Portal, same reasoning as every other explicit
+  // per-role addition below (manager/member/viewer/customer each get
+  // this too — see each role's own comment).
+  "portal.access",
 ];
 
 /**
@@ -423,6 +427,9 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       // same way `ai.use` already extends to `member`.
       "knowledge.source.read",
       "knowledge.retrieve",
+      // Build 26 — a manager is still an ordinary org member for portal
+      // purposes; same reasoning as every other role's own addition.
+      "portal.access",
     ],
   },
   member: {
@@ -447,6 +454,9 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       // working staff, not oversight-tier `knowledge.source.manage`).
       "knowledge.source.read",
       "knowledge.retrieve",
+      // Build 26 — same reasoning as every other role's own addition
+      // below/above.
+      "portal.access",
     ],
   },
   viewer: {
@@ -460,14 +470,24 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     // running a retrieval query is a real, rate-limited, cost-bearing AI-
     // adjacent OPERATION, not a passive read — the same line `ai.use`
     // already draws by excluding this role entirely.
-    permissions: ["tickets.read", "projects.read", "analytics.read", "reports.read", "knowledge.source.read"],
+    // Build 26 — `portal.access` added, same reasoning as every other
+    // role: a viewer is still an ordinary org member for portal purposes.
+    permissions: ["tickets.read", "projects.read", "analytics.read", "reports.read", "knowledge.source.read", "portal.access"],
   },
   customer: {
     key: "customer",
     name: "Customer",
     description: "An external client of this organization — can raise/read their own tickets, view their projects.",
     scope: "ORGANIZATION",
-    permissions: ["tickets.read", "tickets.create", "projects.read", "analytics.read"],
+    // Build 26 — `portal.access` added. Note: despite the name, this
+    // role predates Customer Portal and describes a DIFFERENT concept
+    // (a tenant organization's own external client, e.g. of ITS OWN
+    // tickets/projects) — see customer-portal.md "Portal role/permission
+    // model" for why Alpha Page Rankers' own portal users are ordinary
+    // owner/admin/member/viewer members of their own converted
+    // organization, not holders of this role. Granted here anyway
+    // because nothing about `portal.access`'s own meaning excludes it.
+    permissions: ["tickets.read", "tickets.create", "projects.read", "analytics.read", "portal.access"],
   },
 };
 

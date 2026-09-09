@@ -13,7 +13,13 @@ import { SYSTEM_ROLES, type SystemRoleKey } from "@/lib/authorization/roles";
 export const DESTINATIONS = {
   admin: "/admin",
   support: "/support",
-  customer: "/dashboard",
+  // Build 26 — Roadmap Module 20 builds the real Customer Portal this
+  // constant always pointed at (see `(protected)/dashboard/page.tsx`'s
+  // own prior "Module 04 verification placeholder" comment, now a
+  // redirect to here). `/portal` itself handles every eligibility state
+  // honestly (no membership / ambiguous multi-org / denied) — this
+  // constant does not need to change again as Portal itself evolves.
+  customer: "/portal",
 } as const;
 
 export interface DestinationMembership {

@@ -669,6 +669,30 @@ export const PERMISSION_CATALOG = {
     false,
     "notifications.manageProvider",
   ),
+
+  // --- portal (Build 26 — Roadmap Module 20, ORGANIZATION scope only).
+  // The one new permission this build introduces — see
+  // docs/architecture/customer-portal.md "Authorization." Deliberately
+  // narrow: it gates baseline Customer Portal access plus the portal's
+  // own customer-safe CRM-linked projections (company/services/
+  // documents/onboarding status — never a PLATFORM `crm.*` permission).
+  // Billing/Invoices/Payments keep using the EXISTING `billing.read`;
+  // the member list on "My Company" keeps using the EXISTING
+  // `members.read`; the AI assistant keeps using the EXISTING `ai.use`
+  // — this permission is not a blanket "can see everything in Portal,"
+  // it is specifically the floor for the genuinely NEW customer-facing
+  // CRM-linked surface this build adds. Same `keyOverride` precedent as
+  // `ai.use`/`tickets.close` above — "access" isn't in the canonical
+  // action vocabulary, and doesn't need to be for one narrowly-scoped
+  // permission.
+  "portal.access": permission(
+    "portal",
+    "read",
+    "ORGANIZATION",
+    "Use the Customer Portal — dashboard, company profile, purchased services, and document/contract references.",
+    false,
+    "portal.access",
+  ),
 } as const satisfies Record<string, PermissionDefinition>;
 
 export type PermissionKey = keyof typeof PERMISSION_CATALOG;

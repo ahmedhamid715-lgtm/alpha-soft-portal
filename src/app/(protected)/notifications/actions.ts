@@ -31,7 +31,7 @@ export async function markReadAction(_prevState: NotificationActionState, formDa
   } catch (error) {
     return { error: toAppError(error).message };
   }
-  revalidatePath("/notifications");
+  revalidateNotificationSurfaces();
   return { success: true };
 }
 
@@ -44,7 +44,7 @@ export async function markUnreadAction(_prevState: NotificationActionState, form
   } catch (error) {
     return { error: toAppError(error).message };
   }
-  revalidatePath("/notifications");
+  revalidateNotificationSurfaces();
   return { success: true };
 }
 
@@ -57,8 +57,22 @@ export async function archiveNotificationAction(_prevState: NotificationActionSt
   } catch (error) {
     return { error: toAppError(error).message };
   }
-  revalidatePath("/notifications");
+  revalidateNotificationSurfaces();
   return { success: true };
+}
+
+/**
+ * Build 26 — `NotificationItem` (the shared component these actions
+ * back) is now also rendered from `/portal` and `/portal/notifications`
+ * (the Customer Portal), not just `/notifications`. Revalidate every
+ * surface that renders it, not just the original one, so a mark-read/
+ * archive from the Portal doesn't leave the Portal's own view stale
+ * until an unrelated navigation happens to refetch it.
+ */
+function revalidateNotificationSurfaces(): void {
+  revalidatePath("/notifications");
+  revalidatePath("/portal");
+  revalidatePath("/portal/notifications");
 }
 
 /**

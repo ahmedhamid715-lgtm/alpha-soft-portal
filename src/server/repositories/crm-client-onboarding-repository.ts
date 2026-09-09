@@ -22,6 +22,8 @@ export interface CrmClientOnboardingListFilters {
   status?: CrmClientOnboardingStatus;
   companyId?: string;
   dealId?: string;
+  /** Build 26 (Customer Portal) — the reverse lookup a customer's own portal context needs: "which onboarding(s) target MY organization." `linkedOrganizationId` is the canonical, required (never null) bridge field — see the model's own doc comment. */
+  linkedOrganizationId?: string;
 }
 
 /**
@@ -113,6 +115,7 @@ export const crmClientOnboardingRepository = {
           ...(filters.status ? { status: filters.status } : {}),
           ...(filters.companyId ? { companyId: filters.companyId } : {}),
           ...(filters.dealId ? { dealId: filters.dealId } : {}),
+          ...(filters.linkedOrganizationId ? { linkedOrganizationId: filters.linkedOrganizationId } : {}),
         },
         include: RELATIONS_INCLUDE,
         orderBy: { createdAt: "desc" },

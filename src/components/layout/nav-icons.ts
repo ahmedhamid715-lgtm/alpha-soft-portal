@@ -22,6 +22,8 @@ import {
   ShieldCheck,
   KeyRound,
   Tags,
+  Package,
+  MessageSquare,
   type LucideIcon,
 } from "lucide-react"
 
@@ -56,6 +58,9 @@ export const NAV_ICON_MAP: Record<string, LucideIcon> = {
   audit: ShieldCheck,
   roles: KeyRound,
   plans: Tags,
+  // Build 26 — Customer Portal.
+  services: Package,
+  messages: MessageSquare,
 }
 
 export function resolveNavIcon(name: string | undefined): LucideIcon | undefined {

@@ -1,5 +1,6 @@
 import { requireAuthenticatedPage } from "@/lib/auth/session-guard";
 import { resolvePlatformContext } from "@/lib/authorization/context";
+import { resolvePortalContext } from "@/lib/portal/context";
 import { AppShell } from "@/components/layout/app-shell";
 import type { NavGroup } from "@/components/layout/app-sidebar";
 import { NotificationBell } from "@/components/notifications/notification-bell";
@@ -28,12 +29,20 @@ import { logoutAction } from "./actions";
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const { user } = await requireAuthenticatedPage();
   const platformContext = await resolvePlatformContext();
+  // Build 26 — Customer Portal. An empty `eligibleOrganizations` (no
+  // ACTIVE membership in an ACTIVE, non-platform organization) hides the
+  // whole "Portal" group, the same "hide when nothing to show" pattern
+  // `platformItems` already establishes below — a nav entry is never the
+  // real authorization boundary (every Portal page/service independently
+  // re-verifies via `guardPortalPage()`), only a convenience.
+  const portalContext = await resolvePortalContext();
+  const hasPortalAccess = portalContext.eligibleOrganizations.length > 0;
 
   const navGroups: NavGroup[] = [
     {
       label: "Workspace",
       items: [
-        { key: "dashboard", label: "Dashboard", href: "/dashboard", icon: "dashboard" },
+        { key: "dashboard", label: "Dashboard", href: hasPortalAccess ? "/portal" : "/dashboard", icon: "dashboard" },
         { key: "organizations", label: "Organizations", href: "/organizations", icon: "organizations" },
         { key: "notifications", label: "Notifications", href: "/notifications", icon: "notifications" },
         { key: "sessions", label: "Sessions", href: "/settings/sessions", icon: "sessions" },
@@ -48,6 +57,26 @@ export default async function ProtectedLayout({ children }: { children: React.Re
       ],
     },
   ];
+
+  if (hasPortalAccess) {
+    navGroups.splice(1, 0, {
+      label: "Portal",
+      items: [
+        { key: "portal-company", label: "My Company", href: "/portal/company", icon: "organizations" },
+        { key: "portal-services", label: "Services", href: "/portal/services", icon: "services" },
+        { key: "portal-projects", label: "Projects", href: "/portal/projects", icon: "projects" },
+        { key: "portal-tasks", label: "Tasks", href: "/portal/tasks", icon: "tasks" },
+        { key: "portal-reports", label: "Reports", href: "/portal/reports", icon: "reports" },
+        { key: "portal-tickets", label: "Tickets", href: "/portal/tickets", icon: "tickets" },
+        { key: "portal-messages", label: "Messages", href: "/portal/messages", icon: "messages" },
+        { key: "portal-documents", label: "Documents", href: "/portal/documents", icon: "documents" },
+        { key: "portal-billing", label: "Billing", href: "/portal/billing", icon: "billing" },
+        { key: "portal-notifications", label: "Notifications", href: "/portal/notifications", icon: "notifications" },
+        { key: "portal-assistant", label: "AI Assistant", href: "/portal/assistant", icon: "ai" },
+        { key: "portal-profile", label: "Profile", href: "/portal/profile", icon: "profile" },
+      ],
+    });
+  }
 
   const platformItems = [
     { key: "admin-users", label: "Users", href: "/admin/users", icon: "users", permission: "users.read" as const },

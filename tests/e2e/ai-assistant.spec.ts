@@ -49,7 +49,16 @@ base.describe("AI assistant — chat", () => {
     const orgAId = await orgIdBySlug("acme-corp-dev");
     await loginAs(page, "owner-a@alpha-os.test");
     await page.goto(`/organizations/${orgAId}`);
-    await page.getByRole("link", { name: "Assistant" }).click();
+    // Scoped to `main` — Build 26's own Portal sidebar nav group now
+    // also has an "AI Assistant" link, whose non-exact substring match
+    // against a bare "Assistant" locator otherwise collides with this
+    // page's own content link (a real Playwright strict-mode violation,
+    // found live by this exact test once Build 26's nav existed — not
+    // a product bug, the same `getByRole("main")`-scoping fix
+    // `crm.spec.ts`/`knowledge.spec.ts`/`billing-intelligence.spec.ts`
+    // already established for this identical class of sidebar-vs-
+    // content-link collision).
+    await page.getByRole("main").getByRole("link", { name: "Assistant" }).click();
     await expect(page.getByRole("heading", { name: "Assistant" })).toBeVisible();
     await expect(page.getByLabel("New message")).toBeVisible();
   });

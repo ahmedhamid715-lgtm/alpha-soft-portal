@@ -78,7 +78,10 @@ base.describe("Logout", () => {
     await page.fill("input[name=email]", SEED_ACCOUNTS.customer.email);
     await page.fill("input[name=password]", SEED_ACCOUNTS.customer.password);
     await page.click("button[type=submit]");
-    await page.waitForURL("**/dashboard", { timeout: 30_000 });
+    // Build 26 — `DESTINATIONS.customer` now points at `/portal` (the
+    // real Customer Portal), not the old Module 04 `/dashboard`
+    // placeholder (which itself now just redirects to `/portal`).
+    await page.waitForURL("**/portal", { timeout: 30_000 });
 
     await page.click('button:has-text("Sign out")');
     await page.waitForURL("**/login", { timeout: 30_000 });

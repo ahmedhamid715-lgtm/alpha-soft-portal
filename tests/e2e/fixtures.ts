@@ -16,7 +16,9 @@ export const SEED_ACCOUNTS = {
   // Module 17's own follow-up work).
   owner: { email: "owner@alpha-os.test", password: "alpha-os-dev-password" },
   support: { email: "support@alpha-os.test", password: "alpha-os-dev-password", destination: "/support" },
-  customer: { email: "customer@alpha-os.test", password: "alpha-os-dev-password", destination: "/dashboard" },
+  // Build 26 — `DESTINATIONS.customer` now points at the real Customer
+  // Portal (`/portal`), not the old Module 04 `/dashboard` placeholder.
+  customer: { email: "customer@alpha-os.test", password: "alpha-os-dev-password", destination: "/portal" },
 } as const;
 
 /**
