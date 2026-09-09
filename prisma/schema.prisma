@@ -162,7 +162,7 @@ model Organization {
   /// Module 19 (CRM) — Alpha Page Rankers' internal CRM records, all
   /// owned exclusively by this platform organization.
   crmCompanies                       CrmCompany[]
-  crmCompaniesConverted              CrmCompany[]                        @relation("CrmCompanyConvertedOrganization")
+  crmCompaniesConverted              CrmCompany[]                           @relation("CrmCompanyConvertedOrganization")
   crmContacts                        CrmContact[]
   crmLeadSources                     CrmLeadSource[]
   crmLeads                           CrmLead[]
@@ -191,14 +191,14 @@ model Organization {
   /// internal record OF an onboarding engagement, not the customer
   /// organization's own tenant data — see `crmClientOnboardingAsCustomer`
   /// below for the OTHER, distinct role `Organization` plays here).
-  crmClientOnboardings               CrmClientOnboarding[]               @relation("CrmClientOnboardingPlatformOwner")
+  crmClientOnboardings               CrmClientOnboarding[]                  @relation("CrmClientOnboardingPlatformOwner")
   /// The customer-side role: onboarding engagement(s) whose
   /// `linkedOrganizationId` points AT this organization (i.e. this
   /// organization IS the converted client). `[]`, not singular — see
   /// `CrmClientOnboarding`'s own "cancelled never resurrects, retry
   /// creates a new row" comment; in practice at most one non-cancelled
   /// row, enforced by the partial unique index on `dealId`, not here.
-  crmClientOnboardingAsCustomer      CrmClientOnboarding[]               @relation("CrmClientOnboardingLinkedOrganization")
+  crmClientOnboardingAsCustomer      CrmClientOnboarding[]                  @relation("CrmClientOnboardingLinkedOrganization")
   /// Every Build 23 child table's own `organizationId` relation also
   /// points here (always the PLATFORM organization) — one array field per
   /// child table, required since each already has a differently-named
@@ -211,6 +211,11 @@ model Organization {
   crmClientOnboardingDocuments       CrmClientOnboardingDocument[]
   crmClientOnboardingChecklistItems  CrmClientOnboardingChecklistItem[]
   crmClientOnboardingAssignments     CrmClientOnboardingAssignment[]
+  /// Build 25 (Client Success) — same exclusive platform-organization
+  /// ownership as every other `crm*` relation above.
+  crmClientSuccessProfiles           CrmClientSuccessProfile[]
+  crmClientSuccessRenewals           CrmClientSuccessRenewal[]
+  crmClientSuccessExpansions         CrmClientSuccessExpansionOpportunity[]
 
   @@index([status])
   @@index([isPlatform])
@@ -267,8 +272,8 @@ model User {
 
   memberships                          OrganizationMembership[]
   /// Module 07 — invitations this user has sent (as an org admin/owner) or accepted.
-  invitationsSent                      Invitation[]                        @relation("InvitationsSent")
-  invitationsAccepted                  Invitation[]                        @relation("InvitationsAccepted")
+  invitationsSent                      Invitation[]                           @relation("InvitationsSent")
+  invitationsAccepted                  Invitation[]                           @relation("InvitationsAccepted")
   credential                           UserCredential?
   sessions                             UserSession[]
   authTokens                           AuthToken[]
@@ -307,37 +312,44 @@ model User {
   /// conversation with no owning user is meaningless (same logic).
   aiConversations                      AiConversation[]
   /// Module 19 (CRM) — leads/tasks assigned to this user, activities this user logged.
-  crmLeadsAssigned                     CrmLead[]                           @relation("CrmLeadAssignedTo")
-  crmTasksAssigned                     CrmTask[]                           @relation("CrmTaskAssignedTo")
-  crmTasksCreated                      CrmTask[]                           @relation("CrmTaskCreatedBy")
-  crmActivitiesLogged                  CrmActivity[]                       @relation("CrmActivityActor")
+  crmLeadsAssigned                     CrmLead[]                              @relation("CrmLeadAssignedTo")
+  crmTasksAssigned                     CrmTask[]                              @relation("CrmTaskAssignedTo")
+  crmTasksCreated                      CrmTask[]                              @relation("CrmTaskCreatedBy")
+  crmActivitiesLogged                  CrmActivity[]                          @relation("CrmActivityActor")
   /// Build 20 (Sales Pipeline) — deals assigned to this user, deal
   /// history entries this user's actions produced.
-  crmDealsAssigned                     CrmDeal[]                           @relation("CrmDealAssignedTo")
-  crmDealHistoryLogged                 CrmDealHistory[]                    @relation("CrmDealHistoryActor")
+  crmDealsAssigned                     CrmDeal[]                              @relation("CrmDealAssignedTo")
+  crmDealHistoryLogged                 CrmDealHistory[]                       @relation("CrmDealHistoryActor")
   /// Build 21 (Sales Team Management) — this user's own sales-team
   /// participation row(s) (one per join/leave cycle — see
   /// `CrmSalesTeamMember`'s own comment), and goals this user created.
-  crmSalesTeamMemberships              CrmSalesTeamMember[]                @relation("CrmSalesTeamMemberUser")
-  crmSalesGoalsCreated                 CrmSalesGoal[]                      @relation("CrmSalesGoalCreatedBy")
+  crmSalesTeamMemberships              CrmSalesTeamMember[]                   @relation("CrmSalesTeamMemberUser")
+  crmSalesGoalsCreated                 CrmSalesGoal[]                         @relation("CrmSalesGoalCreatedBy")
   /// Build 22 (Proposals & Contracts).
-  crmProposalsAssigned                 CrmProposal[]                       @relation("CrmProposalAssignedTo")
-  crmProposalVersionsCreated           CrmProposalVersion[]                @relation("CrmProposalVersionCreatedBy")
-  crmProposalVersionsApprovalSubmitted CrmProposalVersion[]                @relation("CrmProposalVersionApprovalSubmittedBy")
-  crmProposalVersionsApprovalDecided   CrmProposalVersion[]                @relation("CrmProposalVersionApprovalDecidedBy")
-  crmProposalVersionsSent              CrmProposalVersion[]                @relation("CrmProposalVersionSentBy")
-  crmProposalVersionsAcceptedByStaff   CrmProposalVersion[]                @relation("CrmProposalVersionAcceptedByStaff")
-  crmContractsCreated                  CrmContract[]                       @relation("CrmContractCreatedBy")
+  crmProposalsAssigned                 CrmProposal[]                          @relation("CrmProposalAssignedTo")
+  crmProposalVersionsCreated           CrmProposalVersion[]                   @relation("CrmProposalVersionCreatedBy")
+  crmProposalVersionsApprovalSubmitted CrmProposalVersion[]                   @relation("CrmProposalVersionApprovalSubmittedBy")
+  crmProposalVersionsApprovalDecided   CrmProposalVersion[]                   @relation("CrmProposalVersionApprovalDecidedBy")
+  crmProposalVersionsSent              CrmProposalVersion[]                   @relation("CrmProposalVersionSentBy")
+  crmProposalVersionsAcceptedByStaff   CrmProposalVersion[]                   @relation("CrmProposalVersionAcceptedByStaff")
+  crmContractsCreated                  CrmContract[]                          @relation("CrmContractCreatedBy")
   /// Build 23 (Client Onboarding).
-  crmClientOnboardingsCreated          CrmClientOnboarding[]               @relation("CrmClientOnboardingCreatedBy")
-  crmClientOnboardingsCancelled        CrmClientOnboarding[]               @relation("CrmClientOnboardingCancelledBy")
-  crmClientOnboardingsCompleted        CrmClientOnboarding[]               @relation("CrmClientOnboardingCompletedBy")
-  crmClientOnboardingsKickoffOwned     CrmClientOnboarding[]               @relation("CrmClientOnboardingKickoffOwner")
-  crmClientOnboardingAssignments       CrmClientOnboardingAssignment[]     @relation("CrmClientOnboardingAssignmentUser")
-  crmClientOnboardingAssignmentsMade   CrmClientOnboardingAssignment[]     @relation("CrmClientOnboardingAssignmentAssignedBy")
-  crmClientOnboardingRequirementsOwned CrmClientOnboardingRequirement[]    @relation("CrmClientOnboardingRequirementResponsible")
-  crmClientOnboardingChecklistAssigned CrmClientOnboardingChecklistItem[]  @relation("CrmClientOnboardingChecklistAssignee")
-  crmClientOnboardingIntakeResponses   CrmClientOnboardingIntakeResponse[] @relation("CrmClientOnboardingIntakeResponseRespondedBy")
+  crmClientOnboardingsCreated          CrmClientOnboarding[]                  @relation("CrmClientOnboardingCreatedBy")
+  crmClientOnboardingsCancelled        CrmClientOnboarding[]                  @relation("CrmClientOnboardingCancelledBy")
+  crmClientOnboardingsCompleted        CrmClientOnboarding[]                  @relation("CrmClientOnboardingCompletedBy")
+  crmClientOnboardingsKickoffOwned     CrmClientOnboarding[]                  @relation("CrmClientOnboardingKickoffOwner")
+  crmClientOnboardingAssignments       CrmClientOnboardingAssignment[]        @relation("CrmClientOnboardingAssignmentUser")
+  crmClientOnboardingAssignmentsMade   CrmClientOnboardingAssignment[]        @relation("CrmClientOnboardingAssignmentAssignedBy")
+  crmClientOnboardingRequirementsOwned CrmClientOnboardingRequirement[]       @relation("CrmClientOnboardingRequirementResponsible")
+  crmClientOnboardingChecklistAssigned CrmClientOnboardingChecklistItem[]     @relation("CrmClientOnboardingChecklistAssignee")
+  crmClientOnboardingIntakeResponses   CrmClientOnboardingIntakeResponse[]    @relation("CrmClientOnboardingIntakeResponseRespondedBy")
+  /// Build 25 (Client Success).
+  crmClientSuccessOwnerOf              CrmClientSuccessProfile[]              @relation("CrmClientSuccessProfileOwner")
+  crmClientSuccessAttentionSet         CrmClientSuccessProfile[]              @relation("CrmClientSuccessProfileAttentionSetBy")
+  crmClientSuccessRenewalsOwned        CrmClientSuccessRenewal[]              @relation("CrmClientSuccessRenewalOwner")
+  crmClientSuccessRenewalsCreated      CrmClientSuccessRenewal[]              @relation("CrmClientSuccessRenewalCreatedBy")
+  crmClientSuccessExpansionsOwned      CrmClientSuccessExpansionOpportunity[] @relation("CrmClientSuccessExpansionOwner")
+  crmClientSuccessExpansionsCreated    CrmClientSuccessExpansionOpportunity[] @relation("CrmClientSuccessExpansionCreatedBy")
 
   @@index([status])
   @@map("users")
@@ -2314,8 +2326,8 @@ model CrmCompany {
   createdAt                 DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                 DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  organization            Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  convertedToOrganization Organization?         @relation("CrmCompanyConvertedOrganization", fields: [convertedToOrganizationId], references: [id], onDelete: SetNull)
+  organization            Organization                           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  convertedToOrganization Organization?                          @relation("CrmCompanyConvertedOrganization", fields: [convertedToOrganizationId], references: [id], onDelete: SetNull)
   contacts                CrmContact[]
   leads                   CrmLead[]
   activities              CrmActivity[]
@@ -2325,6 +2337,9 @@ model CrmCompany {
   proposals               CrmProposal[]
   contracts               CrmContract[]
   onboardings             CrmClientOnboarding[]
+  clientSuccessProfile    CrmClientSuccessProfile?
+  clientSuccessRenewals   CrmClientSuccessRenewal[]
+  clientSuccessExpansions CrmClientSuccessExpansionOpportunity[]
 
   @@index([organizationId, createdAt])
   @@index([organizationId, status, createdAt])
@@ -2700,21 +2715,25 @@ model CrmDeal {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  pipeline       CrmPipeline           @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  stage          CrmPipelineStage      @relation(fields: [stageId], references: [id], onDelete: Cascade)
-  company        CrmCompany            @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  primaryContact CrmContact?           @relation("CrmDealPrimaryContact", fields: [primaryContactId], references: [id], onDelete: SetNull)
-  sourceLead     CrmLead?              @relation("CrmDealSourceLead", fields: [sourceLeadId], references: [id], onDelete: SetNull)
-  assignedToUser User?                 @relation("CrmDealAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
-  history        CrmDealHistory[]
-  proposals      CrmProposal[]
-  contracts      CrmContract[]
+  organization                     Organization                           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  pipeline                         CrmPipeline                            @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  stage                            CrmPipelineStage                       @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  company                          CrmCompany                             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  primaryContact                   CrmContact?                            @relation("CrmDealPrimaryContact", fields: [primaryContactId], references: [id], onDelete: SetNull)
+  sourceLead                       CrmLead?                               @relation("CrmDealSourceLead", fields: [sourceLeadId], references: [id], onDelete: SetNull)
+  assignedToUser                   User?                                  @relation("CrmDealAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  history                          CrmDealHistory[]
+  proposals                        CrmProposal[]
+  contracts                        CrmContract[]
   /// Build 23 — `[]`, not a singular relation: a cancelled onboarding
   /// never resurrects, a retry creates a NEW row (see
   /// `CrmClientOnboarding`'s own comment), so a deal can legitimately
   /// have more than one over time, historically.
-  onboardings    CrmClientOnboarding[]
+  onboardings                      CrmClientOnboarding[]
+  /// Build 25 — expansion opportunities explicitly handed off to Sales
+  /// and linked to THIS existing deal (never auto-created by Client
+  /// Success — see `CrmClientSuccessExpansionOpportunity`'s own comment).
+  clientSuccessExpansionsHandedOff CrmClientSuccessExpansionOpportunity[] @relation("CrmClientSuccessExpansionHandedToDeal")
 
   @@index([organizationId, status, createdAt])
   @@index([organizationId, pipelineId, stageId])
@@ -3344,16 +3363,18 @@ model CrmContract {
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  organization               Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  deal                       CrmDeal               @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  company                    CrmCompany            @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  originatingProposal        CrmProposal?          @relation(fields: [originatingProposalId], references: [id], onDelete: SetNull)
-  originatingProposalVersion CrmProposalVersion?   @relation(fields: [originatingProposalVersionId], references: [id], onDelete: SetNull)
-  createdByUser              User                  @relation("CrmContractCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  organization               Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deal                       CrmDeal                   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  company                    CrmCompany                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  originatingProposal        CrmProposal?              @relation(fields: [originatingProposalId], references: [id], onDelete: SetNull)
+  originatingProposalVersion CrmProposalVersion?       @relation(fields: [originatingProposalVersionId], references: [id], onDelete: SetNull)
+  createdByUser              User                      @relation("CrmContractCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   /// Build 23 — onboarding engagements triggered by THIS contract (the
   /// common, preferred path — see `CrmClientOnboarding.originatingContractId`'s
   /// own comment).
-  onboardingsTriggered       CrmClientOnboarding[] @relation("CrmClientOnboardingOriginatingContract")
+  onboardingsTriggered       CrmClientOnboarding[]     @relation("CrmClientOnboardingOriginatingContract")
+  /// Build 25 — renewal records tracking THIS contract's own decision.
+  clientSuccessRenewals      CrmClientSuccessRenewal[]
 
   /// Widened, and the unfiltered index added below — same reasoning as
   /// `CrmProposal`'s own identical Build 22 performance-review fix.
@@ -3361,6 +3382,13 @@ model CrmContract {
   @@index([organizationId, status, createdAt])
   @@index([companyId, createdAt])
   @@index([organizationId, createdAt])
+  /// Added post-Build 25 review (Codex Performance Engineer): Client
+  /// Success's own "active contracts expiring soon" portfolio query
+  /// filters/sorts by `endDate`, which none of the indexes above lead
+  /// with after `status` — a genuinely new access pattern this table
+  /// didn't have before, not a re-audit of Build 22's own existing
+  /// queries (none of which use `endDate` this way).
+  @@index([organizationId, status, endDate])
   @@map("crm_contracts")
 }
 
@@ -3770,4 +3798,194 @@ enum CrmClientOnboardingAssignmentRole {
   SERVICE_LEAD
 
   @@map("crm_client_onboarding_assignment_role")
+}
+
+// =============================================================================
+// Build 25 — Client Success (Canonical Roadmap Module 19)
+// =============================================================================
+//
+// Health/risk/engagement are all computed LIVE at read time in
+// `src/lib/crm/client-success.ts` + `client-success-service.ts` — never
+// persisted (see client-success.md "Persistence"). The three models
+// below are the only genuinely new, non-derivable state this module
+// introduces: who owns Client Success for a customer, and the two real
+// lifecycle workflows (renewal, expansion) that have no other source of
+// truth. All three are platform-organization-owned (organizationId is
+// ALWAYS the platform org, mirroring every other `crm_*` table — see
+// `crm-shared.ts`'s own "CRM is Alpha Page Rankers' own internal sales
+// tool" comment) and, like every Build 23 table, deliberately designed
+// so DELETE is never needed (upsert/CAS-only) — the same discipline that
+// avoided Build 22's own DELETE/RLS bug class.
+
+/// One row per `CrmCompany` that Client Success has ever touched —
+/// created lazily (on first CS-owner assignment or first management-
+/// attention flag), never eagerly for every company. Holds exactly the
+/// two things that are genuinely NEW facts, not derivable from any
+/// existing domain: who owns Client Success for this customer, and the
+/// one manual signal this build allows (a management-attention flag,
+/// deliberately NOT a numeric health override — see client-success.md
+/// "Manual overrides").
+model CrmClientSuccessProfile {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @unique @map("company_id") @db.Uuid
+
+  /// Reuses the existing platform `User` — no second Employee/CS-owner
+  /// table. Deliberately independent of Build 23's own onboarding
+  /// `ACCOUNT_MANAGER` assignment — the sales/onboarding owner is not
+  /// assumed to remain the Client Success owner (see client-success.md
+  /// "CS ownership").
+  csOwnerUserId String? @map("cs_owner_user_id") @db.Uuid
+
+  /// A flag, not a score override (spec's own explicit "avoid arbitrary
+  /// manual health-score overrides" instruction) — a human saying "pay
+  /// attention to this account," always shown ALONGSIDE the computed
+  /// health, never blended into it. `managementAttentionReason` is
+  /// required whenever the flag is true (CHECK in the migration, the
+  /// same "reason required" discipline
+  /// `crm_client_onboardings_completion_override_reason_required_check`
+  /// already established in Build 23).
+  managementAttentionFlag        Boolean   @default(false) @map("management_attention_flag")
+  managementAttentionReason      String?   @map("management_attention_reason")
+  managementAttentionSetByUserId String?   @map("management_attention_set_by_user_id") @db.Uuid
+  managementAttentionSetAt       DateTime? @map("management_attention_set_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization                 Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company                      CrmCompany   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  csOwnerUser                  User?        @relation("CrmClientSuccessProfileOwner", fields: [csOwnerUserId], references: [id], onDelete: SetNull)
+  managementAttentionSetByUser User?        @relation("CrmClientSuccessProfileAttentionSetBy", fields: [managementAttentionSetByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, csOwnerUserId])
+  @@map("crm_client_success_profiles")
+}
+
+/// A tracked renewal decision for one real `CrmContract` — never a
+/// fabricated date; `renewalDate` is pre-filled from the contract's own
+/// `endDate` when created and stays staff-editable afterward (a
+/// contract's free-text `renewalTerms`, e.g. "auto-renews annually,"
+/// means the real decision date can legitimately differ from the raw
+/// `endDate`), but `contractId` permanently preserves the real source.
+/// At most one non-terminal renewal may exist per contract (partial
+/// unique index in the migration, mirroring Build 23's own "one active
+/// onboarding per deal").
+model CrmClientSuccessRenewal {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @map("company_id") @db.Uuid
+  contractId     String @map("contract_id") @db.Uuid
+
+  renewalDate DateTime                      @map("renewal_date") @db.Timestamptz(3)
+  status      CrmClientSuccessRenewalStatus @default(UPCOMING)
+  ownerUserId String?                       @map("owner_user_id") @db.Uuid
+
+  /// Only ever staff-entered (never inferred/copied automatically — see
+  /// client-success.md "Renewal tracking"). Both null together or both
+  /// set together (CHECK in the migration, the same "currency only
+  /// alongside a real amount" pattern every other minor-units field in
+  /// this schema follows).
+  expectedValueMinorUnits Int?    @map("expected_value_minor_units")
+  expectedValueCurrency   String? @map("expected_value_currency")
+
+  notes String?
+
+  /// Required once `status` reaches a terminal value (CHECK in the
+  /// migration) — the same "reason required at the terminal transition"
+  /// discipline `CrmClientOnboarding.completionOverrideReason` already
+  /// established.
+  outcome String?
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company       CrmCompany   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contract      CrmContract  @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  ownerUser     User?        @relation("CrmClientSuccessRenewalOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  createdByUser User         @relation("CrmClientSuccessRenewalCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, companyId, renewalDate])
+  @@index([organizationId, status, renewalDate])
+  @@index([contractId])
+  @@map("crm_client_success_renewals")
+}
+
+enum CrmClientSuccessRenewalStatus {
+  UPCOMING
+  IN_PROGRESS
+  RENEWED
+  NOT_RENEWING
+  EXPIRED
+
+  @@map("crm_client_success_renewal_status")
+}
+
+/// A Client-Success-identified growth signal — deliberately NOT a
+/// second Sales Pipeline: no stage/probability/forecast, just a title,
+/// a REQUIRED rationale (the "why," not just a label), and an optional
+/// staff-entered estimate. `handedToDealId` links to an EXISTING
+/// `CrmDeal` a staff member explicitly chose — this module never auto-
+/// creates a Deal (spec's own explicit instruction).
+model CrmClientSuccessExpansionOpportunity {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @map("company_id") @db.Uuid
+
+  title     String
+  rationale String
+  status    CrmClientSuccessExpansionStatus @default(IDENTIFIED)
+
+  /// Only ever staff-entered — never derived (spec: "estimated value
+  /// only if manually/authoritatively entered"). Both null together or
+  /// both set together (CHECK in the migration).
+  estimatedValueMinorUnits Int?    @map("estimated_value_minor_units")
+  estimatedValueCurrency   String? @map("estimated_value_currency")
+
+  /// Free text — where the signal actually came from (e.g. "renewal
+  /// conversation," "upsell request via email"). No automatic signal
+  /// detection exists yet, so this is honestly staff-entered, never a
+  /// fabricated category.
+  sourceSignal String? @map("source_signal")
+  notes        String?
+
+  ownerUserId String? @map("owner_user_id") @db.Uuid
+
+  /// Set only once genuinely handed to Sales — a controlled, explicit
+  /// link to an EXISTING deal the staff member picked (relationship-
+  /// integrity trigger requires it belong to the same `companyId` when
+  /// set). Nullable even after `HANDED_TO_SALES` — the hand-off itself
+  /// and the deal link are two separate, independently-timed actions.
+  handedToDealId String? @map("handed_to_deal_id") @db.Uuid
+
+  identifiedAt DateTime @default(now()) @map("identified_at") @db.Timestamptz(3)
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company       CrmCompany   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  ownerUser     User?        @relation("CrmClientSuccessExpansionOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  handedToDeal  CrmDeal?     @relation("CrmClientSuccessExpansionHandedToDeal", fields: [handedToDealId], references: [id], onDelete: SetNull)
+  createdByUser User         @relation("CrmClientSuccessExpansionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  /// Explicit `map` names — the auto-generated names for these two
+  /// indexes truncate (Postgres's 63-byte identifier limit) to the same
+  /// string, the same collision Build 23's own `CrmClientOnboardingRequirement`/
+  /// `CrmClientOnboardingChecklistItem` indexes already hit.
+  @@index([organizationId, companyId, status], map: "crm_client_success_expansion_org_company_status_idx")
+  @@index([organizationId, status, identifiedAt], map: "crm_client_success_expansion_org_status_identified_idx")
+  @@map("crm_client_success_expansion_opportunities")
+}
+
+enum CrmClientSuccessExpansionStatus {
+  IDENTIFIED
+  QUALIFIED
+  HANDED_TO_SALES
+  DISMISSED
+
+  @@map("crm_client_success_expansion_status")
 }

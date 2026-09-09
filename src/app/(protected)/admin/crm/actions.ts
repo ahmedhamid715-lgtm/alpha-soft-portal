@@ -20,6 +20,7 @@ import * as contractService from "@/server/services/crm-contract-service";
 import * as onboardingService from "@/server/services/crm-client-onboarding-service";
 import * as onboardingChecklistService from "@/server/services/crm-client-onboarding-checklist-service";
 import * as onboardingIntakeService from "@/server/services/crm-client-onboarding-intake-service";
+import * as clientSuccessService from "@/server/services/crm-client-success-service";
 import type {
   CrmCompany,
   CrmContact,
@@ -45,6 +46,9 @@ import type {
   CrmClientOnboardingDocument,
   CrmClientOnboardingIntakeField,
   CrmClientOnboardingIntakeResponse,
+  CrmClientSuccessProfile,
+  CrmClientSuccessRenewal,
+  CrmClientSuccessExpansionOpportunity,
 } from "@/generated/prisma/client";
 
 /**
@@ -567,4 +571,56 @@ export async function recordIntakeResponseAction(input: unknown): Promise<Action
   const result = await run(() => onboardingIntakeService.recordIntakeResponse(input), []);
   if (result.data) revalidatePath(`/admin/crm/onboarding/${result.data.onboardingId}`);
   return result;
+}
+
+// --- Client Success (Build 25) ---
+
+function clientSuccessPaths(companyId?: string): string[] {
+  const paths = ["/admin/crm/client-success"];
+  if (companyId) paths.push(`/admin/crm/customers/${companyId}`);
+  return paths;
+}
+
+export async function setClientSuccessOwnerAction(input: unknown): Promise<ActionResult<CrmClientSuccessProfile>> {
+  return run(() => clientSuccessService.setClientSuccessOwner(input), clientSuccessPaths((input as { companyId?: string })?.companyId));
+}
+
+export async function setManagementAttentionFlagAction(input: unknown): Promise<ActionResult<CrmClientSuccessProfile>> {
+  return run(() => clientSuccessService.setManagementAttentionFlag(input), clientSuccessPaths((input as { companyId?: string })?.companyId));
+}
+
+export async function createRenewalAction(input: unknown): Promise<ActionResult<CrmClientSuccessRenewal>> {
+  return run(() => clientSuccessService.createRenewal(input), clientSuccessPaths((input as { companyId?: string })?.companyId));
+}
+
+export async function updateRenewalAction(input: unknown): Promise<ActionResult<CrmClientSuccessRenewal>> {
+  return run(() => clientSuccessService.updateRenewal(input), ["/admin/crm/client-success"]);
+}
+
+export async function startRenewalAction(input: unknown): Promise<ActionResult<CrmClientSuccessRenewal>> {
+  return run(() => clientSuccessService.startRenewal(input), ["/admin/crm/client-success"]);
+}
+
+export async function closeRenewalAction(input: unknown): Promise<ActionResult<CrmClientSuccessRenewal>> {
+  return run(() => clientSuccessService.closeRenewal(input), ["/admin/crm/client-success"]);
+}
+
+export async function createExpansionOpportunityAction(input: unknown): Promise<ActionResult<CrmClientSuccessExpansionOpportunity>> {
+  return run(() => clientSuccessService.createExpansionOpportunity(input), clientSuccessPaths((input as { companyId?: string })?.companyId));
+}
+
+export async function updateExpansionOpportunityAction(input: unknown): Promise<ActionResult<CrmClientSuccessExpansionOpportunity>> {
+  return run(() => clientSuccessService.updateExpansionOpportunity(input), ["/admin/crm/client-success"]);
+}
+
+export async function qualifyExpansionOpportunityAction(input: unknown): Promise<ActionResult<CrmClientSuccessExpansionOpportunity>> {
+  return run(() => clientSuccessService.qualifyExpansionOpportunity(input), ["/admin/crm/client-success"]);
+}
+
+export async function handExpansionToSalesAction(input: unknown): Promise<ActionResult<CrmClientSuccessExpansionOpportunity>> {
+  return run(() => clientSuccessService.handExpansionToSales(input), ["/admin/crm/client-success"]);
+}
+
+export async function dismissExpansionOpportunityAction(input: unknown): Promise<ActionResult<CrmClientSuccessExpansionOpportunity>> {
+  return run(() => clientSuccessService.dismissExpansionOpportunity(input), ["/admin/crm/client-success"]);
 }

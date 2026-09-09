@@ -595,6 +595,33 @@ export const PERMISSION_CATALOG = {
     false,
   ),
 
+  // --- crm.client_success (Build 25 — Roadmap Module 19) — same
+  // PLATFORM-scope reasoning as every other crm.* permission above (this
+  // is Alpha Page Rankers' own internal customer-success tool, not a
+  // customer organization's own data). A dedicated permission pair,
+  // deliberately distinct from `crm.read`/`crm.manage` — unlike Build 24
+  // Customer 360 (which reused `crm.read` since its own floor genuinely
+  // needed nothing more), health/risk classification and renewal/
+  // expansion pipeline detail are business-sensitive information a
+  // caller with only ordinary CRM read access shouldn't automatically
+  // see. No separate `.override` permission exists — this build
+  // deliberately has no numeric health-score override, only a
+  // management-attention FLAG, which is an ordinary `.manage` action.
+  "crm.client_success.read": permission(
+    "crm.client_success",
+    "read",
+    "PLATFORM",
+    "View Client Success health, risk, engagement, renewal, and expansion-opportunity data for customers.",
+    false,
+  ),
+  "crm.client_success.manage": permission(
+    "crm.client_success",
+    "manage",
+    "PLATFORM",
+    "Create/update renewal and expansion-opportunity records, set the Client Success owner, and set/clear the management-attention flag.",
+    false,
+  ),
+
   // --- integrations (ORGANIZATION, reserved — Module 54)
   "integrations.read": permission("integrations", "read", "ORGANIZATION", "View configured integrations.", true),
   "integrations.manage": permission(

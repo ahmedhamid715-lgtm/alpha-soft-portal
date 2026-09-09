@@ -19,6 +19,12 @@ import { proposalStatusVariant, contractStatusVariant } from "@/components/crm/p
 import { onboardingStatusVariant } from "@/components/crm/onboarding/onboarding-status";
 import { Customer360Tabs, type Customer360Tab } from "@/components/crm/customer-360/customer-360-tabs";
 import { CustomerActivityTab } from "@/components/crm/customer-360/customer-activity-tab";
+import { ClientSuccessHealthTab } from "@/components/crm/client-success/client-success-health-tab";
+import { getClientSuccessHealth } from "@/server/services/crm-client-success-health-service";
+import { listRenewalsForCompany, listExpansionsForCompany } from "@/server/services/crm-client-success-service";
+import { listAssignableUsers } from "@/server/services/crm-shared";
+import { CLIENT_SUCCESS_RENEWAL_OPEN_STATUSES, type CrmClientSuccessRenewalWithRelations } from "@/server/repositories/crm-client-success-renewal-repository";
+import type { CrmClientSuccessExpansionWithRelations } from "@/server/repositories/crm-client-success-expansion-repository";
 
 export const metadata: Metadata = { title: "Customer 360" };
 
@@ -66,6 +72,12 @@ export default async function Customer360Page({ params }: { params: Promise<{ id
     throw error;
   }
 
+  const canSeeClientSuccess = context.permissions.has("crm.client_success.read");
+  const canManageClientSuccess = context.permissions.has("crm.client_success.manage");
+  const [clientSuccessHealth, renewals, expansions, assignableUsers] = canSeeClientSuccess
+    ? await Promise.all([getClientSuccessHealth({ companyId: id }, view), listRenewalsForCompany({ companyId: id }), listExpansionsForCompany({ companyId: id }), listAssignableUsers()])
+    : [null, [] as CrmClientSuccessRenewalWithRelations[], [] as CrmClientSuccessExpansionWithRelations[], []];
+
   const tabs: Customer360Tab[] = [
     { value: "overview", label: "Overview", content: <OverviewTab view={view} /> },
     { value: "contacts", label: "Contacts", content: <ContactsTab view={view} /> },
@@ -73,6 +85,26 @@ export default async function Customer360Page({ params }: { params: Promise<{ id
     { value: "sales", label: "Sales", content: <SalesTab view={view} /> },
     { value: "onboarding", label: "Onboarding", content: <OnboardingTab view={view} /> },
     { value: "billing", label: "Billing", content: <BillingTab view={view} /> },
+    {
+      value: "client-success",
+      label: "Client Success",
+      content: canSeeClientSuccess && clientSuccessHealth ? (
+        <ClientSuccessHealthTab
+          companyId={id}
+          health={clientSuccessHealth.health}
+          churnRisk={clientSuccessHealth.churnRisk}
+          csProfile={clientSuccessHealth.csProfile}
+          assignableUsers={assignableUsers}
+          renewals={renewals}
+          eligibleContracts={(view.contracts ?? []).filter((c) => c.status === "ACTIVE" && !renewals.some((r) => r.contractId === c.id && CLIENT_SUCCESS_RENEWAL_OPEN_STATUSES.includes(r.status)))}
+          expansions={expansions}
+          dealsForHandoff={(view.deals ?? []).filter((d) => d.status === "OPEN").map((d) => ({ id: d.id, title: d.title }))}
+          canManage={canManageClientSuccess}
+        />
+      ) : (
+        <EmptyState icon={ShieldAlert} title="No access" description="Viewing Client Success requires the crm.client_success.read permission." />
+      ),
+    },
     { value: "activity", label: "Activity", content: <ActivityTab view={view} /> },
     { value: "documents", label: "Documents", content: <DocumentsTab view={view} /> },
     { value: "more", label: "Projects / Support / Conversations", content: <FutureDomainsTab /> },

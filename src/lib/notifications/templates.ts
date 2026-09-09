@@ -468,6 +468,44 @@ export const NOTIFICATION_TEMPLATES = {
       actionUrl: "/admin/crm/onboarding",
     }),
   }),
+  /// Build 25 (Client Success, Roadmap Module 19) — event-driven only, at
+  /// the moment of assignment; deliberately NO "renewal in 30 days"
+  /// recurring reminder — no durable scheduler/background-job
+  /// infrastructure exists yet to fire one honestly (see
+  /// client-success.md "Notifications").
+  "crm.client_success.owner_assigned": template({
+    version: 1,
+    active: true,
+    category: "CRM_ACTIVITY",
+    severity: "INFO",
+    render: (data: { companyName: string }) => ({
+      title: "Client Success owner assigned",
+      body: `You were assigned as the Client Success owner for ${data.companyName}.`,
+      actionUrl: "/admin/crm/client-success",
+    }),
+  }),
+  "crm.client_success.renewal_owner_assigned": template({
+    version: 1,
+    active: true,
+    category: "CRM_ACTIVITY",
+    severity: "INFO",
+    render: (data: { companyName: string; renewalDate: string }) => ({
+      title: "Renewal assigned",
+      body: `You were assigned to a renewal for ${data.companyName} (target date ${data.renewalDate}).`,
+      actionUrl: "/admin/crm/client-success",
+    }),
+  }),
+  "crm.client_success.expansion_owner_assigned": template({
+    version: 1,
+    active: true,
+    category: "CRM_ACTIVITY",
+    severity: "INFO",
+    render: (data: { companyName: string; title: string }) => ({
+      title: "Expansion opportunity assigned",
+      body: `You were assigned to "${data.title}" (${data.companyName}).`,
+      actionUrl: "/admin/crm/client-success",
+    }),
+  }),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as const satisfies Record<string, NotificationTemplateDefinition<any>>;
 

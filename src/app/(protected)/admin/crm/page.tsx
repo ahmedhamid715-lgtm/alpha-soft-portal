@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ShieldAlert, Building2, Users, Target, ListChecks, ArrowRight, Handshake, Trophy, FileText, FileSignature, Users2 } from "lucide-react";
+import { ShieldAlert, Building2, Users, Target, ListChecks, ArrowRight, Handshake, Trophy, FileText, FileSignature, Users2, HeartPulse } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { SectionHeader } from "@/components/layout/section-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -50,6 +50,7 @@ export default async function CrmDashboardPage() {
   const canSeeProposals = context.permissions.has("crm.proposal.read");
   const canSeeContracts = context.permissions.has("crm.contract.read");
   const canSeeOnboarding = context.permissions.has("crm.onboarding.read");
+  const canSeeClientSuccess = context.permissions.has("crm.client_success.read");
   const [companies, contacts, leadCounts, myOpenTasks, openDeals, salesTeamCount, sentProposals, activeContracts, activeOnboardings] = await Promise.all([
     listCompanies({ limit: 1, status: "ACTIVE" }),
     listContacts({ limit: 1, status: "ACTIVE" }),
@@ -165,6 +166,26 @@ export default async function CrmDashboardPage() {
                   <Users2 className="size-4" aria-hidden="true" /> Onboarding in progress
                 </span>
                 <span className="text-2xl font-semibold tabular-nums">{activeOnboardings?.length ?? 0}</span>
+              </Link>
+            </CardContent>
+          </Card>
+        ) : null}
+        {canSeeClientSuccess ? (
+          <Card>
+            <CardContent>
+              {/* A plain navigation link, deliberately without its own
+                  live count — the portfolio's own bulk aggregation
+                  (`getClientSuccessPortfolio()`) is real work best done
+                  once, on its own page, not duplicated here just to
+                  populate a dashboard number (see client-success.md
+                  "Performance"). */}
+              <Link href="/admin/crm/client-success" className="flex flex-col gap-1">
+                <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <HeartPulse className="size-4" aria-hidden="true" /> Client Success
+                </span>
+                <span className="flex items-center gap-1 text-sm font-medium">
+                  View portfolio <ArrowRight className="size-3.5" aria-hidden="true" />
+                </span>
               </Link>
             </CardContent>
           </Card>

@@ -607,3 +607,67 @@ events.on<CrmOnboardingCompletedPayload>("crm.onboarding.completed", async (even
     ),
   );
 });
+
+// --- Build 25 (Client Success, Roadmap Module 19) ---
+
+interface CrmClientSuccessOwnerAssignedPayload {
+  companyId: string;
+  organizationId: string;
+  recipientUserId: string;
+  companyName: string;
+}
+
+events.on<CrmClientSuccessOwnerAssignedPayload>("crm.client_success.owner_assigned", async (event) => {
+  const { companyId, organizationId, recipientUserId, companyName } = event.payload;
+  await notificationService.notify({
+    templateKey: "crm.client_success.owner_assigned",
+    recipientUserId,
+    organizationId,
+    sourceEventType: "crm.client_success.owner_assigned",
+    sourceEntityType: "crm_client_success_profile",
+    sourceEntityId: companyId,
+    templateData: { companyName },
+  });
+});
+
+interface CrmClientSuccessRenewalOwnerAssignedPayload {
+  renewalId: string;
+  organizationId: string;
+  recipientUserId: string;
+  companyName: string;
+  renewalDate: string;
+}
+
+events.on<CrmClientSuccessRenewalOwnerAssignedPayload>("crm.client_success.renewal_owner_assigned", async (event) => {
+  const { renewalId, organizationId, recipientUserId, companyName, renewalDate } = event.payload;
+  await notificationService.notify({
+    templateKey: "crm.client_success.renewal_owner_assigned",
+    recipientUserId,
+    organizationId,
+    sourceEventType: "crm.client_success.renewal_owner_assigned",
+    sourceEntityType: "crm_client_success_renewal",
+    sourceEntityId: renewalId,
+    templateData: { companyName, renewalDate },
+  });
+});
+
+interface CrmClientSuccessExpansionOwnerAssignedPayload {
+  expansionId: string;
+  organizationId: string;
+  recipientUserId: string;
+  companyName: string;
+  title: string;
+}
+
+events.on<CrmClientSuccessExpansionOwnerAssignedPayload>("crm.client_success.expansion_owner_assigned", async (event) => {
+  const { expansionId, organizationId, recipientUserId, companyName, title } = event.payload;
+  await notificationService.notify({
+    templateKey: "crm.client_success.expansion_owner_assigned",
+    recipientUserId,
+    organizationId,
+    sourceEventType: "crm.client_success.expansion_owner_assigned",
+    sourceEntityType: "crm_client_success_expansion_opportunity",
+    sourceEntityId: expansionId,
+    templateData: { companyName, title },
+  });
+});

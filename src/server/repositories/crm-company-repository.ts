@@ -47,6 +47,12 @@ export const crmCompanyRepository = {
     return toOffsetPaginatedResult(items, params, totalCount);
   },
 
+  /** Build 25 (Client Success) — the reverse lookup a bulk, org-wide payment-risk scan needs: given a bounded set of already-identified at-risk linked-organization ids, resolve which `CrmCompany` each belongs to. One query, never a per-organization loop. */
+  async listByConvertedOrganizationIds(organizationId: string, convertedToOrganizationIds: string[], tx: TransactionClient | typeof db = db): Promise<CrmCompany[]> {
+    if (convertedToOrganizationIds.length === 0) return [];
+    return withDbErrorTranslation(() => tx.crmCompany.findMany({ where: { organizationId, convertedToOrganizationId: { in: convertedToOrganizationIds } } }));
+  },
+
   async update(
     id: string,
     data: Partial<{ name: string; domain: string | null; industry: string | null; website: string | null; phone: string | null }>,

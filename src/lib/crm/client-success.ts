@@ -1,0 +1,308 @@
+/**
+ * Client Success (Build 25 — Roadmap Module 19) pure domain logic —
+ * mirrors `onboarding-progress.ts` (Build 23) and `customer-360.ts`
+ * (Build 24)'s own "pure, isomorphic, server-authoritative, no fetching"
+ * discipline. Every health component, the overall score, and the churn-
+ * risk classification are computed here from plain input values the
+ * service layer already fetched (mostly from `getCustomer360()` and
+ * `getOrganizationFinancialHealthForPlatform()`) — nothing in this file
+ * touches a database or calls another service.
+ *
+ * The two rules that shaped every formula below (see client-success.md
+ * "Health formula" for the full writeup):
+ *   1. NEVER treat missing data as bad data — an unmeasurable component
+ *      is excluded from the weighted average entirely, never scored 0.
+ *   2. This is NOT the future Churn & Risk Engine (Roadmap Module 69) —
+ *      `evaluateChurnRisk()` is deliberately simple, deterministic,
+ *      explainable, rule-based — no ML, no learned weights, no opaque
+ *      score — and is the documented seam Module 69 replaces/extends.
+ */
+
+// --- Shared classification vocabulary -----------------------------------
+
+/**
+ * Reuses `FinancialHealthClassification`'s own four-tier vocabulary
+ * (`src/lib/billing/reporting/financial-health.ts`) plus one addition —
+ * `NOT_MEASURABLE`, for a component with no authoritative source domain
+ * (yet) or no data to evaluate. Deliberately the SAME four "measurable"
+ * tiers, not a parallel enum, so Payment Health's own classification
+ * plugs in directly with no translation layer.
+ */
+export type HealthStatus = "HEALTHY" | "WATCH" | "AT_RISK" | "CRITICAL" | "NOT_MEASURABLE";
+
+export interface HealthComponent {
+  key: "payment" | "onboarding" | "engagement" | "project" | "support" | "service";
+  label: string;
+  status: HealthStatus;
+  /** Only set when `status !== "NOT_MEASURABLE"` — see "Component scores are derived, not independently computed" below. */
+  score: number | null;
+  measurable: boolean;
+  /** Plain-English, built from real values — never a vague "seems unhealthy." */
+  reason: string;
+  /** Which source domain this component's data came from, or which future Roadmap module owns it while unmeasurable. */
+  source: string;
+  lastEvaluatedAt: Date;
+}
+
+/**
+ * Component scores are DERIVED from the categorical classification via
+ * this fixed mapping, not an independently continuous calculation — the
+ * classification (from e.g. `computeFinancialHealth()`) is the real
+ * source of truth; a finer-grained number (like "92") would be false
+ * precision this build has no data to actually support. Documented
+ * explicitly rather than silently implied.
+ */
+export const HEALTH_STATUS_SCORE: Record<Exclude<HealthStatus, "NOT_MEASURABLE">, number> = {
+  HEALTHY: 100,
+  WATCH: 65,
+  AT_RISK: 35,
+  CRITICAL: 10,
+};
+
+export const HEALTH_STATUS_LABELS: Record<HealthStatus, string> = {
+  HEALTHY: "Healthy",
+  WATCH: "Watch",
+  AT_RISK: "At risk",
+  CRITICAL: "Critical",
+  NOT_MEASURABLE: "Not measurable",
+};
+
+export const HEALTH_STATUS_TONE: Record<HealthStatus, "success" | "warning" | "destructive" | "neutral"> = {
+  HEALTHY: "success",
+  WATCH: "warning",
+  AT_RISK: "warning",
+  CRITICAL: "destructive",
+  NOT_MEASURABLE: "neutral",
+};
+
+// --- Component weights ---------------------------------------------------
+
+/**
+ * Fixed, documented weights (sum to 100) — frozen once, during Build 25's
+ * own architecture freeze, not tuned/learned. Project/Support/Service
+ * reserve real weight now so that when Roadmap Modules 21/30/23 actually
+ * exist and these components become measurable, the overall score's
+ * balance shifts the way it was always meant to — without a redesign.
+ */
+export const HEALTH_COMPONENT_WEIGHTS: Record<HealthComponent["key"], number> = {
+  payment: 30,
+  onboarding: 25,
+  engagement: 20,
+  project: 15,
+  support: 5,
+  service: 5,
+};
+
+export interface CustomerHealthResult {
+  /** `null` only when ZERO components are measurable. */
+  overallScore: number | null;
+  overallStatus: HealthStatus;
+  coverage: { measurable: number; total: number };
+  components: HealthComponent[];
+}
+
+/**
+ * Weighted average over MEASURABLE components only, renormalized against
+ * the sum of THEIR OWN weights — never divided by the fixed 100-point
+ * total, which would silently punish a customer for a dimension that
+ * simply has no source domain yet. Zero measurable components → no
+ * fabricated number (`overallScore: null`, `overallStatus:
+ * "NOT_MEASURABLE"`) rather than a 0.
+ */
+export function computeCustomerHealth(components: HealthComponent[]): CustomerHealthResult {
+  const measurable = components.filter((c) => c.measurable && c.score !== null);
+  const totalWeight = measurable.reduce((sum, c) => sum + HEALTH_COMPONENT_WEIGHTS[c.key], 0);
+
+  if (measurable.length === 0 || totalWeight === 0) {
+    return { overallScore: null, overallStatus: "NOT_MEASURABLE", coverage: { measurable: 0, total: components.length }, components };
+  }
+
+  const weightedSum = measurable.reduce((sum, c) => sum + HEALTH_COMPONENT_WEIGHTS[c.key] * c.score!, 0);
+  const overallScore = Math.round(weightedSum / totalWeight);
+  const overallStatus = scoreToStatus(overallScore);
+
+  return { overallScore, overallStatus, coverage: { measurable: measurable.length, total: components.length }, components };
+}
+
+/** Same 4-tier cutoffs used to bucket the OVERALL score back into a status — documented, fixed, not learned. */
+function scoreToStatus(score: number): HealthStatus {
+  if (score >= 80) return "HEALTHY";
+  if (score >= 55) return "WATCH";
+  if (score >= 30) return "AT_RISK";
+  return "CRITICAL";
+}
+
+// --- Engagement ------------------------------------------------------------
+
+/**
+ * Recency-bucketed from Customer 360's own already-composed
+ * `CustomerTimelineEntry[]` (`composeCustomerTimeline()`, Build 24) —
+ * CrmActivity, deal/proposal/contract/onboarding lifecycle milestones,
+ * all real, timestamped, customer-related events. Deliberately NOT
+ * inferred from page views, portal usage, email opens, or notification
+ * delivery — none of those are tracked, and fabricating them would
+ * violate this build's own "never treat missing data as bad data, and
+ * never invent data" rule in the other direction (inventing GOOD data).
+ */
+export function evaluateEngagement(mostRecentActivityAt: Date | null, now: Date = new Date()): HealthComponent {
+  const base = { key: "engagement" as const, label: "Engagement", source: "crm_activity+lifecycle_timeline", lastEvaluatedAt: now };
+  if (!mostRecentActivityAt) {
+    return { ...base, status: "NOT_MEASURABLE", score: null, measurable: false, reason: "No logged activity, deal, proposal, contract, or onboarding event exists for this customer yet." };
+  }
+  const daysSince = Math.floor((now.getTime() - mostRecentActivityAt.getTime()) / (24 * 60 * 60 * 1000));
+  if (daysSince <= 30) return { ...base, status: "HEALTHY", score: HEALTH_STATUS_SCORE.HEALTHY, measurable: true, reason: `Most recent activity was ${daysSince} day(s) ago.` };
+  if (daysSince <= 60) return { ...base, status: "WATCH", score: HEALTH_STATUS_SCORE.WATCH, measurable: true, reason: `Most recent activity was ${daysSince} days ago (31-60 day window).` };
+  if (daysSince <= 90) return { ...base, status: "AT_RISK", score: HEALTH_STATUS_SCORE.AT_RISK, measurable: true, reason: `Most recent activity was ${daysSince} days ago (61-90 day window).` };
+  return { ...base, status: "CRITICAL", score: HEALTH_STATUS_SCORE.CRITICAL, measurable: true, reason: `No activity in ${daysSince} days (over 90).` };
+}
+
+// --- Onboarding health -----------------------------------------------------
+
+export interface OnboardingHealthInput {
+  status: "NOT_STARTED" | "IN_PROGRESS" | "BLOCKED" | "COMPLETED" | "CANCELLED" | null;
+  createdAt: Date | null;
+  progressPercent: number | null;
+}
+
+/** Reuses Build 23's own `status`/progress-percent fields directly — no new onboarding calculation. NOT_MEASURABLE when no onboarding has ever started (a normal state for a prospect/pre-sale company). */
+export function evaluateOnboardingHealth(input: OnboardingHealthInput, now: Date = new Date()): HealthComponent {
+  const base = { key: "onboarding" as const, label: "Onboarding", source: "crm_client_onboarding", lastEvaluatedAt: now };
+  if (!input.status) return { ...base, status: "NOT_MEASURABLE", score: null, measurable: false, reason: "No onboarding engagement has started yet." };
+
+  if (input.status === "COMPLETED") return { ...base, status: "HEALTHY", score: HEALTH_STATUS_SCORE.HEALTHY, measurable: true, reason: "Onboarding completed." };
+  if (input.status === "BLOCKED") return { ...base, status: "AT_RISK", score: HEALTH_STATUS_SCORE.AT_RISK, measurable: true, reason: "Onboarding is currently blocked." };
+  if (input.status === "CANCELLED") return { ...base, status: "AT_RISK", score: HEALTH_STATUS_SCORE.AT_RISK, measurable: true, reason: "The most recent onboarding attempt was cancelled with no active replacement." };
+
+  // NOT_STARTED / IN_PROGRESS — judge by elapsed time and, once
+  // meaningful, progress percentage. A freshly-started onboarding at 0%
+  // is normal, not at-risk — the 14-day grace window exists specifically
+  // so day-one/day-two onboardings never get flagged.
+  const daysSinceStart = input.createdAt ? Math.floor((now.getTime() - input.createdAt.getTime()) / (24 * 60 * 60 * 1000)) : 0;
+  if (daysSinceStart <= 14) return { ...base, status: "HEALTHY", score: HEALTH_STATUS_SCORE.HEALTHY, measurable: true, reason: `Onboarding started ${daysSinceStart} day(s) ago — within the normal ramp-up window.` };
+
+  if (input.progressPercent === null) {
+    return { ...base, status: "WATCH", score: HEALTH_STATUS_SCORE.WATCH, measurable: true, reason: `Onboarding has been open ${daysSinceStart} days; progress isn't measurable yet (no required checklist items defined).` };
+  }
+  if (input.progressPercent >= 70) return { ...base, status: "HEALTHY", score: HEALTH_STATUS_SCORE.HEALTHY, measurable: true, reason: `${input.progressPercent}% of required checklist items complete after ${daysSinceStart} days.` };
+  if (input.progressPercent >= 30) return { ...base, status: "WATCH", score: HEALTH_STATUS_SCORE.WATCH, measurable: true, reason: `${input.progressPercent}% of required checklist items complete after ${daysSinceStart} days.` };
+  return { ...base, status: "AT_RISK", score: HEALTH_STATUS_SCORE.AT_RISK, measurable: true, reason: `Only ${input.progressPercent}% of required checklist items complete after ${daysSinceStart} days.` };
+}
+
+// --- Payment health ----------------------------------------------------
+
+/** Wraps an ALREADY-COMPUTED `FinancialHealthResult` (from `getOrganizationFinancialHealthForPlatform()`, Build 14) — no formula duplicated. The caller is responsible for the NOT_MEASURABLE gate (no linked organization / no billing account / no `billing.readPlatform`) since that's an authorization/existence question, not a classification one — see `resolvePaymentHealth()` in the service layer. */
+export function toPaymentHealthComponent(classification: HealthStatus, reasons: string[], now: Date = new Date()): HealthComponent {
+  return {
+    key: "payment",
+    label: "Payment",
+    status: classification,
+    score: classification === "NOT_MEASURABLE" ? null : HEALTH_STATUS_SCORE[classification],
+    measurable: classification !== "NOT_MEASURABLE",
+    reason: reasons.join(" "),
+    source: "billing_platform_service",
+    lastEvaluatedAt: now,
+  };
+}
+
+// --- Not-yet-existing domains — typed extension seams ------------------
+
+/**
+ * Project/Support/Service Performance all return this same shape until
+ * their owning Roadmap module (21/30/23+delivery) actually exists —
+ * deliberately NOT a plugin registry or abstraction layer (the Build 25
+ * authorization's own "no abstraction theater" instruction) — just one
+ * small function per component, each documenting exactly which future
+ * module will replace it.
+ */
+function notYetAvailable(key: "project" | "support" | "service", label: string, futureModule: string, now: Date): HealthComponent {
+  return { key, label, status: "NOT_MEASURABLE", score: null, measurable: false, reason: `No authoritative ${label.toLowerCase()} domain exists yet — ${futureModule}.`, source: futureModule, lastEvaluatedAt: now };
+}
+
+export function evaluateProjectHealth(now: Date = new Date()): HealthComponent {
+  return notYetAvailable("project", "Project", "Roadmap Module 21 (Project Management)", now);
+}
+export function evaluateSupportHealth(now: Date = new Date()): HealthComponent {
+  return notYetAvailable("support", "Support", "Roadmap Module 30 (Support Center)", now);
+}
+/** Distinct from Customer 360's own "Services" tab (sold/onboarding service snapshots) — this measures whether sold services are PERFORMING well, which no domain tracks yet. */
+export function evaluateServicePerformance(now: Date = new Date()): HealthComponent {
+  return notYetAvailable("service", "Service performance", "Roadmap Module 23 (Service Management) and future delivery modules", now);
+}
+
+// --- Churn risk (NOT the future Churn & Risk Engine — Roadmap Module 69) ---
+
+export type ChurnRiskLevel = "LOW" | "MEDIUM" | "HIGH" | "UNKNOWN";
+
+export type ChurnRiskReasonCode = "PAYMENT_OVERDUE" | "CONTRACT_EXPIRING" | "CONTRACT_EXPIRED_UNRESOLVED" | "ONBOARDING_BLOCKED" | "ONBOARDING_STALLED" | "LOW_ENGAGEMENT";
+
+export interface ChurnRiskReason {
+  code: ChurnRiskReasonCode;
+  message: string;
+  /** Whether this ONE reason alone is severe enough to force HIGH overall — see `evaluateChurnRisk()`'s own comment. */
+  critical: boolean;
+}
+
+export interface ChurnRiskResult {
+  level: ChurnRiskLevel;
+  reasons: ChurnRiskReason[];
+}
+
+export interface ChurnRiskInput {
+  payment: HealthComponent;
+  onboarding: HealthComponent;
+  engagement: HealthComponent;
+  /** Days until the customer's own most relevant ACTIVE contract expires — negative if already past `endDate`. `null` if no ACTIVE contract with a known `endDate` exists (never fabricated). */
+  daysUntilContractExpiry: number | null;
+  /** Whether an open (non-terminal) renewal record already exists for that contract — an expiring contract with an in-progress renewal is a materially different risk than one nobody is tracking. */
+  hasOpenRenewal: boolean;
+}
+
+/**
+ * Deterministic, rule-based, fully explainable — no ML, no learned
+ * weights, no hidden formula. This is the Build 25 authorization's own
+ * explicit "transparent Client Success risk classification," and the
+ * documented seam Roadmap Module 69 (the real Churn & Risk Engine) is
+ * meant to replace or extend, not the thing itself.
+ *
+ * Severity tiers: a single CRITICAL-weight reason (payment CRITICAL, a
+ * contract already expired with no open renewal, or a blocked
+ * onboarding) forces HIGH on its own. Otherwise, each additional
+ * non-critical reason escalates: 0 → LOW, 1 → MEDIUM, 2+ → HIGH. UNKNOWN
+ * only when literally nothing about this customer is measurable at all
+ * (never fabricated as LOW just because no bad news was found).
+ */
+export function evaluateChurnRisk(input: ChurnRiskInput): ChurnRiskResult {
+  const reasons: ChurnRiskReason[] = [];
+
+  if (input.payment.measurable && (input.payment.status === "AT_RISK" || input.payment.status === "CRITICAL")) {
+    reasons.push({ code: "PAYMENT_OVERDUE", message: input.payment.reason, critical: input.payment.status === "CRITICAL" });
+  }
+
+  if (input.daysUntilContractExpiry !== null) {
+    if (input.daysUntilContractExpiry < 0 && !input.hasOpenRenewal) {
+      reasons.push({ code: "CONTRACT_EXPIRED_UNRESOLVED", message: `The active contract expired ${Math.abs(input.daysUntilContractExpiry)} day(s) ago with no open renewal record.`, critical: true });
+    } else if (input.daysUntilContractExpiry >= 0 && input.daysUntilContractExpiry <= 30 && !input.hasOpenRenewal) {
+      reasons.push({ code: "CONTRACT_EXPIRING", message: `The active contract expires in ${input.daysUntilContractExpiry} day(s) with no open renewal record.`, critical: input.daysUntilContractExpiry <= 7 });
+    }
+  }
+
+  if (input.onboarding.measurable && input.onboarding.status === "AT_RISK" && input.onboarding.reason.includes("blocked")) {
+    reasons.push({ code: "ONBOARDING_BLOCKED", message: input.onboarding.reason, critical: true });
+  } else if (input.onboarding.measurable && input.onboarding.status === "AT_RISK") {
+    reasons.push({ code: "ONBOARDING_STALLED", message: input.onboarding.reason, critical: false });
+  }
+
+  if (input.engagement.measurable && (input.engagement.status === "AT_RISK" || input.engagement.status === "CRITICAL")) {
+    reasons.push({ code: "LOW_ENGAGEMENT", message: input.engagement.reason, critical: input.engagement.status === "CRITICAL" });
+  }
+
+  const anyMeasurable = input.payment.measurable || input.onboarding.measurable || input.engagement.measurable || input.daysUntilContractExpiry !== null;
+  if (!anyMeasurable) return { level: "UNKNOWN", reasons: [] };
+
+  if (reasons.some((r) => r.critical) || reasons.length >= 2) return { level: "HIGH", reasons };
+  if (reasons.length === 1) return { level: "MEDIUM", reasons };
+  return { level: "LOW", reasons: [] };
+}
+
+export const CHURN_RISK_LABELS: Record<ChurnRiskLevel, string> = { LOW: "Low", MEDIUM: "Medium", HIGH: "High", UNKNOWN: "Unknown" };
+export const CHURN_RISK_TONE: Record<ChurnRiskLevel, "success" | "warning" | "destructive" | "neutral"> = { LOW: "success", MEDIUM: "warning", HIGH: "destructive", UNKNOWN: "neutral" };

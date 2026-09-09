@@ -280,6 +280,18 @@ export const AUDIT_CATALOG = {
   "crm.onboarding.completed": action("CRM", "An onboarding engagement was completed (all required criteria met)."),
   "crm.onboarding.completed_override": action("CRM", "An onboarding engagement was force-completed despite incomplete required work."),
   "crm.onboarding.cancelled": action("CRM", "An onboarding engagement was cancelled."),
+  // Build 25 (Client Success, Roadmap Module 19). Computed health/risk
+  // READS are deliberately NOT audited (spec's own explicit instruction
+  // — see client-success.md "Audit"); only real mutations are.
+  "crm.client_success.owner_changed": action("CRM", "The Client Success owner for a customer was set or changed."),
+  "crm.client_success.attention_flag_set": action("CRM", "A management-attention flag was set on a customer's Client Success profile."),
+  "crm.client_success.attention_flag_cleared": action("CRM", "A management-attention flag was cleared on a customer's Client Success profile."),
+  "crm.client_success.renewal_created": action("CRM", "A renewal record was created for a contract."),
+  "crm.client_success.renewal_status_changed": action("CRM", "A renewal record's status changed."),
+  "crm.client_success.expansion_identified": action("CRM", "A Client Success expansion opportunity was identified."),
+  "crm.client_success.expansion_status_changed": action("CRM", "An expansion opportunity's status changed."),
+  "crm.client_success.expansion_handed_to_sales": action("CRM", "An expansion opportunity was handed to Sales."),
+  "crm.client_success.expansion_dismissed": action("CRM", "An expansion opportunity was dismissed."),
 } as const satisfies Record<string, AuditActionDefinition>;
 
 export type AuditActionKey = keyof typeof AUDIT_CATALOG;
