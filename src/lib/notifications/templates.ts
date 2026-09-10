@@ -575,6 +575,17 @@ export const NOTIFICATION_TEMPLATES = {
       actionUrl: `/admin/projects/${data.projectId}`,
     }),
   }),
+  "task_management.internal_task_assigned": template({
+    version: 1,
+    active: true,
+    category: "TASK_MANAGEMENT_ACTIVITY",
+    severity: "INFO",
+    render: (data: { taskId: string; title: string }) => ({
+      title: "Task assigned",
+      body: `You were assigned "${data.title}".`,
+      actionUrl: `/admin/tasks/${data.taskId}`,
+    }),
+  }),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as const satisfies Record<string, NotificationTemplateDefinition<any>>;
 

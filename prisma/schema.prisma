@@ -231,6 +231,7 @@ model Organization {
   projectAttachments                 ProjectAttachment[]
   projectApprovals                   ProjectApproval[]
   projectQaChecks                    ProjectQaCheck[]
+  internalTasks                      InternalTask[]
 
   @@index([status])
   @@index([isPlatform])
@@ -383,6 +384,10 @@ model User {
   projectApprovalsRequested            ProjectApproval[]                      @relation("ProjectApprovalRequestedBy")
   projectApprovalsDecided              ProjectApproval[]                      @relation("ProjectApprovalApprover")
   projectQaChecksChecked               ProjectQaCheck[]                       @relation("ProjectQaCheckCheckedBy")
+  internalTasksAssigned                InternalTask[]                         @relation("InternalTaskAssignedTo")
+  internalTasksCompleted               InternalTask[]                         @relation("InternalTaskCompletedBy")
+  internalTasksCancelled               InternalTask[]                         @relation("InternalTaskCancelledBy")
+  internalTasksCreated                 InternalTask[]                         @relation("InternalTaskCreatedBy")
 
   @@index([status])
   @@map("users")
@@ -3706,6 +3711,12 @@ model CrmClientOnboardingRequirement {
   /// which `prisma validate` correctly rejects as a collision.
   @@index([organizationId, onboardingId, sortOrder], map: "crm_onboarding_requirements_org_onboarding_sort_idx")
   @@index([organizationId, onboardingId, status], map: "crm_onboarding_requirements_org_onboarding_status_idx")
+  /// Build 28 (Task Management) — the global cross-source query's own
+  /// "MY tasks" access path (organization + the REAL assignee column,
+  /// `responsibleUserId`, not `assignedToUserId`). Added per Codex
+  /// Performance Engineer review — see
+  /// docs/architecture/task-management.md "Performance".
+  @@index([organizationId, responsibleUserId, status, dueDate, createdAt, id], map: "crm_onboarding_requirements_org_responsible_status_due_idx")
   @@map("crm_client_onboarding_requirements")
 }
 
@@ -3790,6 +3801,13 @@ model CrmClientOnboardingChecklistItem {
   /// `CrmClientOnboardingRequirement`'s own identical pair above.
   @@index([organizationId, onboardingId, sortOrder], map: "crm_onboarding_checklist_items_org_onboarding_sort_idx")
   @@index([organizationId, onboardingId, status], map: "crm_onboarding_checklist_items_org_onboarding_status_idx")
+  /// Build 28 (Task Management) — the global cross-source query's own
+  /// "MY tasks" access path (organization + assignee), otherwise unserved
+  /// by either index above (`onboardingId` sits between organization and
+  /// status/sort, which this onboarding-agnostic global query can't use).
+  /// Added per Codex Performance Engineer review — see
+  /// docs/architecture/task-management.md "Performance".
+  @@index([organizationId, assignedToUserId, status, dueDate, createdAt, id], map: "crm_onboarding_checklist_items_org_assignee_status_due_idx")
   @@map("crm_client_onboarding_checklist_items")
 }
 
@@ -4282,6 +4300,15 @@ model ProjectTask {
   @@index([milestoneId, status])
   @@index([parentTaskId])
   @@index([assignedToUserId, status])
+  // Build 28 (Task Management) — the global cross-source query's own
+  // "MY tasks" access path (organization + assignee, real due-date
+  // ordering with a deterministic tie-break) is otherwise not served by
+  // any index above: `[organizationId, projectId, status]` puts
+  // `projectId` between organization and status, which this
+  // project-agnostic global query can't use. Added per Codex
+  // Performance Engineer review — see docs/architecture/task-management.md
+  // "Performance".
+  @@index([organizationId, assignedToUserId, status, dueDate, createdAt, id])
   @@map("project_tasks")
 }
 
@@ -4456,4 +4483,64 @@ enum ProjectQaCheckStatus {
   WAIVED
 
   @@map("project_qa_check_status")
+}
+
+// =============================================================================
+// Build 28 — Task Management (Canonical Roadmap Module 22)
+// =============================================================================
+
+model InternalTask {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  title       String
+  description String?
+  status      InternalTaskStatus @default(OPEN)
+  priority    ProjectPriority    @default(MEDIUM)
+
+  assignedToUserId String?   @map("assigned_to_user_id") @db.Uuid
+  dueAt            DateTime? @map("due_at") @db.Timestamptz(3)
+
+  completedAt       DateTime? @map("completed_at") @db.Timestamptz(3)
+  completedByUserId String?   @map("completed_by_user_id") @db.Uuid
+
+  cancelledAt       DateTime? @map("cancelled_at") @db.Timestamptz(3)
+  cancelledReason   String?   @map("cancelled_reason")
+  cancelledByUserId String?   @map("cancelled_by_user_id") @db.Uuid
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignedToUser  User?        @relation("InternalTaskAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  completedByUser User?        @relation("InternalTaskCompletedBy", fields: [completedByUserId], references: [id], onDelete: SetNull)
+  cancelledByUser User?        @relation("InternalTaskCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
+  createdByUser   User         @relation("InternalTaskCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  // Codex Performance Engineer review (see
+  // docs/architecture/task-management.md "Performance"):
+  //   - `[organizationId, status, dueAt]` — status-filtered TEAM/all-org
+  //     lists.
+  //   - `[organizationId, dueAt, createdAt, id]` — the unfiltered default
+  //     list (`internalTaskRepository.listForOrganization()`'s own
+  //     ordering, fixed to match — see that repository's own comment),
+  //     and the global query's own no-status MY/TEAM path.
+  //   - `[organizationId, assignedToUserId, status, dueAt, createdAt, id]`
+  //     — the status-filtered MY path. Replaces the original
+  //     organization-less `[assignedToUserId, status, dueAt]`, which this
+  //     composite fully supersedes.
+  @@index([organizationId, status, dueAt])
+  @@index([organizationId, dueAt, createdAt, id])
+  @@index([organizationId, assignedToUserId, status, dueAt, createdAt, id])
+  @@map("internal_tasks")
+}
+
+enum InternalTaskStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+
+  @@map("internal_task_status")
 }

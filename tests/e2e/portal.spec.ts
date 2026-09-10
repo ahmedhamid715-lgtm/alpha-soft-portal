@@ -279,7 +279,8 @@ base.describe("Customer Portal — honest unavailable states (shared owner-a ses
   const cases: { path: string; module: string }[] = [
     // Build 27 — "/portal/projects" graduated out of this list; it's a
     // real page now, covered by its own `portal-project-management.spec.ts`.
-    { path: "/portal/tasks", module: "22" },
+    // Build 28 — "/portal/tasks" graduated too; it's a real page now,
+    // covered by its own `portal-task-management.spec.ts`.
     { path: "/portal/reports", module: "66" },
     { path: "/portal/tickets", module: "30" },
     { path: "/portal/messages", module: "46" },

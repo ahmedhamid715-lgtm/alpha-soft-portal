@@ -315,6 +315,26 @@ export const AUDIT_CATALOG = {
   "projects.task_reopened_after_completion": action("CRM", "A project task was reopened after being marked done."),
   "projects.approval_decided": action("CRM", "A project/milestone approval request was approved or rejected."),
   "projects.qa_decided": action("CRM", "A project QA check was marked passed, failed, or waived."),
+
+  // --- tasks (Build 28 — Roadmap Module 22, Task Management). Reuses
+  // the ADMINISTRATION category rather than adding a new `AuditCategory`
+  // enum value for this module's own small handful of actions — the
+  // same "avoid enum bloat for one module" precedent Build 27 already
+  // established for `projects.*` (reusing `CRM`). The action KEY
+  // namespace here is `tasks.*`, a single-word namespace distinct from
+  // the `task_management.*` PERMISSION namespace — mirroring how
+  // `projects.*` audit keys sit next to `delivery_projects.*`
+  // permissions; the catalog's own dot-notation convention only allows
+  // a single lowercase word before the first dot.
+  // Reading/aggregating existing CRM/Project/Onboarding tasks is NEVER
+  // separately audited here — those mutations already audit (or
+  // deliberately don't, per each source's own established discipline)
+  // under their OWN action keys; Task Management only ever audits its
+  // own standalone `InternalTask` entity.
+  "tasks.internal_task_created": action("ADMINISTRATION", "A standalone internal task was created."),
+  "tasks.internal_task_assigned": action("ADMINISTRATION", "A standalone internal task was assigned to a platform staff member."),
+  "tasks.internal_task_status_changed": action("ADMINISTRATION", "A standalone internal task's status changed (completed, reopened, or cancelled)."),
+  "tasks.internal_task_due_date_changed": action("ADMINISTRATION", "A standalone internal task's due date was materially changed."),
 } as const satisfies Record<string, AuditActionDefinition>;
 
 export type AuditActionKey = keyof typeof AUDIT_CATALOG;

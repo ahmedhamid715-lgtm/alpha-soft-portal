@@ -105,6 +105,17 @@ export interface PortalProjectDetail {
   attachments: PortalProjectAttachment[];
 }
 
+/**
+ * `PortalProjectTask` plus the cross-project context `/portal/tasks`
+ * needs (which project each task belongs to) — everything else about
+ * the "never expose assignee/QA/approvals" boundary above still applies
+ * unchanged. See `listMyTasks()`.
+ */
+export interface PortalTaskSummary extends PortalProjectTask {
+  projectId: string;
+  projectTitle: string;
+}
+
 const orgIdSchema = z.object({ organizationId: z.string().uuid() });
 
 export async function listMyProjects(rawInput: unknown): Promise<PortalProjectSummary[]> {
@@ -126,6 +137,60 @@ export async function listMyProjects(rawInput: unknown): Promise<PortalProjectSu
       progress: toPortalProgress(calculateProjectProgress(tasks.filter((t) => t.projectId === p.id).map((t) => ({ id: t.id, status: t.status, parentTaskId: t.parentTaskId })))),
       startDate: p.startDate,
       targetEndDate: p.targetEndDate,
+    }));
+  });
+}
+
+/**
+ * Build 28 (Task Management, Roadmap Module 22) — the Customer Portal's
+ * real "My Tasks" (`/portal/tasks`), replacing Build 26's honest "not
+ * available yet" placeholder. Deliberately NOT routed through the
+ * internal `global-task-service.ts` aggregator — that surface is
+ * platform-staff-only (`task_management.*` permissions are never granted
+ * to a customer-portal identity) and spans sources (CRM tasks, internal
+ * standalone tasks, staff-only onboarding checklist/requirement items)
+ * that must never reach a customer at all. This function instead reuses
+ * this file's OWN existing customer-visible-root-task rule directly,
+ * scoped across every one of the organization's own non-DRAFT projects
+ * in one bounded query (`listCustomerVisibleForOrganization`), never a
+ * per-project loop.
+ *
+ * **Critical boundary** — confirmed during recon (see
+ * docs/architecture/task-management.md "Customer Portal — My Tasks"):
+ * onboarding checklist items and requirements are EXCLUDED entirely.
+ * Neither `CrmClientOnboardingChecklistItem` nor
+ * `CrmClientOnboardingRequirement` has any customer-visibility or
+ * customer-responsibility field — only internal staff
+ * `assignedToUserId`/`responsibleUserId` `User` foreign keys — so there
+ * is no safe way to show them to a customer at all.
+ *
+ * **Visibility is NOT assignment.** A `ProjectTask.assignedToUserId` is
+ * an internal staff `User`, never a customer-portal identity — a task
+ * appearing here means "you can see this," never "this is assigned to
+ * you." This page is never filtered or labeled as the customer's own
+ * assigned work, and no email-based inferred assignment is performed.
+ */
+export async function listMyTasks(rawInput: unknown): Promise<PortalTaskSummary[]> {
+  const input = parseOrThrow(orgIdSchema, rawInput);
+  const context = await requirePermission("portal.access", input.organizationId);
+
+  return withPortalCrmReadContext(context.user!.id, async (tx) => {
+    const tasks = await projectTaskRepository.listCustomerVisibleForOrganization(input.organizationId, tx);
+    // `milestoneId` is intentionally NOT resolved/shown here (unlike the
+    // single-project detail view) — cross-project milestone visibility
+    // would require a second bounded query per distinct milestone id
+    // for a field this page doesn't otherwise use; omitted rather than
+    // adding that cost for no real benefit.
+    return tasks.map((t) => ({
+      id: t.id,
+      milestoneId: null,
+      title: t.title,
+      description: t.description,
+      status: t.status,
+      priority: t.priority,
+      dueDate: t.dueDate,
+      projectId: t.project.id,
+      projectTitle: t.project.title,
     }));
   });
 }

@@ -111,6 +111,13 @@ const PLATFORM_FULL: PermissionKey[] = [
   // `.manage`/`.qa`/`.approve` stay separate, narrower grants — see each
   // role's own permissions list below.
   "delivery_projects.read",
+  // Build 28 — Task Management. `task_management.read` only grants
+  // access to the aggregation surface + this module's own "My Tasks";
+  // it does NOT by itself widen visibility into crm/delivery_projects/
+  // onboarding data (each source adapter re-checks its own permission
+  // independently). `.team_read`/`.manage` stay separate, narrower
+  // grants — see each role's own permissions list below.
+  "task_management.read",
 ];
 
 const ORGANIZATION_FULL: PermissionKey[] = [
@@ -255,6 +262,11 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "delivery_projects.manage",
       "delivery_projects.qa",
       "delivery_projects.approve",
+      // Build 28 — Task Management. Both owner/admin get broader
+      // Team/All Tasks visibility plus standalone-task management —
+      // same tier as the Project Management grants immediately above.
+      "task_management.team_read",
+      "task_management.manage",
     ],
   },
   platform_admin: {
@@ -338,6 +350,11 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "delivery_projects.manage",
       "delivery_projects.qa",
       "delivery_projects.approve",
+      // Build 28 — Task Management. Both owner/admin get broader
+      // Team/All Tasks visibility plus standalone-task management —
+      // same tier as the Project Management grants immediately above.
+      "task_management.team_read",
+      "task_management.manage",
     ],
   },
   support_admin: {
@@ -390,10 +407,19 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     // Build 25 — `crm.client_success.read` ALSO granted, same reasoning
     // (support staff plausibly need to see a customer's own health/risk
     // context); deliberately NOT `crm.client_success.manage`.
-    // Build 27 — `projects.read` ALSO granted, same reasoning (support
-    // staff plausibly need to see delivery status/progress for a
-    // customer they're helping); deliberately NOT `projects.manage`/
-    // `.qa`/`.approve`.
+    // Build 27 — `delivery_projects.read` ALSO granted, same reasoning
+    // (support staff plausibly need to see delivery status/progress for
+    // a customer they're helping); deliberately NOT `delivery_projects.
+    // manage`/`.qa`/`.approve`.
+    // Build 28 — `task_management.read` ALSO granted: lets support staff
+    // actually open the Task Management surface / see their own "My
+    // Tasks" built from the same crm/delivery_projects/onboarding
+    // visibility they already hold above — this key alone widens
+    // nothing on its own (see its own doc comment in permissions.ts).
+    // Deliberately NOT `task_management.team_read` (seeing OTHER staff's
+    // assignments) or `.manage` (standalone-task CRUD) — same
+    // "visibility, not content-management power" line every other grant
+    // on this role already draws.
     permissions: [
       "users.read",
       "organizations.read",
@@ -415,6 +441,7 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "crm.onboarding.read",
       "crm.client_success.read",
       "delivery_projects.read",
+      "task_management.read",
     ],
   },
   support_agent: {

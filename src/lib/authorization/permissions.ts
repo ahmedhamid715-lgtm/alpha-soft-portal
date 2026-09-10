@@ -720,6 +720,36 @@ export const PERMISSION_CATALOG = {
   "delivery_projects.manage": permission("delivery_projects", "manage", "PLATFORM", "Create/edit projects, milestones, tasks, dependencies, templates, comments, and attachments; transition project/task lifecycle.", false),
   "delivery_projects.qa": permission("delivery_projects", "manage", "PLATFORM", "Record QA check outcomes (pass/fail/waive).", false, "delivery_projects.qa"),
   "delivery_projects.approve": permission("delivery_projects", "approve", "PLATFORM", "Decide project/milestone approval requests.", false),
+
+  // --- task_management (Build 28 — Roadmap Module 22, PLATFORM scope).
+  // A read-model/orchestration layer over EXISTING source-domain work
+  // items (CrmTask, ProjectTask, onboarding checklist/requirement) plus
+  // one narrow, genuinely standalone `InternalTask` entity for work that
+  // belongs to no existing domain — never a replacement authority for
+  // any of them. `task_management.read` is deliberately NARROW: it only
+  // grants access to the aggregation SURFACE itself (the `/admin/tasks`
+  // page, "My Tasks") and to this module's OWN `InternalTask` reads —
+  // it does NOT, by itself, grant visibility into any source domain's
+  // own data. Every source branch independently re-checks that
+  // source's own permission (`crm.read`, `delivery_projects.read`,
+  // `crm.onboarding.read`) before being included — see
+  // `src/server/services/tasks/global-task-service.ts`'s own
+  // `authorizedSourceTypes()` and
+  // docs/architecture/task-management.md "Authorization intersection."
+  // This is the load-bearing security property of this whole module:
+  // the aggregator must never WIDEN what a caller could already see.
+  // `task_management.team_read` is a SEPARATE, broader authority (real
+  // separation, same tier `delivery_projects.qa`/`.approve` already
+  // establish) for the "Team Tasks"/"All Tasks" views — seeing OTHER
+  // people's assignments is a materially different capability from
+  // seeing your own. `task_management.manage` governs ONLY the
+  // standalone `InternalTask` entity's own CRUD — a source-domain task
+  // (CrmTask/ProjectTask/onboarding item) completed/reassigned through
+  // this surface still requires that source's own manage permission,
+  // checked again at mutation time, never bypassed via this one.
+  "task_management.read": permission("task_management", "read", "PLATFORM", "Use the Task Management surface and view your own assigned tasks (My Tasks) across every source you're independently authorized to see.", false),
+  "task_management.team_read": permission("task_management", "read", "PLATFORM", "View other platform staff members' task assignments (Team Tasks / All Tasks) — a separate, broader authority from task_management.read.", false, "task_management.team_read"),
+  "task_management.manage": permission("task_management", "manage", "PLATFORM", "Create/edit/complete/cancel standalone internal tasks. Never grants authority over CRM/Project/Onboarding tasks — those still require their own source-domain manage permission.", false),
 } as const satisfies Record<string, PermissionDefinition>;
 
 export type PermissionKey = keyof typeof PERMISSION_CATALOG;

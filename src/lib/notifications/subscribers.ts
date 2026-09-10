@@ -806,3 +806,30 @@ events.on<ProjectCompletedPayload>("projects.project_completed", async (event) =
     templateData: { projectId, projectTitle },
   });
 });
+
+// --- Build 28 (Task Management) — exactly one event: standalone
+// `InternalTask` assignment. Aggregating/reading existing CRM/Project/
+// Onboarding tasks through this module never fires a second,
+// duplicate notification on top of what that source domain already
+// sends for the same real assignment event — see this category's own
+// doc comment in `categories.ts`.
+
+interface InternalTaskAssignedPayload {
+  taskId: string;
+  organizationId: string;
+  assignedToUserId: string;
+  title: string;
+}
+
+events.on<InternalTaskAssignedPayload>("task_management.internal_task_assigned", async (event) => {
+  const { taskId, organizationId, assignedToUserId, title } = event.payload;
+  await notificationService.notify({
+    templateKey: "task_management.internal_task_assigned",
+    recipientUserId: assignedToUserId,
+    organizationId,
+    sourceEventType: "task_management.internal_task_assigned",
+    sourceEntityType: "internal_task",
+    sourceEntityId: taskId,
+    templateData: { taskId, title },
+  });
+});

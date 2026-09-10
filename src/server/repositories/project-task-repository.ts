@@ -61,6 +61,26 @@ export const projectTaskRepository = {
     return withDbErrorTranslation(() => tx.projectTask.findMany({ where: { assignedToUserId, status: { notIn: ["DONE", "CANCELLED"] } }, orderBy: { dueDate: "asc" }, take: 200 }));
   },
 
+  /**
+   * Every customer-visible ROOT task (never a subtask standalone, same
+   * "root tasks only" rule `getMyProjectDetail()` applies per-project)
+   * across ALL of one customer organization's own non-DRAFT projects, in
+   * a single query — Build 28's Portal "My Tasks" (`/portal/tasks`) needs
+   * this cross-project, never a per-project loop (N+1). Bounded to 200,
+   * same realistic-total assumption every other cross-record list in
+   * this codebase documents.
+   */
+  async listCustomerVisibleForOrganization(customerOrganizationId: string, tx: TransactionClient | typeof db = db): Promise<(ProjectTask & { project: { id: string; title: string } })[]> {
+    return withDbErrorTranslation(() =>
+      tx.projectTask.findMany({
+        where: { customerVisible: true, parentTaskId: null, project: { customerOrganizationId, status: { not: "DRAFT" } } },
+        include: { project: { select: { id: true, title: true } } },
+        orderBy: { dueDate: "asc" },
+        take: 200,
+      }),
+    );
+  },
+
   async update(
     id: string,
     data: Partial<{ title: string; description: string | null; priority: ProjectPriority; assignedToUserId: string | null; dueDate: Date | null; customerVisible: boolean; milestoneId: string | null; sortOrder: number }>,

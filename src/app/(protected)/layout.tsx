@@ -103,6 +103,11 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     // Templates, a project's own detail) stay reachable via
     // `/admin/projects`'s own links, not a sidebar sub-menu.
     { key: "admin-projects", label: "Projects", href: "/admin/projects", icon: "projects", permission: "delivery_projects.read" as const },
+    // Build 28 — Task Management (Roadmap Module 22). Same flat,
+    // single-link shape as "CRM"/"Projects" above — the page's own tabs
+    // (My Tasks / Team Tasks) and a standalone task's detail page stay
+    // reachable via `/admin/tasks`'s own links, not a sidebar sub-menu.
+    { key: "admin-tasks", label: "Tasks", href: "/admin/tasks", icon: "tasks", permission: "task_management.read" as const },
   ].filter((item) => platformContext.permissions.has(item.permission));
 
   if (platformItems.length > 0) {

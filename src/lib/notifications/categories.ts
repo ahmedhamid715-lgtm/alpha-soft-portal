@@ -142,6 +142,24 @@ export const NOTIFICATION_CATEGORIES = {
     mandatoryChannels: ["IN_APP"],
     defaultEnabled: { IN_APP: true, EMAIL: true },
   }),
+  /// Build 28 — Task Management. Its own category, not folded into
+  /// `CRM_ACTIVITY`/`PROJECT_ACTIVITY` despite the identical "task
+  /// assigned" shape — a standalone `InternalTask` is deliberately its
+  /// own domain, reaching whichever platform staff member happens to be
+  /// assigned general internal work, a genuinely different recipient
+  /// base from either CRM follow-ups or delivery work. This is also the
+  /// ONLY Task Management event this build emits — aggregating/reading
+  /// existing CRM/Project/Onboarding tasks through this module never
+  /// fires a second, duplicate notification on top of what that source
+  /// domain already sends for the same real event.
+  TASK_MANAGEMENT_ACTIVITY: category({
+    label: "Task activity",
+    description: "When an internal task is assigned to you.",
+    group: "Platform",
+    supportedChannels: ["IN_APP", "EMAIL"],
+    mandatoryChannels: ["IN_APP"],
+    defaultEnabled: { IN_APP: true, EMAIL: true },
+  }),
 } as const satisfies Record<string, NotificationCategoryDefinition>;
 
 export type NotificationCategoryKey = keyof typeof NOTIFICATION_CATEGORIES;
