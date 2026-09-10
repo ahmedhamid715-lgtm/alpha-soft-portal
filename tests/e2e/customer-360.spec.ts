@@ -165,7 +165,14 @@ base.describe("Customer 360 — representative states", () => {
     await page.getByRole("tab", { name: "Onboarding" }).click();
     await expect(page.getByText("No onboarding engagement yet")).toBeVisible();
 
-    await page.getByRole("tab", { name: "Projects / Support / Conversations" }).click();
+    // Build 27 — "Projects" is now a real tab (a prospect has no linked
+    // organization yet, so it shows its own honest empty state, not a
+    // fabricated project list); Support/Conversations remain genuinely
+    // unavailable under the renamed "more" tab.
+    await page.getByRole("tab", { name: "Projects", exact: true }).click();
+    await expect(page.getByText("No linked organization yet")).toBeVisible();
+
+    await page.getByRole("tab", { name: "Support / Conversations" }).click();
     await expect(page.getByText("Not available yet").first()).toBeVisible();
   });
 

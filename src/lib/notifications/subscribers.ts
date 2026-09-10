@@ -671,3 +671,138 @@ events.on<CrmClientSuccessExpansionOwnerAssignedPayload>("crm.client_success.exp
     templateData: { companyName, title },
   });
 });
+
+// --- Build 27 (Project Management) — high-value assignment/blocker/
+// approval events only. `organizationId` here is always the PLATFORM
+// organization (Projects are platform-owned, same as Client Success's
+// own identical reasoning above) — grouping/observability only, never
+// the notification's own SELECT boundary (`recipientUserId` is).
+
+interface ProjectAssignedPayload {
+  projectId: string;
+  organizationId: string;
+  recipientUserId: string;
+  projectTitle: string;
+}
+
+events.on<ProjectAssignedPayload>("projects.project_assigned", async (event) => {
+  const { projectId, organizationId, recipientUserId, projectTitle } = event.payload;
+  await notificationService.notify({
+    templateKey: "projects.project_assigned",
+    recipientUserId,
+    organizationId,
+    sourceEventType: "projects.project_assigned",
+    sourceEntityType: "project",
+    sourceEntityId: projectId,
+    templateData: { projectId, projectTitle },
+  });
+});
+
+interface ProjectTaskAssignedPayload {
+  taskId: string;
+  projectId: string;
+  organizationId: string;
+  recipientUserId: string;
+  projectTitle: string;
+  taskTitle: string;
+}
+
+events.on<ProjectTaskAssignedPayload>("projects.task_assigned", async (event) => {
+  const { taskId, projectId, organizationId, recipientUserId, projectTitle, taskTitle } = event.payload;
+  await notificationService.notify({
+    templateKey: "projects.task_assigned",
+    recipientUserId,
+    organizationId,
+    sourceEventType: "projects.task_assigned",
+    sourceEntityType: "project_task",
+    sourceEntityId: taskId,
+    templateData: { projectId, projectTitle, taskTitle },
+  });
+});
+
+interface ProjectTaskBlockedPayload {
+  taskId: string;
+  projectId: string;
+  organizationId: string;
+  recipientUserId: string;
+  projectTitle: string;
+  taskTitle: string;
+}
+
+events.on<ProjectTaskBlockedPayload>("projects.task_blocked", async (event) => {
+  const { taskId, projectId, organizationId, recipientUserId, projectTitle, taskTitle } = event.payload;
+  await notificationService.notify({
+    templateKey: "projects.task_blocked",
+    recipientUserId,
+    organizationId,
+    sourceEventType: "projects.task_blocked",
+    sourceEntityType: "project_task",
+    sourceEntityId: taskId,
+    templateData: { projectId, projectTitle, taskTitle },
+  });
+});
+
+interface ProjectApprovalRequestedPayload {
+  approvalId: string;
+  projectId: string;
+  organizationId: string;
+  recipientUserId: string;
+  projectTitle: string;
+  resourceLabel: string;
+}
+
+events.on<ProjectApprovalRequestedPayload>("projects.approval_requested", async (event) => {
+  const { approvalId, projectId, organizationId, recipientUserId, projectTitle, resourceLabel } = event.payload;
+  await notificationService.notify({
+    templateKey: "projects.approval_requested",
+    recipientUserId,
+    organizationId,
+    sourceEventType: "projects.approval_requested",
+    sourceEntityType: "project_approval",
+    sourceEntityId: approvalId,
+    templateData: { projectId, projectTitle, resourceLabel },
+  });
+});
+
+interface ProjectApprovalCompletedPayload {
+  approvalId: string;
+  projectId: string;
+  organizationId: string;
+  recipientUserId: string;
+  projectTitle: string;
+  resourceLabel: string;
+  approved: boolean;
+}
+
+events.on<ProjectApprovalCompletedPayload>("projects.approval_completed", async (event) => {
+  const { approvalId, projectId, organizationId, recipientUserId, projectTitle, resourceLabel, approved } = event.payload;
+  await notificationService.notify({
+    templateKey: "projects.approval_completed",
+    recipientUserId,
+    organizationId,
+    sourceEventType: "projects.approval_completed",
+    sourceEntityType: "project_approval",
+    sourceEntityId: approvalId,
+    templateData: { projectId, projectTitle, resourceLabel, approved },
+  });
+});
+
+interface ProjectCompletedPayload {
+  projectId: string;
+  organizationId: string;
+  recipientUserId: string;
+  projectTitle: string;
+}
+
+events.on<ProjectCompletedPayload>("projects.project_completed", async (event) => {
+  const { projectId, organizationId, recipientUserId, projectTitle } = event.payload;
+  await notificationService.notify({
+    templateKey: "projects.project_completed",
+    recipientUserId,
+    organizationId,
+    sourceEventType: "projects.project_completed",
+    sourceEntityType: "project",
+    sourceEntityId: projectId,
+    templateData: { projectId, projectTitle },
+  });
+});

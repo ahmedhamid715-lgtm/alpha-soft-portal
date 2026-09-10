@@ -98,6 +98,11 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     // company/contact/lead/task/settings sub-pages stay reachable via
     // the CRM dashboard's own links instead of a sidebar sub-menu.
     { key: "admin-crm", label: "CRM", href: "/admin/crm", icon: "crm", permission: "crm.read" as const },
+    // Build 27 — Project Management (Roadmap Module 21). Same flat,
+    // single-link shape as "CRM"/"Knowledge" above — sub-pages (New,
+    // Templates, a project's own detail) stay reachable via
+    // `/admin/projects`'s own links, not a sidebar sub-menu.
+    { key: "admin-projects", label: "Projects", href: "/admin/projects", icon: "projects", permission: "delivery_projects.read" as const },
   ].filter((item) => platformContext.permissions.has(item.permission));
 
   if (platformItems.length > 0) {

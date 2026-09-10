@@ -277,7 +277,8 @@ base.describe("Customer Portal — notifications, AI assistant, profile (shared 
 
 base.describe("Customer Portal — honest unavailable states (shared owner-a session)", () => {
   const cases: { path: string; module: string }[] = [
-    { path: "/portal/projects", module: "21" },
+    // Build 27 — "/portal/projects" graduated out of this list; it's a
+    // real page now, covered by its own `portal-project-management.spec.ts`.
     { path: "/portal/tasks", module: "22" },
     { path: "/portal/reports", module: "66" },
     { path: "/portal/tickets", module: "30" },

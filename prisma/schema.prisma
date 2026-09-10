@@ -216,6 +216,21 @@ model Organization {
   crmClientSuccessProfiles           CrmClientSuccessProfile[]
   crmClientSuccessRenewals           CrmClientSuccessRenewal[]
   crmClientSuccessExpansions         CrmClientSuccessExpansionOpportunity[]
+  /// Build 27 (Project Management) — every row is owned by the platform
+  /// organization; `projectsAsCustomer` is the distinct customer-side role.
+  projectsAsPlatformOwner            Project[]                              @relation("ProjectPlatformOwner")
+  projectsAsCustomer                 Project[]                              @relation("ProjectCustomerOrganization")
+  projectTemplates                   ProjectTemplate[]
+  projectTemplateMilestones          ProjectTemplateMilestone[]
+  projectTemplateTasks               ProjectTemplateTask[]
+  projectTemplateQaChecks            ProjectTemplateQaCheck[]
+  projectMilestones                  Milestone[]
+  projectTasks                       ProjectTask[]
+  projectTaskDependencies            ProjectTaskDependency[]
+  projectComments                    ProjectComment[]
+  projectAttachments                 ProjectAttachment[]
+  projectApprovals                   ProjectApproval[]
+  projectQaChecks                    ProjectQaCheck[]
 
   @@index([status])
   @@index([isPlatform])
@@ -350,6 +365,24 @@ model User {
   crmClientSuccessRenewalsCreated      CrmClientSuccessRenewal[]              @relation("CrmClientSuccessRenewalCreatedBy")
   crmClientSuccessExpansionsOwned      CrmClientSuccessExpansionOpportunity[] @relation("CrmClientSuccessExpansionOwner")
   crmClientSuccessExpansionsCreated    CrmClientSuccessExpansionOpportunity[] @relation("CrmClientSuccessExpansionCreatedBy")
+  /// Build 27 (Project Management).
+  projectsCreated                      Project[]                              @relation("ProjectCreatedBy")
+  projectsOwned                        Project[]                              @relation("ProjectOwner")
+  projectsCompleted                    Project[]                              @relation("ProjectCompletedBy")
+  projectsCancelled                    Project[]                              @relation("ProjectCancelledBy")
+  projectTemplatesCreated              ProjectTemplate[]                      @relation("ProjectTemplateCreatedBy")
+  projectMilestonesCreated             Milestone[]                            @relation("MilestoneCreatedBy")
+  projectMilestonesCancelled           Milestone[]                            @relation("MilestoneCancelledBy")
+  projectTasksCreated                  ProjectTask[]                          @relation("ProjectTaskCreatedBy")
+  projectTasksAssigned                 ProjectTask[]                          @relation("ProjectTaskAssignedTo")
+  projectTasksCompleted                ProjectTask[]                          @relation("ProjectTaskCompletedBy")
+  projectTasksCancelled                ProjectTask[]                          @relation("ProjectTaskCancelledBy")
+  projectTaskDependenciesCreated       ProjectTaskDependency[]                @relation("ProjectTaskDependencyCreatedBy")
+  projectCommentsAuthored              ProjectComment[]                       @relation("ProjectCommentAuthor")
+  projectAttachmentsUploaded           ProjectAttachment[]                    @relation("ProjectAttachmentUploadedBy")
+  projectApprovalsRequested            ProjectApproval[]                      @relation("ProjectApprovalRequestedBy")
+  projectApprovalsDecided              ProjectApproval[]                      @relation("ProjectApprovalApprover")
+  projectQaChecksChecked               ProjectQaCheck[]                       @relation("ProjectQaCheckCheckedBy")
 
   @@index([status])
   @@map("users")
@@ -2340,6 +2373,7 @@ model CrmCompany {
   clientSuccessProfile    CrmClientSuccessProfile?
   clientSuccessRenewals   CrmClientSuccessRenewal[]
   clientSuccessExpansions CrmClientSuccessExpansionOpportunity[]
+  projects                Project[]
 
   @@index([organizationId, createdAt])
   @@index([organizationId, status, createdAt])
@@ -3499,6 +3533,7 @@ model CrmClientOnboarding {
   checklistItems      CrmClientOnboardingChecklistItem[]
   documents           CrmClientOnboardingDocument[]
   assignments         CrmClientOnboardingAssignment[]
+  projectsHandedOff   Project[]                           @relation("ProjectOriginatingOnboarding")
 
   @@index([organizationId, dealId])
   @@index([organizationId, status, createdAt])
@@ -3550,9 +3585,10 @@ model CrmClientOnboardingServiceItem {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  onboarding     CrmClientOnboarding  @relation(fields: [onboardingId], references: [id], onDelete: Cascade)
-  sourceLineItem CrmProposalLineItem? @relation(fields: [sourceLineItemId], references: [id], onDelete: SetNull)
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  onboarding          CrmClientOnboarding  @relation(fields: [onboardingId], references: [id], onDelete: Cascade)
+  sourceLineItem      CrmProposalLineItem? @relation(fields: [sourceLineItemId], references: [id], onDelete: SetNull)
+  projectsCreatedFrom Project[]            @relation("ProjectSourceServiceItem")
 
   @@index([organizationId, onboardingId, sortOrder])
   @@map("crm_client_onboarding_service_items")
@@ -3988,4 +4024,436 @@ enum CrmClientSuccessExpansionStatus {
   DISMISSED
 
   @@map("crm_client_success_expansion_status")
+}
+
+// =============================================================================
+// Build 27 — Project Management (Canonical Roadmap Module 21)
+// =============================================================================
+//
+// All rows in this domain are owned exclusively by the platform organization,
+// matching every `crm_*` table. DELETE is not an application workflow; lifecycle
+// changes are CAS-guarded updates, with RLS and DELETE revocation in the migration.
+
+model Project {
+  id                      String  @id @db.Uuid
+  organizationId          String  @map("organization_id") @db.Uuid
+  customerOrganizationId  String  @map("customer_organization_id") @db.Uuid
+  companyId               String  @map("company_id") @db.Uuid
+  originatingOnboardingId String? @map("originating_onboarding_id") @db.Uuid
+  sourceServiceItemId     String? @map("source_service_item_id") @db.Uuid
+  /// Instantiation provenance only; never a live structural dependency on
+  /// the template after the project snapshot is created.
+  sourceTemplateId        String? @map("source_template_id") @db.Uuid
+
+  title       String
+  description String?
+  status      ProjectStatus   @default(DRAFT)
+  priority    ProjectPriority @default(MEDIUM)
+  ownerUserId String?         @map("owner_user_id") @db.Uuid
+
+  startDate     DateTime? @map("start_date") @db.Timestamptz(3)
+  targetEndDate DateTime? @map("target_end_date") @db.Timestamptz(3)
+
+  completedAt              DateTime? @map("completed_at") @db.Timestamptz(3)
+  completedByUserId        String?   @map("completed_by_user_id") @db.Uuid
+  completionOverride       Boolean   @default(false) @map("completion_override")
+  completionOverrideReason String?   @map("completion_override_reason")
+
+  cancelledAt       DateTime? @map("cancelled_at") @db.Timestamptz(3)
+  cancelledReason   String?   @map("cancelled_reason")
+  cancelledByUserId String?   @map("cancelled_by_user_id") @db.Uuid
+  archivedAt        DateTime? @map("archived_at") @db.Timestamptz(3)
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization          Organization                    @relation("ProjectPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  customerOrganization  Organization                    @relation("ProjectCustomerOrganization", fields: [customerOrganizationId], references: [id], onDelete: Cascade)
+  company               CrmCompany                      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  originatingOnboarding CrmClientOnboarding?            @relation("ProjectOriginatingOnboarding", fields: [originatingOnboardingId], references: [id], onDelete: SetNull)
+  sourceServiceItem     CrmClientOnboardingServiceItem? @relation("ProjectSourceServiceItem", fields: [sourceServiceItemId], references: [id], onDelete: SetNull)
+  sourceTemplate        ProjectTemplate?                @relation(fields: [sourceTemplateId], references: [id], onDelete: SetNull)
+  ownerUser             User?                           @relation("ProjectOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  completedByUser       User?                           @relation("ProjectCompletedBy", fields: [completedByUserId], references: [id], onDelete: SetNull)
+  cancelledByUser       User?                           @relation("ProjectCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
+  createdByUser         User                            @relation("ProjectCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  milestones            Milestone[]
+  tasks                 ProjectTask[]
+  taskDependencies      ProjectTaskDependency[]
+  comments              ProjectComment[]
+  attachments           ProjectAttachment[]
+  approvals             ProjectApproval[]
+  qaChecks              ProjectQaCheck[]
+
+  @@index([organizationId, status, createdAt])
+  // Supports the unfiltered newest-first tenant list; the status-leading index
+  // above cannot serve that ordering when status is not filtered.
+  @@index([organizationId, createdAt])
+  @@index([customerOrganizationId, status])
+  @@index([companyId, createdAt])
+  @@index([originatingOnboardingId])
+  @@index([ownerUserId, status])
+  @@map("projects")
+}
+
+enum ProjectStatus {
+  DRAFT
+  PLANNED
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+  ARCHIVED
+
+  @@map("project_status")
+}
+
+enum ProjectPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+
+  @@map("project_priority")
+}
+
+model ProjectTemplate {
+  id              String                @id @db.Uuid
+  organizationId  String                @map("organization_id") @db.Uuid
+  name            String
+  description     String?
+  status          ProjectTemplateStatus @default(ACTIVE)
+  createdByUserId String                @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization         Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUser        User                       @relation("ProjectTemplateCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  milestones           ProjectTemplateMilestone[]
+  tasks                ProjectTemplateTask[]
+  qaChecks             ProjectTemplateQaCheck[]
+  projectsInstantiated Project[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, status])
+  @@map("project_templates")
+}
+
+enum ProjectTemplateStatus {
+  ACTIVE
+  ARCHIVED
+
+  @@map("project_template_status")
+}
+
+model ProjectTemplateMilestone {
+  id              String   @id @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  templateId      String   @map("template_id") @db.Uuid
+  title           String
+  description     String?
+  sortOrder       Int      @default(0) @map("sort_order")
+  relativeDueDays Int?     @map("relative_due_days")
+  customerVisible Boolean  @default(false) @map("customer_visible")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  template     ProjectTemplate       @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  tasks        ProjectTemplateTask[]
+
+  @@index([organizationId, templateId, sortOrder], map: "project_template_milestones_org_template_sort_idx")
+  @@map("project_template_milestones")
+}
+
+model ProjectTemplateTask {
+  id                      String          @id @db.Uuid
+  organizationId          String          @map("organization_id") @db.Uuid
+  templateId              String          @map("template_id") @db.Uuid
+  templateMilestoneId     String?         @map("template_milestone_id") @db.Uuid
+  title                   String
+  description             String?
+  sortOrder               Int             @default(0) @map("sort_order")
+  relativeDueDays         Int?            @map("relative_due_days")
+  priority                ProjectPriority @default(MEDIUM)
+  customerVisible         Boolean         @default(false) @map("customer_visible")
+  /// Free-text staffing hint only (for example, "SEO Specialist"); never a
+  /// live foreign key to a user or role.
+  defaultAssigneeRoleHint String?         @map("default_assignee_role_hint")
+  createdAt               DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization      Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  template          ProjectTemplate           @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  templateMilestone ProjectTemplateMilestone? @relation(fields: [templateMilestoneId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, templateId, sortOrder], map: "project_template_tasks_org_template_sort_idx")
+  @@map("project_template_tasks")
+}
+
+model ProjectTemplateQaCheck {
+  id             String   @id @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  templateId     String   @map("template_id") @db.Uuid
+  title          String
+  required       Boolean  @default(true)
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  template     ProjectTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, templateId, sortOrder], map: "project_template_qa_checks_org_template_sort_idx")
+  @@map("project_template_qa_checks")
+}
+
+/// Deliberately has no stored status/progress column. Milestone lifecycle and
+/// progress are derived server-side from child `ProjectTask` rows (see
+/// project-management.md); cancellation is the one independently mutable fact.
+model Milestone {
+  id                String    @id @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  projectId         String    @map("project_id") @db.Uuid
+  title             String
+  description       String?
+  sortOrder         Int       @default(0) @map("sort_order")
+  targetDate        DateTime? @map("target_date") @db.Timestamptz(3)
+  customerVisible   Boolean   @default(false) @map("customer_visible")
+  cancelledAt       DateTime? @map("cancelled_at") @db.Timestamptz(3)
+  cancelledReason   String?   @map("cancelled_reason")
+  cancelledByUserId String?   @map("cancelled_by_user_id") @db.Uuid
+  createdByUserId   String    @map("created_by_user_id") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project         Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  cancelledByUser User?            @relation("MilestoneCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
+  createdByUser   User             @relation("MilestoneCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  tasks           ProjectTask[]
+  qaChecks        ProjectQaCheck[]
+
+  @@index([organizationId, projectId, sortOrder])
+  @@map("milestones")
+}
+
+model ProjectTask {
+  id                String            @id @db.Uuid
+  organizationId    String            @map("organization_id") @db.Uuid
+  projectId         String            @map("project_id") @db.Uuid
+  milestoneId       String?           @map("milestone_id") @db.Uuid
+  parentTaskId      String?           @map("parent_task_id") @db.Uuid
+  title             String
+  description       String?
+  status            ProjectTaskStatus @default(TODO)
+  priority          ProjectPriority   @default(MEDIUM)
+  assignedToUserId  String?           @map("assigned_to_user_id") @db.Uuid
+  dueDate           DateTime?         @map("due_date") @db.Timestamptz(3)
+  sortOrder         Int               @default(0) @map("sort_order")
+  customerVisible   Boolean           @default(false) @map("customer_visible")
+  completedAt       DateTime?         @map("completed_at") @db.Timestamptz(3)
+  completedByUserId String?           @map("completed_by_user_id") @db.Uuid
+  cancelledAt       DateTime?         @map("cancelled_at") @db.Timestamptz(3)
+  cancelledReason   String?           @map("cancelled_reason")
+  cancelledByUserId String?           @map("cancelled_by_user_id") @db.Uuid
+  createdByUserId   String            @map("created_by_user_id") @db.Uuid
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization    Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project         Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestone       Milestone?              @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  parentTask      ProjectTask?            @relation("ProjectTaskParent", fields: [parentTaskId], references: [id], onDelete: Cascade)
+  subtasks        ProjectTask[]           @relation("ProjectTaskParent")
+  assignedToUser  User?                   @relation("ProjectTaskAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  completedByUser User?                   @relation("ProjectTaskCompletedBy", fields: [completedByUserId], references: [id], onDelete: SetNull)
+  cancelledByUser User?                   @relation("ProjectTaskCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
+  createdByUser   User                    @relation("ProjectTaskCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  dependencies    ProjectTaskDependency[] @relation("ProjectTaskDependencyDependent")
+  prerequisiteFor ProjectTaskDependency[] @relation("ProjectTaskDependencyPrerequisite")
+  comments        ProjectComment[]
+  attachments     ProjectAttachment[]
+  qaChecks        ProjectQaCheck[]
+
+  @@index([organizationId, projectId, sortOrder])
+  @@index([organizationId, projectId, status])
+  @@index([milestoneId, status])
+  @@index([parentTaskId])
+  @@index([assignedToUserId, status])
+  @@map("project_tasks")
+}
+
+enum ProjectTaskStatus {
+  TODO
+  IN_PROGRESS
+  BLOCKED
+  DONE
+  CANCELLED
+
+  @@map("project_task_status")
+}
+
+/// B depends on A when `taskId` is B and `dependsOnTaskId` is A. Full DAG
+/// cycle prevention is deliberately service-layer responsibility: it takes a
+/// project-row `SELECT ... FOR UPDATE` lock and performs a recursive graph walk
+/// in the same transaction. See project-management.md "Dependency cycle prevention."
+model ProjectTaskDependency {
+  id              String   @id @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  projectId       String   @map("project_id") @db.Uuid
+  taskId          String   @map("task_id") @db.Uuid
+  dependsOnTaskId String   @map("depends_on_task_id") @db.Uuid
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project       Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task          ProjectTask  @relation("ProjectTaskDependencyDependent", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOnTask ProjectTask  @relation("ProjectTaskDependencyPrerequisite", fields: [dependsOnTaskId], references: [id], onDelete: Cascade)
+  createdByUser User         @relation("ProjectTaskDependencyCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([taskId, dependsOnTaskId])
+  @@index([organizationId, projectId])
+  @@index([dependsOnTaskId])
+  @@map("project_task_dependencies")
+}
+
+/// Plain-text comments only. Clients render `body` as a text node, never via
+/// `dangerouslySetInnerHTML`, so this field needs no HTML sanitizer unlike
+/// `CrmProposalVersion.bodyHtml`.
+model ProjectComment {
+  id             String            @id @db.Uuid
+  organizationId String            @map("organization_id") @db.Uuid
+  projectId      String            @map("project_id") @db.Uuid
+  taskId         String?           @map("task_id") @db.Uuid
+  authorUserId   String            @map("author_user_id") @db.Uuid
+  body           String
+  visibility     ProjectVisibility @default(INTERNAL)
+  editedAt       DateTime?         @map("edited_at") @db.Timestamptz(3)
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task         ProjectTask? @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorUser   User         @relation("ProjectCommentAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, projectId, createdAt])
+  @@index([taskId, createdAt])
+  @@map("project_comments")
+}
+
+model ProjectAttachment {
+  id               String            @id @db.Uuid
+  organizationId   String            @map("organization_id") @db.Uuid
+  projectId        String            @map("project_id") @db.Uuid
+  taskId           String?           @map("task_id") @db.Uuid
+  title            String
+  description      String?
+  /// Reserved for a real StorageProvider key once Roadmap Module 56 exists;
+  /// always null in this build.
+  fileKey          String?           @map("file_key")
+  /// Staff-entered URL to an externally hosted file, never a filesystem path;
+  /// URL validation belongs at the service boundary. Both link fields may be
+  /// null for an honest metadata-only placeholder deliverable.
+  externalUrl      String?           @map("external_url")
+  visibility       ProjectVisibility @default(INTERNAL)
+  uploadedByUserId String            @map("uploaded_by_user_id") @db.Uuid
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task           ProjectTask? @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploadedByUser User         @relation("ProjectAttachmentUploadedBy", fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, projectId, createdAt])
+  @@index([taskId, createdAt])
+  @@map("project_attachments")
+}
+
+enum ProjectVisibility {
+  INTERNAL
+  CUSTOMER_VISIBLE
+
+  @@map("project_visibility")
+}
+
+/// Approval targets are polymorphic and validated by the migration trigger.
+/// Self-approval is rejected both by the service and by a database CHECK.
+model ProjectApproval {
+  id                String                      @id @db.Uuid
+  organizationId    String                      @map("organization_id") @db.Uuid
+  projectId         String                      @map("project_id") @db.Uuid
+  resourceType      ProjectApprovalResourceType @map("resource_type")
+  resourceId        String                      @map("resource_id") @db.Uuid
+  requestedByUserId String                      @map("requested_by_user_id") @db.Uuid
+  requestedAt       DateTime                    @default(now()) @map("requested_at") @db.Timestamptz(3)
+  approverUserId    String?                     @map("approver_user_id") @db.Uuid
+  status            ProjectApprovalStatus       @default(PENDING)
+  decidedAt         DateTime?                   @map("decided_at") @db.Timestamptz(3)
+  reason            String?
+  visibility        ProjectVisibility           @default(INTERNAL)
+  createdAt         DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project         Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  requestedByUser User         @relation("ProjectApprovalRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  approverUser    User?        @relation("ProjectApprovalApprover", fields: [approverUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, projectId, status])
+  @@index([resourceType, resourceId])
+  @@map("project_approvals")
+}
+
+enum ProjectApprovalResourceType {
+  PROJECT
+  MILESTONE
+
+  @@map("project_approval_resource_type")
+}
+
+enum ProjectApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+
+  @@map("project_approval_status")
+}
+
+model ProjectQaCheck {
+  id              String               @id @db.Uuid
+  organizationId  String               @map("organization_id") @db.Uuid
+  projectId       String               @map("project_id") @db.Uuid
+  taskId          String?              @map("task_id") @db.Uuid
+  milestoneId     String?              @map("milestone_id") @db.Uuid
+  title           String
+  required        Boolean              @default(true)
+  status          ProjectQaCheckStatus @default(PENDING)
+  checkedByUserId String?              @map("checked_by_user_id") @db.Uuid
+  checkedAt       DateTime?            @map("checked_at") @db.Timestamptz(3)
+  notes           String?
+  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project       Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task          ProjectTask? @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  milestone     Milestone?   @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  checkedByUser User?        @relation("ProjectQaCheckCheckedBy", fields: [checkedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, projectId, status])
+  @@map("project_qa_checks")
+}
+
+enum ProjectQaCheckStatus {
+  PENDING
+  PASSED
+  FAILED
+  WAIVED
+
+  @@map("project_qa_check_status")
 }

@@ -10,6 +10,7 @@ import {
   evaluateChurnRisk,
   HEALTH_STATUS_SCORE,
   type HealthComponent,
+  type ProjectHealthInput,
 } from "@/lib/crm/client-success";
 
 const NOW = new Date("2026-06-15T12:00:00Z");
@@ -107,14 +108,52 @@ describe("client-success", () => {
     });
   });
 
-  describe("evaluateProjectHealth / evaluateSupportHealth / evaluateServicePerformance — data honesty", () => {
+  describe("evaluateSupportHealth / evaluateServicePerformance — data honesty", () => {
     it("are always NOT_MEASURABLE, never fabricated, because their owning domains don't exist yet", () => {
-      for (const fn of [evaluateProjectHealth, evaluateSupportHealth, evaluateServicePerformance]) {
+      for (const fn of [evaluateSupportHealth, evaluateServicePerformance]) {
         const result = fn(NOW);
         expect(result.status).toBe("NOT_MEASURABLE");
         expect(result.measurable).toBe(false);
         expect(result.score).toBeNull();
       }
+    });
+  });
+
+  describe("evaluateProjectHealth (Build 27 — Roadmap Module 21)", () => {
+    function projectInput(overrides: Partial<ProjectHealthInput>): ProjectHealthInput {
+      return { activeProjectCount: 1, onHoldProjectCount: 0, overdueRequiredTaskCount: 0, blockedRequiredTaskCount: 0, pastTargetDateProjectCount: 0, approachingTargetDateProjectCount: 0, failedRequiredQaCount: 0, ...overrides };
+    }
+
+    it("is NOT_MEASURABLE when input is null (no linked organization / no permission) or there are zero active projects", () => {
+      expect(evaluateProjectHealth(null, NOW).status).toBe("NOT_MEASURABLE");
+      expect(evaluateProjectHealth(projectInput({ activeProjectCount: 0 }), NOW).status).toBe("NOT_MEASURABLE");
+    });
+
+    it("is HEALTHY when there is active delivery work with no overdue/blocked/failed signals", () => {
+      const result = evaluateProjectHealth(projectInput({}), NOW);
+      expect(result.status).toBe("HEALTHY");
+      expect(result.measurable).toBe(true);
+      expect(result.score).toBe(HEALTH_STATUS_SCORE.HEALTHY);
+    });
+
+    it("is WATCH when a project's target end date approaches within 14 days with no other issues", () => {
+      expect(evaluateProjectHealth(projectInput({ approachingTargetDateProjectCount: 1 }), NOW).status).toBe("WATCH");
+    });
+
+    it("is AT_RISK for an on-hold project, an overdue required task, or a blocked required task", () => {
+      expect(evaluateProjectHealth(projectInput({ onHoldProjectCount: 1 }), NOW).status).toBe("AT_RISK");
+      expect(evaluateProjectHealth(projectInput({ overdueRequiredTaskCount: 1 }), NOW).status).toBe("AT_RISK");
+      expect(evaluateProjectHealth(projectInput({ blockedRequiredTaskCount: 1 }), NOW).status).toBe("AT_RISK");
+    });
+
+    it("is CRITICAL for a failed required QA check, a project past its target end date, or 3+ overdue required tasks", () => {
+      expect(evaluateProjectHealth(projectInput({ failedRequiredQaCount: 1 }), NOW).status).toBe("CRITICAL");
+      expect(evaluateProjectHealth(projectInput({ pastTargetDateProjectCount: 1 }), NOW).status).toBe("CRITICAL");
+      expect(evaluateProjectHealth(projectInput({ overdueRequiredTaskCount: 3 }), NOW).status).toBe("CRITICAL");
+    });
+
+    it("checks in highest-severity-first order — a failed QA check outranks a merely-approaching target date", () => {
+      expect(evaluateProjectHealth(projectInput({ failedRequiredQaCount: 1, approachingTargetDateProjectCount: 1 }), NOW).status).toBe("CRITICAL");
     });
   });
 

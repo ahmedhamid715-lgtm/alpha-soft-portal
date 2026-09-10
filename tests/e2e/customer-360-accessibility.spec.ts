@@ -35,7 +35,7 @@ const VIEWPORTS = {
   tablet: { width: 768, height: 1024 },
   mobile: { width: 375, height: 667 },
 } as const;
-const TABS = ["Overview", "Contacts", "Services", "Sales", "Onboarding", "Billing", "Activity", "Documents", "Projects / Support / Conversations"] as const;
+const TABS = ["Overview", "Contacts", "Services", "Sales", "Onboarding", "Billing", "Activity", "Documents", "Projects", "Support / Conversations"] as const;
 
 async function loginAs(page: Page, email: string) {
   await page.goto("/login");

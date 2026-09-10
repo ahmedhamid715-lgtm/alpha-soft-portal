@@ -25,6 +25,9 @@ import { listRenewalsForCompany, listExpansionsForCompany } from "@/server/servi
 import { listAssignableUsers } from "@/server/services/crm-shared";
 import { CLIENT_SUCCESS_RENEWAL_OPEN_STATUSES, type CrmClientSuccessRenewalWithRelations } from "@/server/repositories/crm-client-success-renewal-repository";
 import type { CrmClientSuccessExpansionWithRelations } from "@/server/repositories/crm-client-success-expansion-repository";
+import { listProjectsForCustomer360, type Customer360ProjectSummary } from "@/server/services/project-customer-360-service";
+import { ProjectProgressDisplay } from "@/components/projects/project-progress-display";
+import { projectStatusVariant, projectPriorityVariant } from "@/components/projects/project-status";
 
 export const metadata: Metadata = { title: "Customer 360" };
 
@@ -78,6 +81,13 @@ export default async function Customer360Page({ params }: { params: Promise<{ id
     ? await Promise.all([getClientSuccessHealth({ companyId: id }, view), listRenewalsForCompany({ companyId: id }), listExpansionsForCompany({ companyId: id }), listAssignableUsers()])
     : [null, [] as CrmClientSuccessRenewalWithRelations[], [] as CrmClientSuccessExpansionWithRelations[], []];
 
+  // Build 27 — Project Management. Source domain owns the read (see
+  // `project-customer-360-service.ts`'s own top comment); this page only
+  // decides whether to render it. No projects are possible before the
+  // company has converted to a real customer Organization.
+  const canSeeProjects = context.permissions.has("delivery_projects.read");
+  const projects: Customer360ProjectSummary[] = canSeeProjects && view.linkedOrganization ? await listProjectsForCustomer360(view.linkedOrganization.id) : [];
+
   const tabs: Customer360Tab[] = [
     { value: "overview", label: "Overview", content: <OverviewTab view={view} /> },
     { value: "contacts", label: "Contacts", content: <ContactsTab view={view} /> },
@@ -107,7 +117,16 @@ export default async function Customer360Page({ params }: { params: Promise<{ id
     },
     { value: "activity", label: "Activity", content: <ActivityTab view={view} /> },
     { value: "documents", label: "Documents", content: <DocumentsTab view={view} /> },
-    { value: "more", label: "Projects / Support / Conversations", content: <FutureDomainsTab /> },
+    {
+      value: "projects",
+      label: "Projects",
+      content: canSeeProjects ? (
+        <ProjectsTab projects={projects} hasLinkedOrganization={view.linkedOrganization !== null} />
+      ) : (
+        <EmptyState icon={FolderKanban} title="No access" description="Viewing projects requires the delivery_projects.read permission." />
+      ),
+    },
+    { value: "more", label: "Support / Conversations", content: <FutureDomainsTab /> },
   ];
 
   return (
@@ -434,10 +453,43 @@ function DocumentsTab({ view }: { view: Customer360ViewModel }) {
 
 function FutureDomainsTab() {
   return (
-    <div className="grid gap-4 sm:grid-cols-3">
-      <EmptyState icon={FolderKanban} title="Projects" description="Not available yet — Roadmap Module 21 (Project Management) will own this." />
+    <div className="grid gap-4 sm:grid-cols-2">
       <EmptyState icon={LifeBuoy} title="Support tickets" description="Not available yet — Roadmap Module 30 (Support Center) will own this." />
       <EmptyState icon={MessageSquare} title="Conversations" description="Not available yet — Roadmap Module 46 (Communication Center) will own this." />
+    </div>
+  );
+}
+
+/** Build 27 — Project Management. Composed entirely from `listProjectsForCustomer360()`'s own safe summary shape; the full operational detail (milestones/tasks/comments/QA/approvals) lives at `/admin/projects/[id]`, which every row links to. */
+function ProjectsTab({ projects, hasLinkedOrganization }: { projects: Customer360ProjectSummary[]; hasLinkedOrganization: boolean }) {
+  if (!hasLinkedOrganization) {
+    return <EmptyState icon={FolderKanban} title="No linked organization yet" description="This company has not converted to a customer organization — there is nothing to create a project for yet." />;
+  }
+  if (projects.length === 0) {
+    return <EmptyState icon={FolderKanban} title="No projects yet" description="No delivery projects have been created for this customer." />;
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      {projects.map((project) => (
+        <Card key={project.id}>
+          <CardContent className="flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-4">
+              <Link href={`/admin/projects/${project.id}`} className="text-sm font-medium hover:underline">
+                {project.title}
+              </Link>
+              <div className="flex items-center gap-2">
+                <StatusBadge status={projectPriorityVariant(project.priority)}>{project.priority}</StatusBadge>
+                <StatusBadge status={projectStatusVariant(project.status)}>{project.status}</StatusBadge>
+              </div>
+            </div>
+            <ProjectProgressDisplay progress={project.progress} />
+            <div className="flex gap-4 text-xs text-muted-foreground">
+              <span>Start: {fmtDate(project.startDate)}</span>
+              <span>Target: {fmtDate(project.targetEndDate)}</span>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
     </div>
   );
 }

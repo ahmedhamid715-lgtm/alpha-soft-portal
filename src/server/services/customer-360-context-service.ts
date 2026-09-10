@@ -1,5 +1,7 @@
 import "server-only";
 import { getCustomer360 } from "./customer-360-service";
+import { listProjectsForCustomer360 } from "./project-customer-360-service";
+import { resolvePlatformContext } from "@/lib/authorization/context";
 
 /**
  * Customer 360 AI-context boundary (Build 24 — Roadmap Module 18,
@@ -29,11 +31,31 @@ export interface Customer360AiContext {
   sales: { openDealCount: number; wonDealCount: number; acceptedProposalCount: number; activeContractCount: number } | null;
   onboarding: { sourceDomain: "crm_onboarding"; sourceId: string; status: string; progressPercent: number | null } | null;
   billing: { billingAccountStatus: string; subscriptionStatus: string | null; hasPastDueInvoice: boolean | null } | null;
+  /**
+   * Build 27 — Project Management. `null` when the caller lacks
+   * `delivery_projects.read` or there is no linked organization yet —
+   * NEVER a widened read on this function's behalf (see this file's own
+   * top comment, "never expand what the requesting caller can already
+   * see"). This is authorized, structured FACTS only — no comments, no
+   * attachments, no internal notes — and no model call happens here.
+   * Explicitly out of scope for the Customer Portal's own AI Assistant
+   * (Build 26, deliberately not CRM-aware) — that surface never calls
+   * this function.
+   */
+  projects: { sourceDomain: "project"; sourceId: string; title: string; status: string; progressPercent: number | null; targetEndDate: string | null }[] | null;
   recentActivity: { sourceDomain: string; sourceId: string; eventType: string; summary: string; timestamp: string }[];
 }
 
 export async function getCustomer360AiContext(rawInput: { companyId: string }): Promise<Customer360AiContext> {
   const view = await getCustomer360(rawInput);
+
+  const authContext = await resolvePlatformContext();
+  const projects =
+    view.linkedOrganization && authContext.permissions.has("delivery_projects.read")
+      ? (await listProjectsForCustomer360(view.linkedOrganization.id))
+          .slice(0, 20)
+          .map((p) => ({ sourceDomain: "project" as const, sourceId: p.id, title: p.title, status: p.status, progressPercent: p.progress.kind === "MEASURED" ? p.progress.percent : null, targetEndDate: p.targetEndDate ? p.targetEndDate.toISOString() : null }))
+      : null;
 
   return {
     generatedAt: new Date().toISOString(),
@@ -54,6 +76,7 @@ export async function getCustomer360AiContext(rawInput: { companyId: string }): 
       ? { sourceDomain: "crm_onboarding", sourceId: view.currentOnboardingDetail.onboarding.id, status: view.currentOnboardingDetail.onboarding.status, progressPercent: view.health.onboardingProgressPercent }
       : null,
     billing: view.billing ? { billingAccountStatus: view.billing.billingAccount.status, subscriptionStatus: view.billing.subscription?.status ?? null, hasPastDueInvoice: view.health.hasPastDueInvoice } : null,
+    projects,
     recentActivity: view.activity.slice(0, 10).map((e) => ({ sourceDomain: e.sourceDomain, sourceId: e.sourceId, eventType: e.eventType, summary: e.summary, timestamp: e.timestamp.toISOString() })),
   };
 }

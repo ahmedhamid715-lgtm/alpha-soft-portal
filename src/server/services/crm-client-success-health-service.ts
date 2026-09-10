@@ -6,6 +6,7 @@ import { getCustomer360, type Customer360ViewModel } from "./customer-360-servic
 import { getOrganizationFinancialHealthForPlatform } from "./financial-health-service";
 import { crmClientSuccessProfileRepository } from "@/server/repositories/crm-client-success-profile-repository";
 import { crmClientSuccessRenewalRepository } from "@/server/repositories/crm-client-success-renewal-repository";
+import { getProjectHealthInputForCustomer360 } from "./project-customer-360-service";
 import { withTenantContext } from "@/lib/tenancy/context";
 import {
   computeCustomerHealth,
@@ -94,7 +95,7 @@ export async function getClientSuccessHealth(rawInput: unknown, precomputedCompa
   );
   const mostRecentActivityAt = company360.activity[0]?.timestamp ?? null;
   const engagement = evaluateEngagement(mostRecentActivityAt, now);
-  const project = evaluateProjectHealth(now);
+  const project = await resolveProjectHealth(company360, context.permissions.has("delivery_projects.read"), now);
   const support = evaluateSupportHealth(now);
   const service = evaluateServicePerformance(now);
 
@@ -121,4 +122,17 @@ async function resolvePaymentHealth(company360: Customer360ViewModel, canSeeBill
   }
   const result = await getOrganizationFinancialHealthForPlatform({ organizationId: company360.linkedOrganization.id });
   return toPaymentHealthComponent(result.classification, result.reasons, now);
+}
+
+/**
+ * NOT_MEASURABLE gate = no linked organization, OR the caller lacks
+ * `delivery_projects.read` — the exact same shape `resolvePaymentHealth()`
+ * establishes above for Payment Health, mirrored here (Build 27) rather
+ * than reinvented. Client Success never escalates its own caller's
+ * privileges to read Project data they couldn't otherwise see.
+ */
+async function resolveProjectHealth(company360: Customer360ViewModel, canSeeProjects: boolean, now: Date): Promise<HealthComponent> {
+  if (!company360.linkedOrganization || !canSeeProjects) return evaluateProjectHealth(null, now);
+  const input = await getProjectHealthInputForCustomer360(company360.linkedOrganization.id);
+  return evaluateProjectHealth(input, now);
 }

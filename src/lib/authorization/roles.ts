@@ -102,6 +102,15 @@ const PLATFORM_FULL: PermissionKey[] = [
   // `crm.client_success.manage` stays a separate, narrower grant — see
   // each role's own permissions list below.
   "crm.client_success.read",
+  // Build 27 — day-to-day Project Management visibility, same
+  // reasoning. Deliberately `delivery_projects.read`, NOT `projects.
+  // read` — that key is already claimed by the ORGANIZATION-scope
+  // reserved placeholder below (`ORGANIZATION_FULL`) for a genuinely
+  // different, still-unbuilt concept (a per-tenant "Projects" feature);
+  // see `delivery_projects.read`'s own doc comment in permissions.ts.
+  // `.manage`/`.qa`/`.approve` stay separate, narrower grants — see each
+  // role's own permissions list below.
+  "delivery_projects.read",
 ];
 
 const ORGANIZATION_FULL: PermissionKey[] = [
@@ -234,6 +243,18 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       // attention flag — no separate `.override` exists (see
       // permissions.ts's own comment).
       "crm.client_success.manage",
+      // Build 27 — Project Management. `delivery_projects.read` also
+      // granted via PLATFORM_FULL below. `.manage`/`.qa`/`.approve` are
+      // three separate grants (not folded into one) — real separation of
+      // duties: QA sign-off and approval decisions are deliberately
+      // distinct authorities from ordinary project editing, and the
+      // self-approval guard only means something if a role CAN hold
+      // `.manage` without `.approve` (a future, narrower role might).
+      // Both owner/admin hold all three here since this build has no
+      // narrower "QA lead"/"approver" role yet to give them to instead.
+      "delivery_projects.manage",
+      "delivery_projects.qa",
+      "delivery_projects.approve",
     ],
   },
   platform_admin: {
@@ -305,6 +326,18 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       // attention flag — no separate `.override` exists (see
       // permissions.ts's own comment).
       "crm.client_success.manage",
+      // Build 27 — Project Management. `projects.read` also granted via
+      // PLATFORM_FULL below. `.manage`/`.qa`/`.approve` are three
+      // separate grants (not folded into one) — real separation of
+      // duties: QA sign-off and approval decisions are deliberately
+      // distinct authorities from ordinary project editing, and the
+      // self-approval guard only means something if a role CAN hold
+      // `.manage` without `.approve` (a future, narrower role might).
+      // Both owner/admin hold all three here since this build has no
+      // narrower "QA lead"/"approver" role yet to give them to instead.
+      "delivery_projects.manage",
+      "delivery_projects.qa",
+      "delivery_projects.approve",
     ],
   },
   support_admin: {
@@ -357,6 +390,10 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     // Build 25 — `crm.client_success.read` ALSO granted, same reasoning
     // (support staff plausibly need to see a customer's own health/risk
     // context); deliberately NOT `crm.client_success.manage`.
+    // Build 27 — `projects.read` ALSO granted, same reasoning (support
+    // staff plausibly need to see delivery status/progress for a
+    // customer they're helping); deliberately NOT `projects.manage`/
+    // `.qa`/`.approve`.
     permissions: [
       "users.read",
       "organizations.read",
@@ -377,6 +414,7 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "crm.contract.read",
       "crm.onboarding.read",
       "crm.client_success.read",
+      "delivery_projects.read",
     ],
   },
   support_agent: {

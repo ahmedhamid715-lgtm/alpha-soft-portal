@@ -292,6 +292,29 @@ export const AUDIT_CATALOG = {
   "crm.client_success.expansion_status_changed": action("CRM", "An expansion opportunity's status changed."),
   "crm.client_success.expansion_handed_to_sales": action("CRM", "An expansion opportunity was handed to Sales."),
   "crm.client_success.expansion_dismissed": action("CRM", "An expansion opportunity was dismissed."),
+  // Build 27 (Project Management, Roadmap Module 21). Filed under the
+  // `CRM` audit CATEGORY (the enum, not the key namespace) — same
+  // reasoning Sales Team/Proposals/Onboarding/Client Success already
+  // established: Project Management is the next stage of the SAME
+  // Alpha-Page-Rankers-internal sales-through-delivery continuum this
+  // category already covers, and a sixth narrow `AuditCategory` enum
+  // value for one more build would fragment filtering rather than help
+  // it (see this file's own comment elsewhere on avoiding enum bloat
+  // for a single module's own handful of actions). The action KEY
+  // namespace (`projects.*`) still keeps Project Management's own
+  // events independently greppable/filterable by key even though the
+  // category column groups them with CRM. Only material mutations are
+  // audited — never a comment, an ordinary task edit, or a progress
+  // read (see project-management.md "Audit").
+  "projects.created": action("CRM", "A project was created (manually, from onboarding, or from a template)."),
+  "projects.lifecycle_transitioned": action("CRM", "A project's lifecycle status changed."),
+  "projects.completed_override": action("CRM", "A project was force-completed despite incomplete required delivery work."),
+  "projects.owner_changed": action("CRM", "A project's owner was set or changed."),
+  "projects.template_instantiated": action("CRM", "A project was created from a template, snapshotting its milestones/tasks/QA checks."),
+  "projects.milestone_changed": action("CRM", "A milestone's title, target date, or customer visibility was materially changed."),
+  "projects.task_reopened_after_completion": action("CRM", "A project task was reopened after being marked done."),
+  "projects.approval_decided": action("CRM", "A project/milestone approval request was approved or rejected."),
+  "projects.qa_decided": action("CRM", "A project QA check was marked passed, failed, or waived."),
 } as const satisfies Record<string, AuditActionDefinition>;
 
 export type AuditActionKey = keyof typeof AUDIT_CATALOG;

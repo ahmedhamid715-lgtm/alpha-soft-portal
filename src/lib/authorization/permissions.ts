@@ -693,6 +693,33 @@ export const PERMISSION_CATALOG = {
     false,
     "portal.access",
   ),
+
+  // --- delivery_projects (Build 27 — Roadmap Module 21, PLATFORM scope).
+  // Project Management is internal Alpha Page Rankers delivery work —
+  // the same "this is our own operational tool, not a customer
+  // organization's own data" reasoning every crm.* permission above
+  // already establishes. Deliberately NOT keyed `projects.*` — that
+  // namespace is already claimed by the ORGANIZATION-scope `projects.
+  // read`/`.create`/`.update`/`.delete` reserved above (spec section 8's
+  // generic, still-unbuilt "future project-delivery modules" placeholder
+  // for a per-TENANT projects feature) — a genuinely different concept
+  // from this platform-owned agency-delivery domain; reusing the same
+  // key string would have silently overwritten that reservation for
+  // every ORGANIZATION-scope role that already lists it (owner/admin/
+  // manager/member/viewer/customer, via `ORGANIZATION_FULL` and their
+  // own explicit lists in roles.ts) with a mismatched PLATFORM-scope
+  // definition. `delivery_projects.qa` and `delivery_projects.approve`
+  // are deliberately SEPARATE from `delivery_projects.manage` — real
+  // separation-of-duties: QA sign-off and approval decisions are their
+  // own distinct responsibilities, and keeping them separate is what
+  // makes the self-approval guard (a requester and an approver must be
+  // different people) actually mean something at the permission-grant
+  // level, not just inside one service function. See
+  // docs/architecture/project-management.md "Authorization."
+  "delivery_projects.read": permission("delivery_projects", "read", "PLATFORM", "View projects, milestones, tasks, and their progress.", false),
+  "delivery_projects.manage": permission("delivery_projects", "manage", "PLATFORM", "Create/edit projects, milestones, tasks, dependencies, templates, comments, and attachments; transition project/task lifecycle.", false),
+  "delivery_projects.qa": permission("delivery_projects", "manage", "PLATFORM", "Record QA check outcomes (pass/fail/waive).", false, "delivery_projects.qa"),
+  "delivery_projects.approve": permission("delivery_projects", "approve", "PLATFORM", "Decide project/milestone approval requests.", false),
 } as const satisfies Record<string, PermissionDefinition>;
 
 export type PermissionKey = keyof typeof PERMISSION_CATALOG;

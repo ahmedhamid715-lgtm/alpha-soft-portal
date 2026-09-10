@@ -506,6 +506,75 @@ export const NOTIFICATION_TEMPLATES = {
       actionUrl: "/admin/crm/client-success",
     }),
   }),
+  // Build 27 (Project Management) — only high-value assignment/blocker/
+  // approval events, never fired on every task edit or comment (see
+  // project-management.md "Notifications").
+  "projects.project_assigned": template({
+    version: 1,
+    active: true,
+    category: "PROJECT_ACTIVITY",
+    severity: "INFO",
+    render: (data: { projectId: string; projectTitle: string }) => ({
+      title: "Project assigned",
+      body: `You were assigned as the owner of "${data.projectTitle}".`,
+      actionUrl: `/admin/projects/${data.projectId}`,
+    }),
+  }),
+  "projects.task_assigned": template({
+    version: 1,
+    active: true,
+    category: "PROJECT_ACTIVITY",
+    severity: "INFO",
+    render: (data: { projectId: string; projectTitle: string; taskTitle: string }) => ({
+      title: "Task assigned",
+      body: `You were assigned "${data.taskTitle}" on ${data.projectTitle}.`,
+      actionUrl: `/admin/projects/${data.projectId}`,
+    }),
+  }),
+  "projects.task_blocked": template({
+    version: 1,
+    active: true,
+    category: "PROJECT_ACTIVITY",
+    severity: "WARNING",
+    render: (data: { projectId: string; projectTitle: string; taskTitle: string }) => ({
+      title: "Task blocked",
+      body: `"${data.taskTitle}" on ${data.projectTitle} was marked blocked.`,
+      actionUrl: `/admin/projects/${data.projectId}`,
+    }),
+  }),
+  "projects.approval_requested": template({
+    version: 1,
+    active: true,
+    category: "PROJECT_ACTIVITY",
+    severity: "INFO",
+    render: (data: { projectId: string; projectTitle: string; resourceLabel: string }) => ({
+      title: "Approval requested",
+      body: `${data.resourceLabel} on ${data.projectTitle} needs your approval.`,
+      actionUrl: `/admin/projects/${data.projectId}`,
+    }),
+  }),
+  "projects.approval_completed": template({
+    version: 1,
+    active: true,
+    category: "PROJECT_ACTIVITY",
+    severity: "INFO",
+    render: (data: { projectId: string; projectTitle: string; resourceLabel: string; approved: boolean }) => ({
+      title: data.approved ? "Approval granted" : "Approval rejected",
+      body: `${data.resourceLabel} on ${data.projectTitle} was ${data.approved ? "approved" : "rejected"}.`,
+      actionUrl: `/admin/projects/${data.projectId}`,
+    }),
+  }),
+  "projects.project_completed": template({
+    version: 1,
+    active: true,
+    category: "PROJECT_ACTIVITY",
+    severity: "INFO",
+    render: (data: { projectId: string; projectTitle: string }) => ({
+      title: "Project completed",
+      body: `"${data.projectTitle}" was marked completed.`,
+      actionUrl: `/admin/projects/${data.projectId}`,
+    }),
+  }),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as const satisfies Record<string, NotificationTemplateDefinition<any>>;
 

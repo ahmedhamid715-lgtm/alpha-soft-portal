@@ -126,6 +126,22 @@ export const NOTIFICATION_CATEGORIES = {
     mandatoryChannels: ["IN_APP"],
     defaultEnabled: { IN_APP: true, EMAIL: true },
   }),
+  /// Build 27 — Project Management. Its own category, not folded into
+  /// `CRM_ACTIVITY`: project assignment/blocked/approval events reach a
+  /// genuinely different, larger recipient base than CRM follow-ups
+  /// (any internal delivery staff assigned to a project, not just
+  /// sales/CRM users) and deserve their own preference control, the
+  /// same reasoning `CRM_ACTIVITY` itself was split out from ordinary
+  /// `SYSTEM`/`ADMINISTRATION` activity for. EMAIL default-on — a
+  /// missed task/approval assignment is a real, actionable miss.
+  PROJECT_ACTIVITY: category({
+    label: "Project activity",
+    description: "When a project or task is assigned to you, a task is blocked, or an approval needs your decision.",
+    group: "Platform",
+    supportedChannels: ["IN_APP", "EMAIL"],
+    mandatoryChannels: ["IN_APP"],
+    defaultEnabled: { IN_APP: true, EMAIL: true },
+  }),
 } as const satisfies Record<string, NotificationCategoryDefinition>;
 
 export type NotificationCategoryKey = keyof typeof NOTIFICATION_CATEGORIES;

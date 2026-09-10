@@ -207,20 +207,83 @@ export function toPaymentHealthComponent(classification: HealthStatus, reasons: 
 // --- Not-yet-existing domains — typed extension seams ------------------
 
 /**
- * Project/Support/Service Performance all return this same shape until
- * their owning Roadmap module (21/30/23+delivery) actually exists —
+ * Support/Service Performance still return this same shape — their
+ * owning Roadmap module (30/23+delivery) does not exist yet —
  * deliberately NOT a plugin registry or abstraction layer (the Build 25
  * authorization's own "no abstraction theater" instruction) — just one
  * small function per component, each documenting exactly which future
- * module will replace it.
+ * module will replace it. Project Health graduated out of this pattern
+ * in Build 27 — see `evaluateProjectHealth()` below.
  */
 function notYetAvailable(key: "project" | "support" | "service", label: string, futureModule: string, now: Date): HealthComponent {
   return { key, label, status: "NOT_MEASURABLE", score: null, measurable: false, reason: `No authoritative ${label.toLowerCase()} domain exists yet — ${futureModule}.`, source: futureModule, lastEvaluatedAt: now };
 }
 
-export function evaluateProjectHealth(now: Date = new Date()): HealthComponent {
-  return notYetAvailable("project", "Project", "Roadmap Module 21 (Project Management)", now);
+// --- Project health (Build 27 — Roadmap Module 21) ------------------------
+
+/**
+ * Real, deterministic facts about the customer's CURRENTLY RELEVANT
+ * delivery work — aggregated across every project in `ACTIVE`/`ON_HOLD`
+ * status (a `DRAFT`/`PLANNED` project has no delivery underway yet to
+ * judge; a `COMPLETED`/`CANCELLED`/`ARCHIVED` one is no longer current —
+ * neither should move this score). Resolved by
+ * `project-customer-360-service.ts`'s own `getProjectHealthInputForCustomer360()`
+ * — this file never queries the database.
+ */
+export interface ProjectHealthInput {
+  activeProjectCount: number;
+  onHoldProjectCount: number;
+  /** Root, non-cancelled tasks with `dueDate` in the past and status not DONE/CANCELLED. */
+  overdueRequiredTaskCount: number;
+  /** Root tasks currently `BLOCKED`. */
+  blockedRequiredTaskCount: number;
+  /** ACTIVE/ON_HOLD projects whose `targetEndDate` has already passed. */
+  pastTargetDateProjectCount: number;
+  /** ACTIVE/ON_HOLD projects whose `targetEndDate` is within the next 14 days (and not already past). */
+  approachingTargetDateProjectCount: number;
+  /** Required QA checks with `status: FAILED`. */
+  failedRequiredQaCount: number;
 }
+
+/**
+ * Frozen formula (decision "Client Success — Project Health"; see
+ * project-management.md "Client Success integration" for the full
+ * writeup). `input === null` means "no linked organization, or the
+ * caller lacks `delivery_projects.read`" — the same existence/
+ * authorization NOT_MEASURABLE gate `resolvePaymentHealth()` already
+ * establishes for Payment Health, mirrored here rather than reinvented.
+ * Checks run highest-severity-first, same discipline every other
+ * component in this file already uses.
+ */
+export function evaluateProjectHealth(input: ProjectHealthInput | null, now: Date = new Date()): HealthComponent {
+  const base = { key: "project" as const, label: "Project", source: "project_management_service", lastEvaluatedAt: now };
+  if (!input || input.activeProjectCount === 0) {
+    return { ...base, status: "NOT_MEASURABLE", score: null, measurable: false, reason: "No active or on-hold delivery project exists for this customer right now." };
+  }
+  if (input.failedRequiredQaCount > 0) {
+    return { ...base, status: "CRITICAL", score: HEALTH_STATUS_SCORE.CRITICAL, measurable: true, reason: `${input.failedRequiredQaCount} required QA check(s) failed.` };
+  }
+  if (input.pastTargetDateProjectCount > 0) {
+    return { ...base, status: "CRITICAL", score: HEALTH_STATUS_SCORE.CRITICAL, measurable: true, reason: `${input.pastTargetDateProjectCount} project(s) are past their target end date and not yet complete.` };
+  }
+  if (input.overdueRequiredTaskCount >= 3) {
+    return { ...base, status: "CRITICAL", score: HEALTH_STATUS_SCORE.CRITICAL, measurable: true, reason: `${input.overdueRequiredTaskCount} required tasks are overdue.` };
+  }
+  if (input.onHoldProjectCount > 0) {
+    return { ...base, status: "AT_RISK", score: HEALTH_STATUS_SCORE.AT_RISK, measurable: true, reason: `${input.onHoldProjectCount} project(s) are currently on hold.` };
+  }
+  if (input.overdueRequiredTaskCount > 0) {
+    return { ...base, status: "AT_RISK", score: HEALTH_STATUS_SCORE.AT_RISK, measurable: true, reason: `${input.overdueRequiredTaskCount} required task(s) are overdue.` };
+  }
+  if (input.blockedRequiredTaskCount > 0) {
+    return { ...base, status: "AT_RISK", score: HEALTH_STATUS_SCORE.AT_RISK, measurable: true, reason: `${input.blockedRequiredTaskCount} required task(s) are blocked.` };
+  }
+  if (input.approachingTargetDateProjectCount > 0) {
+    return { ...base, status: "WATCH", score: HEALTH_STATUS_SCORE.WATCH, measurable: true, reason: `${input.approachingTargetDateProjectCount} project(s) approach their target end date within 14 days.` };
+  }
+  return { ...base, status: "HEALTHY", score: HEALTH_STATUS_SCORE.HEALTHY, measurable: true, reason: "All active projects are on track — no overdue or blocked required work." };
+}
+
 export function evaluateSupportHealth(now: Date = new Date()): HealthComponent {
   return notYetAvailable("support", "Support", "Roadmap Module 30 (Support Center)", now);
 }
