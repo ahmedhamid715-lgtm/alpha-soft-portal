@@ -28,6 +28,7 @@ import type { CrmClientSuccessExpansionWithRelations } from "@/server/repositori
 import { listProjectsForCustomer360, type Customer360ProjectSummary } from "@/server/services/project-customer-360-service";
 import { ProjectProgressDisplay } from "@/components/projects/project-progress-display";
 import { projectStatusVariant, projectPriorityVariant } from "@/components/projects/project-status";
+import { customerServiceStatusVariant, SERVICE_CATEGORY_LABELS } from "@/components/services/service-status";
 
 export const metadata: Metadata = { title: "Customer 360" };
 
@@ -269,8 +270,41 @@ function ContactsTab({ view }: { view: Customer360ViewModel }) {
 }
 
 function ServicesTab({ view }: { view: Customer360ViewModel }) {
+  // No hard denial state here, unlike Sales/Onboarding/Billing — this
+  // tab has ALWAYS had a fallback (the onboarding/proposal snapshot)
+  // available under `crm.read` alone; `delivery_services.read` only
+  // controls whether the richer canonical tier is attempted (see
+  // `resolveServices()`'s own precedence comment). A caller without it
+  // still sees the exact same snapshot view Build 24 originally shipped.
   if (!view.services || view.services.items.length === 0) {
-    return <EmptyState icon={Package} title="No sold services on record" description="Services appear once a proposal is accepted or onboarding has started." />;
+    return <EmptyState icon={Package} title="No sold services on record" description="Services appear once a proposal is accepted, onboarding has started, or a service is provisioned in Service Management." />;
+  }
+  if (view.services.source === "canonical") {
+    return (
+      <div className="flex flex-col gap-3">
+        <p className="text-xs text-muted-foreground">From Service Management — the canonical operational record.</p>
+        <div className="flex flex-col gap-2">
+          {view.services.items.map((item) => (
+            <Link key={item.id} href={`/admin/services/customers/${item.id}`}>
+              <Card className="transition-colors hover:bg-accent/50">
+                <CardContent className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-sm font-medium">{item.serviceName}</span>
+                    <StatusBadge status={customerServiceStatusVariant(item.status)}>{item.status}</StatusBadge>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span>{SERVICE_CATEGORY_LABELS[item.category]}</span>
+                    {item.ownerName ? <span>Owner: {item.ownerName}</span> : null}
+                    {item.targetEndDate ? <span>Target: {fmtDate(item.targetEndDate)}</span> : null}
+                    {item.linkedProjectTitles.length > 0 ? <span>{item.linkedProjectTitles.length} linked project(s)</span> : null}
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      </div>
+    );
   }
   return (
     <div className="flex flex-col gap-3">

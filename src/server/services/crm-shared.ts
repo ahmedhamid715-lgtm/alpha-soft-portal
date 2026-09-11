@@ -57,7 +57,14 @@ export async function resolveCrmScope(permission: PermissionKey): Promise<CrmSco
 export async function listAssignableUsers(): Promise<User[]> {
   const { tenantScope, organizationId } = await resolveCrmScope("crm.read");
   const memberships = await withTenantContext(tenantScope, (tx) => membershipRepository.listForOrganization(organizationId, { page: 1, limit: 200 }, { status: "ACTIVE" }, tx));
-  return memberships.items.map((m) => m.user);
+  // Build 29 Codex Security Engineer finding SM-SEC-02 — excludes only
+  // globally SUSPENDED/DEACTIVATED users, matching
+  // `assertPlatformStaffMember()`'s own identical (and identically
+  // reasoned) filter below exactly — a picker must never OFFER an
+  // account its own assignment check would then reject, and must never
+  // WITHHOLD one it would actually accept (a real, not-yet-first-login
+  // `INVITED` staff member stays offered).
+  return memberships.items.filter((m) => m.user.status !== "SUSPENDED" && m.user.status !== "DEACTIVATED").map((m) => m.user);
 }
 
 /**
@@ -78,6 +85,25 @@ export async function assertPlatformStaffMember(userId: string, organizationId: 
   const membership = await membershipRepository.findByOrganizationAndUser(organizationId, userId, tx);
   if (!membership || membership.status !== "ACTIVE") {
     throw new ValidationError("assignedToUserId must be an active member of the platform organization.");
+  }
+  // Build 29 Codex Security Engineer finding SM-SEC-02 — an ACTIVE
+  // membership alone does not mean the underlying `User` is still
+  // usable: global suspension/deactivation (`user-management-service.ts`)
+  // deliberately leaves memberships untouched, so a globally disabled
+  // account could otherwise still pass this check and be assigned real
+  // work — including receiving a notification email with customer/
+  // service content. Rejects only SUSPENDED/DEACTIVATED — NOT `INVITED`
+  // (a real platform staff member who simply hasn't completed their
+  // first sign-in yet is still legitimately assignable; only
+  // `suspendUser()`/`deactivateUser()` reach SUSPENDED/DEACTIVATED, and
+  // reactivation is the only way back out — see that file's own
+  // "ACTIVE → SUSPENDED" / "SUSPENDED|DEACTIVATED → ACTIVE" transition
+  // comments). A membership carries no denormalized `User.status` of
+  // its own, so this is a genuinely separate lookup, not extra work
+  // folded into the query above.
+  const user = await tx.user.findUnique({ where: { id: userId }, select: { status: true } });
+  if (!user || user.status === "SUSPENDED" || user.status === "DEACTIVATED") {
+    throw new ValidationError("assignedToUserId must not be a suspended or deactivated platform user.");
   }
 }
 

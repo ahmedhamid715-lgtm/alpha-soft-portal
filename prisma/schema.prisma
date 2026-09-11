@@ -232,6 +232,9 @@ model Organization {
   projectApprovals                   ProjectApproval[]
   projectQaChecks                    ProjectQaCheck[]
   internalTasks                      InternalTask[]
+  serviceDefinitions                 ServiceDefinition[]
+  customerServicesAsPlatformOwner    CustomerService[]                       @relation("CustomerServicePlatformOwner")
+  customerServicesAsCustomer         CustomerService[]                       @relation("CustomerServiceCustomerOrganization")
 
   @@index([status])
   @@index([isPlatform])
@@ -388,6 +391,9 @@ model User {
   internalTasksCompleted               InternalTask[]                         @relation("InternalTaskCompletedBy")
   internalTasksCancelled               InternalTask[]                         @relation("InternalTaskCancelledBy")
   internalTasksCreated                 InternalTask[]                         @relation("InternalTaskCreatedBy")
+  customerServicesOwned                CustomerService[]                      @relation("CustomerServiceOwner")
+  customerServicesCancelled            CustomerService[]                      @relation("CustomerServiceCancelledBy")
+  customerServicesCreated              CustomerService[]                      @relation("CustomerServiceCreatedBy")
 
   @@index([status])
   @@map("users")
@@ -2379,6 +2385,7 @@ model CrmCompany {
   clientSuccessRenewals   CrmClientSuccessRenewal[]
   clientSuccessExpansions CrmClientSuccessExpansionOpportunity[]
   projects                Project[]
+  customerServices        CustomerService[]
 
   @@index([organizationId, createdAt])
   @@index([organizationId, status, createdAt])
@@ -3594,6 +3601,7 @@ model CrmClientOnboardingServiceItem {
   onboarding          CrmClientOnboarding  @relation(fields: [onboardingId], references: [id], onDelete: Cascade)
   sourceLineItem      CrmProposalLineItem? @relation(fields: [sourceLineItemId], references: [id], onDelete: SetNull)
   projectsCreatedFrom Project[]            @relation("ProjectSourceServiceItem")
+  customerServicesProvisioned CustomerService[]
 
   @@index([organizationId, onboardingId, sortOrder])
   @@map("crm_client_onboarding_service_items")
@@ -4059,6 +4067,7 @@ model Project {
   companyId               String  @map("company_id") @db.Uuid
   originatingOnboardingId String? @map("originating_onboarding_id") @db.Uuid
   sourceServiceItemId     String? @map("source_service_item_id") @db.Uuid
+  customerServiceId       String? @map("customer_service_id") @db.Uuid
   /// Instantiation provenance only; never a live structural dependency on
   /// the template after the project snapshot is created.
   sourceTemplateId        String? @map("source_template_id") @db.Uuid
@@ -4091,6 +4100,7 @@ model Project {
   company               CrmCompany                      @relation(fields: [companyId], references: [id], onDelete: Cascade)
   originatingOnboarding CrmClientOnboarding?            @relation("ProjectOriginatingOnboarding", fields: [originatingOnboardingId], references: [id], onDelete: SetNull)
   sourceServiceItem     CrmClientOnboardingServiceItem? @relation("ProjectSourceServiceItem", fields: [sourceServiceItemId], references: [id], onDelete: SetNull)
+  customerService       CustomerService?                @relation("ProjectCustomerService", fields: [customerServiceId], references: [id], onDelete: SetNull)
   sourceTemplate        ProjectTemplate?                @relation(fields: [sourceTemplateId], references: [id], onDelete: SetNull)
   ownerUser             User?                           @relation("ProjectOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
   completedByUser       User?                           @relation("ProjectCompletedBy", fields: [completedByUserId], references: [id], onDelete: SetNull)
@@ -4111,6 +4121,7 @@ model Project {
   @@index([customerOrganizationId, status])
   @@index([companyId, createdAt])
   @@index([originatingOnboardingId])
+  @@index([customerServiceId])
   @@index([ownerUserId, status])
   @@map("projects")
 }
@@ -4543,4 +4554,133 @@ enum InternalTaskStatus {
   CANCELLED
 
   @@map("internal_task_status")
+}
+
+// =============================================================================
+// Build 29 — Service Management (Canonical Roadmap Module 23)
+// =============================================================================
+
+enum ServiceCategory {
+  SEO
+  LOCAL_SEO
+  WEB_DEVELOPMENT
+  ECOMMERCE
+  GHL_AUTOMATION
+  CREATIVE
+  OTHER
+
+  @@map("service_category")
+}
+
+enum ServiceDeliveryCadence {
+  ONE_TIME
+  RECURRING
+  ONGOING
+
+  @@map("service_delivery_cadence")
+}
+
+enum ServiceDefinitionStatus {
+  ACTIVE
+  ARCHIVED
+
+  @@map("service_definition_status")
+}
+
+enum CustomerServiceStatus {
+  PENDING
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+
+  @@map("customer_service_status")
+}
+
+model ServiceDefinition {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  name String
+  /// Stable, unique-per-org short code (e.g. "SEO-CORE") — the durable
+  /// reference future specialist modules and integrations key off,
+  /// never a display label that can drift.
+  code            String
+  description     String?
+  category        ServiceCategory
+  deliveryCadence ServiceDeliveryCadence @map("delivery_cadence")
+  sortOrder       Int                    @default(0) @map("sort_order")
+  status          ServiceDefinitionStatus @default(ACTIVE)
+
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customerServices CustomerService[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status, sortOrder])
+  @@index([organizationId, category])
+  @@map("service_definitions")
+}
+
+model CustomerService {
+  id                     String @id @db.Uuid
+  organizationId         String @map("organization_id") @db.Uuid
+  customerOrganizationId String @map("customer_organization_id") @db.Uuid
+  companyId              String @map("company_id") @db.Uuid
+  serviceDefinitionId    String @map("service_definition_id") @db.Uuid
+
+  /// Provenance — NULL means manually created (no proposal/onboarding
+  /// history). NEVER inferred/guessed; set exactly once at provisioning.
+  /// SetNull on delete: a historical CustomerService must never break if
+  /// the source onboarding service item's own row is ever affected.
+  sourceOnboardingServiceItemId String? @map("source_onboarding_service_item_id") @db.Uuid
+
+  quantity Int                   @default(1)
+  status   CustomerServiceStatus @default(PENDING)
+
+  ownerUserId String? @map("owner_user_id") @db.Uuid
+
+  startDate     DateTime? @map("start_date") @db.Timestamptz(3)
+  targetEndDate DateTime? @map("target_end_date") @db.Timestamptz(3)
+
+  activatedAt DateTime? @map("activated_at") @db.Timestamptz(3)
+  pausedAt    DateTime? @map("paused_at") @db.Timestamptz(3)
+
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(3)
+
+  cancelledAt       DateTime? @map("cancelled_at") @db.Timestamptz(3)
+  cancelledReason   String?   @map("cancelled_reason")
+  cancelledByUserId String?   @map("cancelled_by_user_id") @db.Uuid
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization                Organization                     @relation("CustomerServicePlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  customerOrganization        Organization                     @relation("CustomerServiceCustomerOrganization", fields: [customerOrganizationId], references: [id], onDelete: Cascade)
+  company                     CrmCompany                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  serviceDefinition           ServiceDefinition                @relation(fields: [serviceDefinitionId], references: [id], onDelete: Restrict)
+  sourceOnboardingServiceItem CrmClientOnboardingServiceItem?  @relation(fields: [sourceOnboardingServiceItemId], references: [id], onDelete: SetNull)
+  ownerUser                   User?                            @relation("CustomerServiceOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  cancelledByUser             User?                            @relation("CustomerServiceCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
+  createdByUser               User                             @relation("CustomerServiceCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  projects                    Project[]                        @relation("ProjectCustomerService")
+
+  @@index([organizationId, customerOrganizationId, status])
+  @@index([organizationId, status, createdAt])
+  @@index([companyId, status])
+  @@index([serviceDefinitionId])
+  @@index([ownerUserId, status])
+  // Codex Performance Engineer review — the admin list's default
+  // (unfiltered-status) request orders by `createdAt DESC, id ASC`
+  // across the whole tenant; `[organizationId, status, createdAt]`
+  // above can't serve that ordering when `status` isn't part of the
+  // WHERE clause. Same "the default unfiltered list needs its own
+  // index" finding Build 27's own `projects_organization_id_created_at_idx`
+  // and Build 23's own onboarding list index already document.
+  @@index([organizationId, createdAt(sort: Desc), id])
+  @@map("customer_services")
 }

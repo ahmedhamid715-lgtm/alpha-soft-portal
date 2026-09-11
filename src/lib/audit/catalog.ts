@@ -335,6 +335,28 @@ export const AUDIT_CATALOG = {
   "tasks.internal_task_assigned": action("ADMINISTRATION", "A standalone internal task was assigned to a platform staff member."),
   "tasks.internal_task_status_changed": action("ADMINISTRATION", "A standalone internal task's status changed (completed, reopened, or cancelled)."),
   "tasks.internal_task_due_date_changed": action("ADMINISTRATION", "A standalone internal task's due date was materially changed."),
+
+  // --- services (Build 29 — Roadmap Module 23, Service Management).
+  // Reuses the CRM category — same precedent `projects.*` already
+  // established (Service Management sits in the same commercial/
+  // delivery domain family as Project Management, unlike Task
+  // Management's own genuinely administrative `InternalTask`). The
+  // action KEY namespace here is `services.*`, distinct from the
+  // `delivery_services.*` PERMISSION namespace — same single-lowercase-
+  // word-before-the-first-dot convention every other action key in this
+  // catalog follows.
+  "services.definition_created": action("CRM", "A service catalog definition was created."),
+  "services.definition_updated": action("CRM", "A service catalog definition's editable fields were changed."),
+  "services.definition_archived": action("CRM", "A service catalog definition was archived."),
+  "services.definition_reactivated": action("CRM", "An archived service catalog definition was reactivated."),
+  "services.customer_service_provisioned": action("CRM", "A customer service engagement was provisioned from an onboarding service item."),
+  "services.customer_service_created_manually": action("CRM", "A customer service engagement was created manually, with no proposal/onboarding provenance."),
+  "services.customer_service_owner_changed": action("CRM", "A customer service engagement's operational owner was set or changed."),
+  "services.customer_service_activated": action("CRM", "A customer service engagement was activated."),
+  "services.customer_service_paused": action("CRM", "A customer service engagement was paused."),
+  "services.customer_service_resumed": action("CRM", "A paused customer service engagement was resumed."),
+  "services.customer_service_completed": action("CRM", "A customer service engagement was marked complete."),
+  "services.customer_service_cancelled": action("CRM", "A customer service engagement was cancelled."),
 } as const satisfies Record<string, AuditActionDefinition>;
 
 export type AuditActionKey = keyof typeof AUDIT_CATALOG;

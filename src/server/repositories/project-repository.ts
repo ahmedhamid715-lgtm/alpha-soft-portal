@@ -11,6 +11,8 @@ export interface ProjectCreateInput {
   companyId: string;
   originatingOnboardingId: string | null;
   sourceServiceItemId: string | null;
+  /** Build 29 (Service Management) — the canonical `CustomerService` this project delivers, if any. Additive, optional, independent of `sourceServiceItemId` (the historical onboarding provenance) — see service-management.md "Project Management integration." */
+  customerServiceId?: string | null;
   sourceTemplateId: string | null;
   title: string;
   description: string | null;
@@ -68,6 +70,27 @@ export const projectRepository = {
         take: 200,
       }),
     );
+  },
+
+  /** Build 29 (Service Management) — every project delivering ONE `CustomerService`, bounded to 20 (a single service's own project count is small by construction — see service-management.md "Project Management integration" for the cardinality reasoning). Ordered oldest-first (delivery history order), used by the customer-service detail page and the Portal service projection. */
+  async listForCustomerService(customerServiceId: string, tx: TransactionClient | typeof db = db): Promise<Project[]> {
+    return withDbErrorTranslation(() => tx.project.findMany({ where: { customerServiceId }, orderBy: { createdAt: "asc" }, take: 20 }));
+  },
+
+  /**
+   * Build 29 — the SAME read as `listForCustomerService()`, batched
+   * across MULTIPLE `CustomerService` ids in one query (Codex
+   * Performance Engineer finding — `listServicesForCustomer360()` and
+   * the Portal's own canonical-services projection were each issuing
+   * one query per service, a real N+1 at their own documented 50-row
+   * ceiling). Callers group the flat result by `customerServiceId`
+   * themselves — grouping in JS over an already-bounded (≤50 services ×
+   * ≤20 projects = ≤1000 rows) result set is simpler than a SQL window
+   * function for this module's own realistic scale.
+   */
+  async listForCustomerServices(customerServiceIds: string[], tx: TransactionClient | typeof db = db): Promise<Project[]> {
+    if (customerServiceIds.length === 0) return [];
+    return withDbErrorTranslation(() => tx.project.findMany({ where: { customerServiceId: { in: customerServiceIds } }, orderBy: { createdAt: "asc" } }));
   },
 
   /** Bounded to 100 — a single customer organization's own project count, an entirely different (and much smaller) scale than the platform-wide list above; used by both the Customer 360 composition service and the Portal projection service. */

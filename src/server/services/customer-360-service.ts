@@ -10,6 +10,7 @@ import { listContracts } from "./crm-contract-service";
 import { listOnboardings, getOnboardingDetail, type OnboardingDetail } from "./crm-client-onboarding-service";
 import { listActivitiesForCompany } from "./crm-activity-service";
 import { getOrganizationBillingForPlatform, type PlatformBillingDetail } from "./billing-platform-service";
+import { listServicesForCustomer360, type Customer360ServiceSummary } from "./customer-service-service";
 import { organizationRepository } from "@/server/repositories/organization-repository";
 import { BillingAccountInvalidError } from "@/lib/billing/errors";
 import {
@@ -81,8 +82,21 @@ export interface Customer360ViewModel {
   onboardings: CrmClientOnboardingWithRelations[] | null;
   currentOnboardingDetail: OnboardingDetail | null;
 
-  /** Sold/onboarding service snapshot — see customer-360.md "Services." Never the future canonical Service Management catalog (Roadmap Module 23, which doesn't exist yet). */
-  services: { source: "onboarding" | "accepted_proposal"; items: { title: string; description: string | null; quantity: number }[] } | null;
+  canSeeServices: boolean;
+  /**
+   * Build 29 — real canonical `CustomerService` rows now take
+   * precedence, falling back to the exact same sold/onboarding
+   * snapshot precedence Build 24 originally established — see
+   * service-management.md "Customer 360 integration." `"canonical"`
+   * items carry richer fields (`status`/`ownerName`/dates/linked
+   * projects); the two snapshot sources keep their original, narrower
+   * shape (title/description/quantity only — no operational status
+   * exists for a mere commercial line item).
+   */
+  services:
+    | { source: "canonical"; items: Customer360ServiceSummary[] }
+    | { source: "onboarding" | "accepted_proposal"; items: { title: string; description: string | null; quantity: number }[] }
+    | null;
 
   canSeeBilling: boolean;
   billing: PlatformBillingDetail | null;
@@ -123,13 +137,14 @@ export async function getCustomer360(rawInput: unknown): Promise<Customer360View
   const canSeeContracts = context.permissions.has("crm.contract.read");
   const canSeeOnboarding = context.permissions.has("crm.onboarding.read");
   const canSeeBilling = context.permissions.has("billing.readPlatform");
+  const canSeeServices = context.permissions.has("delivery_services.read");
 
   // Stage 1 — every one of these depends only on `company` (already
   // resolved), never on each other, so they all start together
   // (Codex Performance Engineer review, finding #1 — the linked-
   // organization lookup previously ran to completion BEFORE this batch
   // even started, serializing two genuinely independent chains).
-  const [linkedOrganization, contacts, deals, proposals, contracts, onboardings, activities] = await Promise.all([
+  const [linkedOrganization, contacts, deals, proposals, contracts, onboardings, activities, canonicalServices] = await Promise.all([
     company.convertedToOrganizationId ? organizationRepository.findById(company.convertedToOrganizationId) : Promise.resolve(null),
     listContactsForCompany({ companyId: company.id }),
     canSeeSales ? listDeals({ companyId: company.id, limit: 10 }).then((r) => r.items) : Promise.resolve(null),
@@ -137,6 +152,7 @@ export async function getCustomer360(rawInput: unknown): Promise<Customer360View
     canSeeContracts ? listContracts({ companyId: company.id }) : Promise.resolve(null),
     canSeeOnboarding ? listOnboardings({ companyId: company.id }) : Promise.resolve(null),
     listActivitiesForCompany({ companyId: company.id, page: 1, limit: 25 }).then((r) => r.items),
+    canSeeServices ? listServicesForCustomer360(company.id) : Promise.resolve(null),
   ]);
 
   // The single most-relevant deal (WON, preferentially — otherwise the
@@ -167,7 +183,7 @@ export async function getCustomer360(rawInput: unknown): Promise<Customer360View
   const accountOwner = resolveAccountOwner(currentOnboardingDetail, latestDeal);
   const primaryContact = latestDeal?.primaryContact ?? null;
 
-  const services = await resolveServices(currentOnboardingDetail, proposals);
+  const services = await resolveServices(canonicalServices, currentOnboardingDetail, proposals);
   const documents = resolveDocuments(proposals, contracts, currentOnboardingDetail);
 
   const hasSoldSignal = Boolean((deals && deals.some((d) => d.status === "WON")) || (proposals && proposals.some((p) => p.status === "ACCEPTED")) || (contracts && contracts.some((c) => c.status === "ACTIVE")));
@@ -219,6 +235,7 @@ export async function getCustomer360(rawInput: unknown): Promise<Customer360View
     canSeeOnboarding,
     onboardings,
     currentOnboardingDetail,
+    canSeeServices,
     services,
     canSeeBilling,
     billing,
@@ -248,7 +265,11 @@ function resolveAccountOwner(onboardingDetail: OnboardingDetail | null, latestDe
 const SERVICE_ITEMS_CAP = 50;
 const DOCUMENTS_CAP = 50;
 
-async function resolveServices(onboardingDetail: OnboardingDetail | null, proposals: CrmProposalWithRelations[] | null): Promise<Customer360ViewModel["services"]> {
+/** Build 29 — `canonicalServices` (real `CustomerService` rows) takes precedence over the original Build 24 onboarding/proposal snapshot fallback, never both, never a merge. `null` (no `delivery_services.read`, or genuinely zero canonical rows) falls through to the exact original precedence unchanged. */
+async function resolveServices(canonicalServices: Customer360ServiceSummary[] | null, onboardingDetail: OnboardingDetail | null, proposals: CrmProposalWithRelations[] | null): Promise<Customer360ViewModel["services"]> {
+  if (canonicalServices && canonicalServices.length > 0) {
+    return { source: "canonical", items: canonicalServices };
+  }
   if (onboardingDetail && onboardingDetail.serviceItems.length > 0) {
     return { source: "onboarding", items: onboardingDetail.serviceItems.slice(0, SERVICE_ITEMS_CAP).map((i) => ({ title: i.title, description: i.description, quantity: i.quantity })) };
   }

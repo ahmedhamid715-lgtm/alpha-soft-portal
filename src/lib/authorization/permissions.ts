@@ -750,6 +750,33 @@ export const PERMISSION_CATALOG = {
   "task_management.read": permission("task_management", "read", "PLATFORM", "Use the Task Management surface and view your own assigned tasks (My Tasks) across every source you're independently authorized to see.", false),
   "task_management.team_read": permission("task_management", "read", "PLATFORM", "View other platform staff members' task assignments (Team Tasks / All Tasks) — a separate, broader authority from task_management.read.", false, "task_management.team_read"),
   "task_management.manage": permission("task_management", "manage", "PLATFORM", "Create/edit/complete/cancel standalone internal tasks. Never grants authority over CRM/Project/Onboarding tasks — those still require their own source-domain manage permission.", false),
+
+  // --- delivery_services (Build 29 — Roadmap Module 23, PLATFORM
+  // scope). The canonical operational service spine: `ServiceDefinition`
+  // (the catalog of what Alpha Page Rankers can deliver) and
+  // `CustomerService` (one real service engagement for one real
+  // customer). Checked for collision against reserved/dormant keys
+  // before naming — `services.*`/`delivery_services.*` were both
+  // unclaimed (unlike `projects.*`, which Build 27 found already
+  // reserved) — `delivery_services.*` was still chosen deliberately, for
+  // consistency with `delivery_projects.*`'s own established naming, not
+  // merely because it happened to be free.
+  // `delivery_services.read` covers BOTH the catalog and customer
+  // engagements — splitting read into two tiers wasn't justified the way
+  // Task Management's My/Team split was (there's no "my own" vs.
+  // "everyone else's" distinction here; every customer service is
+  // equally an operational fact any authorized staff member may see).
+  // `delivery_services.catalog_manage` is a SEPARATE, narrower authority
+  // from `delivery_services.manage` — administering the SHARED catalog
+  // (creating/editing/archiving a `ServiceDefinition` used by every
+  // customer) is a materially different, more consequential capability
+  // than day-to-day `CustomerService` lifecycle operations (provisioning,
+  // activating, reassigning an owner) — same tier-separation reasoning
+  // `delivery_projects.qa`/`.approve` already establish relative to
+  // `delivery_projects.manage`.
+  "delivery_services.read": permission("delivery_services", "read", "PLATFORM", "View the service catalog and customer service engagements.", false),
+  "delivery_services.manage": permission("delivery_services", "manage", "PLATFORM", "Provision, edit, and transition the lifecycle of customer service engagements.", false),
+  "delivery_services.catalog_manage": permission("delivery_services", "manage", "PLATFORM", "Create, edit, and archive service catalog definitions.", false, "delivery_services.catalog_manage"),
 } as const satisfies Record<string, PermissionDefinition>;
 
 export type PermissionKey = keyof typeof PERMISSION_CATALOG;

@@ -46,6 +46,33 @@ export const crmClientOnboardingServiceItemRepository = {
     return withDbErrorTranslation(() => tx.crmClientOnboardingServiceItem.findMany({ where: { onboardingId }, orderBy: { sortOrder: "asc" } }));
   },
 
+  /** Build 29 (Service Management) — provisioning's own single-row lookup by id, never previously needed by Build 23's own onboarding-scoped reads. */
+  async findById(id: string, tx: TransactionClient | typeof db = db): Promise<CrmClientOnboardingServiceItem | null> {
+    return withDbErrorTranslation(() => tx.crmClientOnboardingServiceItem.findUnique({ where: { id } }));
+  },
+
+  /**
+   * Build 29 (Service Management) — every onboarding service item for
+   * this platform organization with NO active (non-`CANCELLED`)
+   * `CustomerService` yet provisioned from it — the real "unmapped
+   * historical services" list, computed directly from the relation,
+   * never a separate flag/field that could drift out of sync with the
+   * actual provisioning state. Bounded to 200, same realistic-total
+   * assumption every other cross-record list in this codebase
+   * documents. Includes the parent onboarding's own linked-organization
+   * name for display context.
+   */
+  async listUnprovisioned(organizationId: string, tx: TransactionClient | typeof db = db): Promise<(CrmClientOnboardingServiceItem & { onboarding: { id: string; linkedOrganization: { displayName: string } } })[]> {
+    return withDbErrorTranslation(() =>
+      tx.crmClientOnboardingServiceItem.findMany({
+        where: { organizationId, customerServicesProvisioned: { none: { status: { not: "CANCELLED" } } } },
+        include: { onboarding: { select: { id: true, linkedOrganization: { select: { displayName: true } } } } },
+        orderBy: { createdAt: "desc" },
+        take: 200,
+      }),
+    );
+  },
+
   async update(id: string, data: Partial<{ onboardingRequired: boolean; notes: string | null }>, tx: TransactionClient | typeof db = db): Promise<CrmClientOnboardingServiceItem> {
     return withDbErrorTranslation(() => tx.crmClientOnboardingServiceItem.update({ where: { id }, data }));
   },

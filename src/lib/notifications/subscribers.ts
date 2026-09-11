@@ -833,3 +833,64 @@ events.on<InternalTaskAssignedPayload>("task_management.internal_task_assigned",
     templateData: { taskId, title },
   });
 });
+
+// --- Build 29 (Service Management) — three high-signal events only:
+// owner assignment, activation, completion. No pause/resume — those are
+// routine operational adjustments, not "needs your attention" facts a
+// staff member's inbox should carry (see `categories.ts`'s own doc
+// comment).
+
+interface CustomerServiceOwnerAssignedPayload {
+  customerServiceId: string;
+  organizationId: string;
+  ownerUserId: string;
+  serviceName: string;
+  companyName: string;
+}
+
+events.on<CustomerServiceOwnerAssignedPayload>("services.customer_service_owner_assigned", async (event) => {
+  const { customerServiceId, organizationId, ownerUserId, serviceName, companyName } = event.payload;
+  await notificationService.notify({
+    templateKey: "services.customer_service_owner_assigned",
+    recipientUserId: ownerUserId,
+    organizationId,
+    sourceEventType: "services.customer_service_owner_assigned",
+    sourceEntityType: "customer_service",
+    sourceEntityId: customerServiceId,
+    templateData: { customerServiceId, serviceName, companyName },
+  });
+});
+
+interface CustomerServiceLifecyclePayload {
+  customerServiceId: string;
+  organizationId: string;
+  ownerUserId: string;
+  serviceName: string;
+  companyName: string;
+}
+
+events.on<CustomerServiceLifecyclePayload>("services.customer_service_activated", async (event) => {
+  const { customerServiceId, organizationId, ownerUserId, serviceName, companyName } = event.payload;
+  await notificationService.notify({
+    templateKey: "services.customer_service_activated",
+    recipientUserId: ownerUserId,
+    organizationId,
+    sourceEventType: "services.customer_service_activated",
+    sourceEntityType: "customer_service",
+    sourceEntityId: customerServiceId,
+    templateData: { customerServiceId, serviceName, companyName },
+  });
+});
+
+events.on<CustomerServiceLifecyclePayload>("services.customer_service_completed", async (event) => {
+  const { customerServiceId, organizationId, ownerUserId, serviceName, companyName } = event.payload;
+  await notificationService.notify({
+    templateKey: "services.customer_service_completed",
+    recipientUserId: ownerUserId,
+    organizationId,
+    sourceEventType: "services.customer_service_completed",
+    sourceEntityType: "customer_service",
+    sourceEntityId: customerServiceId,
+    templateData: { customerServiceId, serviceName, companyName },
+  });
+});

@@ -118,6 +118,12 @@ const PLATFORM_FULL: PermissionKey[] = [
   // independently). `.team_read`/`.manage` stay separate, narrower
   // grants — see each role's own permissions list below.
   "task_management.read",
+  // Build 29 — Service Management. `delivery_services.read` covers both
+  // the shared catalog and customer service engagements — day-to-day
+  // platform staff visibility, same tier as `delivery_projects.read`
+  // immediately above. `.manage`/`.catalog_manage` stay separate,
+  // narrower grants — see each role's own permissions list below.
+  "delivery_services.read",
 ];
 
 const ORGANIZATION_FULL: PermissionKey[] = [
@@ -267,6 +273,12 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       // same tier as the Project Management grants immediately above.
       "task_management.team_read",
       "task_management.manage",
+      // Build 29 — Service Management. Both owner/admin administer the
+      // shared catalog AND day-to-day customer service engagements —
+      // same tier as the Project Management/Task Management grants
+      // immediately above.
+      "delivery_services.manage",
+      "delivery_services.catalog_manage",
     ],
   },
   platform_admin: {
@@ -355,6 +367,8 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       // same tier as the Project Management grants immediately above.
       "task_management.team_read",
       "task_management.manage",
+      "delivery_services.manage",
+      "delivery_services.catalog_manage",
     ],
   },
   support_admin: {
@@ -420,6 +434,10 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     // assignments) or `.manage` (standalone-task CRUD) — same
     // "visibility, not content-management power" line every other grant
     // on this role already draws.
+    // Build 29 — `delivery_services.read` ALSO granted, same reasoning
+    // (support staff plausibly need to see which services a customer
+    // has and their operational status while helping them); deliberately
+    // NOT `.manage`/`.catalog_manage`.
     permissions: [
       "users.read",
       "organizations.read",
@@ -442,6 +460,7 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "crm.client_success.read",
       "delivery_projects.read",
       "task_management.read",
+      "delivery_services.read",
     ],
   },
   support_agent: {

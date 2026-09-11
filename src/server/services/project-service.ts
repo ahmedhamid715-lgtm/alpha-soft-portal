@@ -18,6 +18,7 @@ import { organizationRepository } from "@/server/repositories/organization-repos
 import { crmCompanyRepository } from "@/server/repositories/crm-company-repository";
 import { crmClientOnboardingRepository } from "@/server/repositories/crm-client-onboarding-repository";
 import { crmClientOnboardingServiceItemRepository } from "@/server/repositories/crm-client-onboarding-service-item-repository";
+import { customerServiceRepository } from "@/server/repositories/customer-service-repository";
 import { calculateMilestoneProgress, calculateProjectProgress, evaluateProjectCompletionCriteria, type ProjectProgress, type ProjectCompletionResult } from "@/lib/projects/progress";
 import { canTransitionProject, type ProjectStatus } from "@/lib/projects/lifecycle";
 import { events } from "@/lib/platform/events";
@@ -83,6 +84,24 @@ async function assertActiveCustomerOrganization(customerOrganizationId: string, 
   if (!org || org.status !== "ACTIVE") throw new ValidationError("customerOrganizationId does not reference an active organization.");
   if (org.isPlatform) throw new ValidationError("customerOrganizationId must be a real customer organization, not the platform organization.");
   return org;
+}
+
+/**
+ * Build 29 (Service Management) — validates an optional `customerServiceId`
+ * belongs to THIS platform organization and to the SAME
+ * `customerOrganizationId`/`companyId` pairing being used to create the
+ * project — the same cross-tenant consistency discipline
+ * `resolveConsistentCompany()` already establishes, applied to the new
+ * additive relation. Project Management never inserts/updates a
+ * `CustomerService` row itself — this is read-only validation. See
+ * service-management.md "Project Management integration."
+ */
+async function resolveConsistentCustomerService(customerServiceId: string, customerOrganizationId: string, companyId: string, platformOrganizationId: string, tx: TransactionClient): Promise<void> {
+  const customerService = await customerServiceRepository.findById(customerServiceId, tx);
+  if (!customerService || customerService.organizationId !== platformOrganizationId) throw new NotFoundError("Customer service");
+  if (customerService.customerOrganizationId !== customerOrganizationId || customerService.companyId !== companyId) {
+    throw new ValidationError("customerServiceId does not belong to the same customer organization and company as this project.");
+  }
 }
 
 const listProjectsSchema = z.object({
@@ -160,6 +179,8 @@ const createProjectSchema = z.object({
   ownerUserId: z.string().uuid().nullable().optional(),
   startDate: z.coerce.date().nullable().optional(),
   targetEndDate: z.coerce.date().nullable().optional(),
+  /** Build 29 (Service Management) — the canonical `CustomerService` this project delivers, if any. Optional, additive. */
+  customerServiceId: z.string().uuid().nullable().optional(),
 });
 
 /** Manual creation for an EXISTING customer (decision "Project creation — manual"). Never creates an `Organization`/`CrmCompany` implicitly — both must already exist and already be linked to each other. */
@@ -171,6 +192,7 @@ export async function createProject(rawInput: unknown): Promise<Project> {
     await assertActiveCustomerOrganization(input.customerOrganizationId, tx);
     await resolveConsistentCompany(input.companyId, input.customerOrganizationId, organizationId, tx);
     if (input.ownerUserId) await assertPlatformStaffMember(input.ownerUserId, organizationId, tx);
+    if (input.customerServiceId) await resolveConsistentCustomerService(input.customerServiceId, input.customerOrganizationId, input.companyId, organizationId, tx);
 
     return projectRepository.create(
       {
@@ -180,6 +202,7 @@ export async function createProject(rawInput: unknown): Promise<Project> {
         companyId: input.companyId,
         originatingOnboardingId: null,
         sourceServiceItemId: null,
+        customerServiceId: input.customerServiceId ?? null,
         sourceTemplateId: null,
         title: input.title,
         description: input.description ?? null,
@@ -210,6 +233,8 @@ const createFromOnboardingSchema = z.object({
   ownerUserId: z.string().uuid().nullable().optional(),
   startDate: z.coerce.date().nullable().optional(),
   targetEndDate: z.coerce.date().nullable().optional(),
+  /** Build 29 (Service Management) — the canonical `CustomerService` this project delivers, if any. Independent of `sourceServiceItemId` (the historical onboarding provenance) — a project may be created from an onboarding service item without yet having a provisioned `CustomerService`, or vice versa. */
+  customerServiceId: z.string().uuid().nullable().optional(),
 });
 
 /**
@@ -251,6 +276,7 @@ export async function createProjectFromOnboarding(rawInput: unknown): Promise<Pr
     if (existing) return { project: existing, wasCreated: false };
 
     if (input.ownerUserId) await assertPlatformStaffMember(input.ownerUserId, organizationId, tx);
+    if (input.customerServiceId) await resolveConsistentCustomerService(input.customerServiceId, onboarding.linkedOrganizationId, onboarding.companyId, organizationId, tx);
 
     const created = await projectRepository.create(
       {
@@ -260,6 +286,7 @@ export async function createProjectFromOnboarding(rawInput: unknown): Promise<Pr
         companyId: onboarding.companyId,
         originatingOnboardingId: onboarding.id,
         sourceServiceItemId: input.sourceServiceItemId ?? null,
+        customerServiceId: input.customerServiceId ?? null,
         sourceTemplateId: null,
         title: input.title,
         description: input.description ?? null,

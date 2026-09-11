@@ -586,6 +586,39 @@ export const NOTIFICATION_TEMPLATES = {
       actionUrl: `/admin/tasks/${data.taskId}`,
     }),
   }),
+  "services.customer_service_owner_assigned": template({
+    version: 1,
+    active: true,
+    category: "SERVICE_ACTIVITY",
+    severity: "INFO",
+    render: (data: { customerServiceId: string; serviceName: string; companyName: string }) => ({
+      title: "Service assigned",
+      body: `You were assigned as owner of "${data.serviceName}" for ${data.companyName}.`,
+      actionUrl: `/admin/services/customers/${data.customerServiceId}`,
+    }),
+  }),
+  "services.customer_service_activated": template({
+    version: 1,
+    active: true,
+    category: "SERVICE_ACTIVITY",
+    severity: "INFO",
+    render: (data: { customerServiceId: string; serviceName: string; companyName: string }) => ({
+      title: "Service activated",
+      body: `"${data.serviceName}" for ${data.companyName} is now active.`,
+      actionUrl: `/admin/services/customers/${data.customerServiceId}`,
+    }),
+  }),
+  "services.customer_service_completed": template({
+    version: 1,
+    active: true,
+    category: "SERVICE_ACTIVITY",
+    severity: "INFO",
+    render: (data: { customerServiceId: string; serviceName: string; companyName: string }) => ({
+      title: "Service completed",
+      body: `"${data.serviceName}" for ${data.companyName} was marked complete.`,
+      actionUrl: `/admin/services/customers/${data.customerServiceId}`,
+    }),
+  }),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as const satisfies Record<string, NotificationTemplateDefinition<any>>;
 

@@ -160,6 +160,17 @@ export const NOTIFICATION_CATEGORIES = {
     mandatoryChannels: ["IN_APP"],
     defaultEnabled: { IN_APP: true, EMAIL: true },
   }),
+  /// Build 29 — Service Management. Kept high-signal (see
+  /// `service-management.md` "Notifications") — owner assignment,
+  /// activation, and completion only; no pause/resume noise.
+  SERVICE_ACTIVITY: category({
+    label: "Service activity",
+    description: "When a customer service engagement is assigned to you, activated, or completed.",
+    group: "Platform",
+    supportedChannels: ["IN_APP", "EMAIL"],
+    mandatoryChannels: ["IN_APP"],
+    defaultEnabled: { IN_APP: true, EMAIL: true },
+  }),
 } as const satisfies Record<string, NotificationCategoryDefinition>;
 
 export type NotificationCategoryKey = keyof typeof NOTIFICATION_CATEGORIES;
