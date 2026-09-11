@@ -171,6 +171,18 @@ export const NOTIFICATION_CATEGORIES = {
     mandatoryChannels: ["IN_APP"],
     defaultEnabled: { IN_APP: true, EMAIL: true },
   }),
+  /// Build 30 — SEO OS. Deliberately narrow — a critical technical
+  /// issue only (see docs/architecture/seo-os.md "Notifications"): rank
+  /// fluctuations and routine audit runs are never notification-worthy
+  /// on their own.
+  SEO_ACTIVITY: category({
+    label: "SEO activity",
+    description: "When a critical SEO issue is detected on a service you own.",
+    group: "Platform",
+    supportedChannels: ["IN_APP", "EMAIL"],
+    mandatoryChannels: ["IN_APP"],
+    defaultEnabled: { IN_APP: true, EMAIL: true },
+  }),
 } as const satisfies Record<string, NotificationCategoryDefinition>;
 
 export type NotificationCategoryKey = keyof typeof NOTIFICATION_CATEGORIES;

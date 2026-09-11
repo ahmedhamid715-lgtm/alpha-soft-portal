@@ -114,6 +114,12 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     // stay reachable via `/admin/services`'s own links, not a sidebar
     // sub-menu.
     { key: "admin-services", label: "Services", href: "/admin/services", icon: "services", permission: "delivery_services.read" as const },
+    // Build 30 — SEO OS (Roadmap Module 24). Same flat, single-link
+    // shape as "Services" above — an engagement's own workspace (tabs
+    // for properties/keywords/issues/audits) stays reachable via
+    // `/admin/seo`'s own links, not a sidebar sub-menu. Reuses the
+    // existing `search` icon (no new icon needed).
+    { key: "admin-seo", label: "SEO", href: "/admin/seo", icon: "search", permission: "seo.read" as const },
   ].filter((item) => platformContext.permissions.has(item.permission));
 
   if (platformItems.length > 0) {

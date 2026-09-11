@@ -235,6 +235,13 @@ model Organization {
   serviceDefinitions                 ServiceDefinition[]
   customerServicesAsPlatformOwner    CustomerService[]                       @relation("CustomerServicePlatformOwner")
   customerServicesAsCustomer         CustomerService[]                       @relation("CustomerServiceCustomerOrganization")
+  seoEngagements                     SeoEngagement[]                         @relation("SeoEngagementPlatformOwner")
+  seoProperties                      SeoProperty[]                           @relation("SeoPropertyPlatformOwner")
+  seoKeywords                        SeoKeyword[]                            @relation("SeoKeywordPlatformOwner")
+  seoImportBatches                   SeoImportBatch[]                        @relation("SeoImportBatchPlatformOwner")
+  seoRankObservations                SeoRankObservation[]                    @relation("SeoRankObservationPlatformOwner")
+  seoAuditRuns                       SeoAuditRun[]                           @relation("SeoAuditRunPlatformOwner")
+  seoIssues                          SeoIssue[]                              @relation("SeoIssuePlatformOwner")
 
   @@index([status])
   @@index([isPlatform])
@@ -394,6 +401,16 @@ model User {
   customerServicesOwned                CustomerService[]                      @relation("CustomerServiceOwner")
   customerServicesCancelled            CustomerService[]                      @relation("CustomerServiceCancelledBy")
   customerServicesCreated              CustomerService[]                      @relation("CustomerServiceCreatedBy")
+  seoEngagementsCreated                 SeoEngagement[]                        @relation("SeoEngagementCreatedBy")
+  seoPropertiesCreated                  SeoProperty[]                          @relation("SeoPropertyCreatedBy")
+  seoKeywordsCreated                    SeoKeyword[]                           @relation("SeoKeywordCreatedBy")
+  seoImportBatchesCreated               SeoImportBatch[]                       @relation("SeoImportBatchCreatedBy")
+  seoRankObservationsCreated            SeoRankObservation[]                   @relation("SeoRankObservationCreatedBy")
+  seoAuditRunsCreated                   SeoAuditRun[]                          @relation("SeoAuditRunCreatedBy")
+  seoIssuesCreated                      SeoIssue[]                             @relation("SeoIssueCreatedBy")
+  seoIssuesAcknowledged                 SeoIssue[]                             @relation("SeoIssueAcknowledgedBy")
+  seoIssuesResolved                     SeoIssue[]                             @relation("SeoIssueResolvedBy")
+  seoIssuesIgnored                      SeoIssue[]                             @relation("SeoIssueIgnoredBy")
 
   @@index([status])
   @@map("users")
@@ -4528,6 +4545,7 @@ model InternalTask {
   completedByUser User?        @relation("InternalTaskCompletedBy", fields: [completedByUserId], references: [id], onDelete: SetNull)
   cancelledByUser User?        @relation("InternalTaskCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
   createdByUser   User         @relation("InternalTaskCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  seoIssuesLinked SeoIssue[]   @relation("SeoIssueLinkedTask")
 
   // Codex Performance Engineer review (see
   // docs/architecture/task-management.md "Performance"):
@@ -4668,6 +4686,7 @@ model CustomerService {
   cancelledByUser             User?                            @relation("CustomerServiceCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
   createdByUser               User                             @relation("CustomerServiceCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   projects                    Project[]                        @relation("ProjectCustomerService")
+  seoEngagement               SeoEngagement?
 
   @@index([organizationId, customerOrganizationId, status])
   @@index([organizationId, status, createdAt])
@@ -4683,4 +4702,349 @@ model CustomerService {
   // and Build 23's own onboarding list index already document.
   @@index([organizationId, createdAt(sort: Desc), id])
   @@map("customer_services")
+}
+
+// =============================================================================
+// Build 30 — SEO OS (Canonical Roadmap Module 24)
+// =============================================================================
+
+enum SeoSearchEngine {
+  GOOGLE
+
+  @@map("seo_search_engine")
+}
+
+enum SeoDevice {
+  DESKTOP
+  MOBILE
+
+  @@map("seo_device")
+}
+
+enum SeoDataSource {
+  MANUAL
+  IMPORT
+
+  @@map("seo_data_source")
+}
+
+enum SeoRankStatus {
+  RANKED
+  NOT_FOUND
+  BEYOND_TRACKED_RANGE
+  SOURCE_ERROR
+
+  @@map("seo_rank_status")
+}
+
+enum SeoPropertyStatus {
+  ACTIVE
+  ARCHIVED
+
+  @@map("seo_property_status")
+}
+
+enum SeoKeywordStatus {
+  ACTIVE
+  ARCHIVED
+
+  @@map("seo_keyword_status")
+}
+
+enum SeoAuditRunStatus {
+  COMPLETED
+  FAILED
+
+  @@map("seo_audit_run_status")
+}
+
+enum SeoIssueType {
+  BROKEN_LINK
+  MISSING_TITLE
+  MISSING_META_DESCRIPTION
+  DUPLICATE_TITLE
+  DUPLICATE_META_DESCRIPTION
+  MISSING_H1
+  SLOW_PAGE_SPEED
+  MISSING_ALT_TEXT
+  REDIRECT_CHAIN
+  NOINDEX_CONFLICT
+  THIN_CONTENT
+  MOBILE_USABILITY
+  OTHER
+
+  @@map("seo_issue_type")
+}
+
+enum SeoIssueSeverity {
+  CRITICAL
+  WARNING
+  INFO
+
+  @@map("seo_issue_severity")
+}
+
+enum SeoIssueStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+  IGNORED
+
+  @@map("seo_issue_status")
+}
+
+/// One per CustomerService, forever (plain UNIQUE, not partial — a
+/// cancelled/replaced service gets a NEW CustomerService and thus a new
+/// engagement; this row is never reused across two different
+/// CustomerService ids). Carries NO own status field — its lifecycle IS
+/// the linked CustomerService's (ACTIVE/PAUSED/COMPLETED/CANCELLED) so
+/// there is never a second, divergent state machine to keep in sync.
+model SeoEngagement {
+  id                String @id @db.Uuid
+  organizationId    String @map("organization_id") @db.Uuid
+  customerServiceId String @unique @map("customer_service_id") @db.Uuid
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization    Organization    @relation("SeoEngagementPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  customerService CustomerService @relation(fields: [customerServiceId], references: [id], onDelete: Cascade)
+  createdByUser   User            @relation("SeoEngagementCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  properties      SeoProperty[]
+  importBatches   SeoImportBatch[]
+
+  @@index([organizationId])
+  @@map("seo_engagements")
+}
+
+/// Canonical identity = normalizedOrigin (scheme+host, lowercased,
+/// default ports stripped, no path — computed by the application layer
+/// via src/lib/seo/property-url.ts, NOT by this migration). www vs
+/// non-www and http vs https are DIFFERENT properties by design —
+/// canonicalizing between them is itself a real SEO issue, never
+/// silently merged. displayUrl preserves exactly what staff entered.
+model SeoProperty {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  engagementId   String @map("engagement_id") @db.Uuid
+
+  normalizedOrigin String            @map("normalized_origin")
+  displayUrl       String            @map("display_url")
+  targetCountry    String?           @map("target_country") @db.Char(2)
+  targetLocale     String?           @map("target_locale")
+  status           SeoPropertyStatus @default(ACTIVE)
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization  Organization  @relation("SeoPropertyPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  engagement    SeoEngagement @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+  createdByUser User          @relation("SeoPropertyCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  keywords      SeoKeyword[]
+  auditRuns     SeoAuditRun[]
+  issues        SeoIssue[]
+
+  // NOTE: the real uniqueness guarantee is a raw-SQL UNIQUE INDEX on
+  // (engagement_id, normalized_origin) — add it in migration.sql, no
+  // @@unique needed here since both columns are NOT NULL and Prisma CAN
+  // express it, but per this repo's convention keep constraint creation
+  // together with the other hand-written ones in migration.sql for
+  // consistency and to make review easier. Still declare it here too via
+  // @@unique so `prisma validate`/the Prisma-side model stays authoritative.
+  @@unique([engagementId, normalizedOrigin])
+  @@index([organizationId])
+  @@map("seo_properties")
+}
+
+/// Belongs to exactly one property. Dedup dimension tuple: property +
+/// normalizedPhrase (trim/collapse-whitespace/lowercase, computed by the
+/// app layer) + searchEngine + device + country + locale. country/locale
+/// are NULLABLE (inherit the property's own target by default) — Postgres
+/// treats NULL <> NULL in an ordinary UNIQUE constraint, so the REAL
+/// uniqueness guarantee must be a functional UNIQUE INDEX using
+/// COALESCE(country,'')/COALESCE(locale,'') — write that as raw SQL in
+/// migration.sql; do NOT rely on @@unique with nullable columns here.
+model SeoKeyword {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  propertyId     String @map("property_id") @db.Uuid
+
+  phrase           String
+  normalizedPhrase String           @map("normalized_phrase")
+  targetUrl        String?          @map("target_url")
+  searchEngine     SeoSearchEngine  @default(GOOGLE) @map("search_engine")
+  device           SeoDevice
+  country          String?          @db.Char(2)
+  locale           String?
+  tags             String[]         @default([])
+  status           SeoKeywordStatus @default(ACTIVE)
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization  Organization @relation("SeoKeywordPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  property      SeoProperty  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdByUser User         @relation("SeoKeywordCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  observations  SeoRankObservation[]
+
+  @@index([organizationId])
+  @@index([propertyId, status])
+  @@map("seo_keywords")
+}
+
+/// One row per CSV import attempt (even a 0-row-succeeded attempt), for
+/// full provenance. `rowCount` = rows in the file; `importedCount` = rows
+/// actually inserted; `skippedCount` = rows rejected as malformed or
+/// already-existing (duplicate keyword+date) — report both counts back to
+/// the uploader, never silently drop rows.
+model SeoImportBatch {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  engagementId   String @map("engagement_id") @db.Uuid
+
+  fileName      String? @map("file_name")
+  rowCount      Int     @map("row_count")
+  importedCount Int     @map("imported_count")
+  skippedCount  Int     @map("skipped_count")
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization  Organization  @relation("SeoImportBatchPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  engagement    SeoEngagement @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+  createdByUser User          @relation("SeoImportBatchCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  observations  SeoRankObservation[]
+
+  @@index([engagementId, createdAt(sort: Desc)])
+  @@map("seo_import_batches")
+}
+
+/// Pure append-only fact table — NEVER updated or deleted after insert
+/// (no UPDATE/DELETE RLS policy at all, same posture as the most
+/// historical-evidence-critical Build 29 tables, but here even stricter:
+/// there is no lifecycle to transition through either). `rankStatus`
+/// explicitly distinguishes "not found" / "beyond tracked range" /
+/// "source error" from a real numeric position — NEVER coerce any of
+/// those into a fake position value. `position` must be NOT NULL and > 0
+/// when rankStatus = RANKED, and NULL otherwise — enforce via CHECK
+/// constraint (raw SQL, Prisma cannot express a conditional CHECK).
+model SeoRankObservation {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  keywordId      String @map("keyword_id") @db.Uuid
+
+  observedAt DateTime      @map("observed_at") @db.Timestamptz(3)
+  source     SeoDataSource
+  rankStatus SeoRankStatus @map("rank_status")
+  position   Int?
+  rankingUrl String?       @map("ranking_url")
+  notes      String?
+
+  importBatchId String? @map("import_batch_id") @db.Uuid
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization  Organization    @relation("SeoRankObservationPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  keyword       SeoKeyword      @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+  importBatch   SeoImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  createdByUser User            @relation("SeoRankObservationCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([keywordId, observedAt])
+  @@index([organizationId])
+  @@index([keywordId, observedAt(sort: Desc)])
+  @@map("seo_rank_observations")
+}
+
+/// The OBSERVATION EVENT — separate from SeoIssue (the persistent
+/// CONDITION). MANUAL only in this build (no live crawler exists).
+/// `status` defaults COMPLETED; FAILED is a real, reachable state for a
+/// future PROVIDER path, not currently produced by any code path this
+/// build ships, but kept for forward-compatible honesty (never silently
+/// assume every audit succeeded).
+model SeoAuditRun {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  propertyId     String @map("property_id") @db.Uuid
+
+  source      SeoDataSource
+  status      SeoAuditRunStatus @default(COMPLETED)
+  startedAt   DateTime          @map("started_at") @db.Timestamptz(3)
+  completedAt DateTime?         @map("completed_at") @db.Timestamptz(3)
+  summary     String?
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization   Organization @relation("SeoAuditRunPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  property       SeoProperty  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdByUser  User         @relation("SeoAuditRunCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  issuesDetected SeoIssue[]   @relation("SeoIssueDetectedByAuditRun")
+
+  @@index([organizationId])
+  @@index([propertyId, startedAt(sort: Desc)])
+  @@map("seo_audit_runs")
+}
+
+/// The persistent CONDITION. Dedup key: (propertyId, issueType, pageUrl)
+/// — but pageUrl is NULLABLE (site-wide issues have no single page), so
+/// (like SeoKeyword above) the real uniqueness guarantee needs TWO raw-SQL
+/// partial unique indexes: one on (property_id, issue_type, page_url)
+/// WHERE page_url IS NOT NULL, one on (property_id, issue_type) WHERE
+/// page_url IS NULL — do NOT express this as a single @@unique (Postgres
+/// NULL <> NULL would silently allow duplicate site-wide issues of the
+/// same type). Lifecycle: OPEN -> ACKNOWLEDGED -> RESOLVED/IGNORED, and
+/// RESOLVED/IGNORED -> OPEN (reopen) is a normal, expected transition —
+/// neither is truly terminal. A recurrence of an already-RESOLVED/IGNORED
+/// issue REOPENS this same row (lastDetectedAt updated, firstDetectedAt
+/// untouched) rather than creating a duplicate row — one continuous
+/// history per real-world condition.
+model SeoIssue {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  propertyId     String @map("property_id") @db.Uuid
+
+  issueType   SeoIssueType     @map("issue_type")
+  severity    SeoIssueSeverity
+  pageUrl     String?          @map("page_url")
+  title       String
+  description String?
+  status      SeoIssueStatus   @default(OPEN)
+
+  detectedByAuditRunId String?  @map("detected_by_audit_run_id") @db.Uuid
+  firstDetectedAt      DateTime @map("first_detected_at") @db.Timestamptz(3)
+  lastDetectedAt       DateTime @map("last_detected_at") @db.Timestamptz(3)
+
+  acknowledgedAt       DateTime? @map("acknowledged_at") @db.Timestamptz(3)
+  acknowledgedByUserId String?   @map("acknowledged_by_user_id") @db.Uuid
+
+  resolvedAt       DateTime? @map("resolved_at") @db.Timestamptz(3)
+  resolvedByUserId String?   @map("resolved_by_user_id") @db.Uuid
+  resolutionNotes  String?   @map("resolution_notes")
+
+  ignoredAt       DateTime? @map("ignored_at") @db.Timestamptz(3)
+  ignoredByUserId String?   @map("ignored_by_user_id") @db.Uuid
+  ignoredReason   String?   @map("ignored_reason")
+
+  linkedTaskId String? @map("linked_task_id") @db.Uuid
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization       Organization  @relation("SeoIssuePlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  property           SeoProperty   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  detectedByAuditRun SeoAuditRun?  @relation("SeoIssueDetectedByAuditRun", fields: [detectedByAuditRunId], references: [id], onDelete: SetNull)
+  acknowledgedByUser User?         @relation("SeoIssueAcknowledgedBy", fields: [acknowledgedByUserId], references: [id], onDelete: SetNull)
+  resolvedByUser     User?         @relation("SeoIssueResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+  ignoredByUser      User?         @relation("SeoIssueIgnoredBy", fields: [ignoredByUserId], references: [id], onDelete: SetNull)
+  linkedTask         InternalTask? @relation("SeoIssueLinkedTask", fields: [linkedTaskId], references: [id], onDelete: SetNull)
+  createdByUser      User          @relation("SeoIssueCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([propertyId, status])
+  @@map("seo_issues")
 }

@@ -9,6 +9,7 @@ import { PortalGateState } from "@/components/portal/portal-gate";
 import { getPortalServices } from "@/server/services/portal/portal-services-service";
 import { customerServiceStatusVariant } from "@/components/services/service-status";
 import { formatInTimeZone } from "@/lib/utils/datetime";
+import { SEO_FRESHNESS_LABELS } from "@/lib/seo/freshness";
 
 export const metadata: Metadata = { title: "Services" };
 
@@ -54,6 +55,16 @@ export default async function PortalServicesPage() {
                       {item.targetEndDate ? <span>Target: {formatInTimeZone(item.targetEndDate, "UTC", { hour: undefined, minute: undefined })}</span> : null}
                       {item.linkedProjects.length > 0 ? <span>{item.linkedProjects.map((p) => p.title).join(", ")}</span> : null}
                     </div>
+                    {item.category === "SEO" && item.seoPerformance ? (
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t pt-2 text-xs text-muted-foreground">
+                        <span>{item.seoPerformance.trackedKeywordCount} keyword(s) tracked</span>
+                        <span>{item.seoPerformance.top10Count} in top 10</span>
+                        <span>{item.seoPerformance.top20Count} in top 20</span>
+                        {item.seoPerformance.averagePosition !== null ? <span>Avg. position {item.seoPerformance.averagePosition}</span> : null}
+                        {item.seoPerformance.openCriticalIssueCount > 0 ? <span className="text-destructive">{item.seoPerformance.openCriticalIssueCount} critical issue(s)</span> : null}
+                        <span>{SEO_FRESHNESS_LABELS[item.seoPerformance.freshness]}</span>
+                      </div>
+                    ) : null}
                   </CardContent>
                 </Card>
               ))

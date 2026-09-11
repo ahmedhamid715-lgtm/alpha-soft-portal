@@ -357,6 +357,30 @@ export const AUDIT_CATALOG = {
   "services.customer_service_resumed": action("CRM", "A paused customer service engagement was resumed."),
   "services.customer_service_completed": action("CRM", "A customer service engagement was marked complete."),
   "services.customer_service_cancelled": action("CRM", "A customer service engagement was cancelled."),
+
+  // Build 30 — SEO OS. Same CRM-category/delivery-domain-family
+  // reasoning as `services.*` immediately above. Deliberately BATCH-
+  // level for rank observations/imports — one audit event per manual
+  // entry or per CSV import, never one per individual observation row
+  // (this build's own master prompt explicitly warns against per-
+  // observation audit spam; the observations themselves already ARE the
+  // permanent, queryable history).
+  "seo.engagement_created": action("CRM", "An SEO engagement was created for a customer service."),
+  "seo.property_added": action("CRM", "An SEO property (tracked website) was added to an engagement."),
+  "seo.property_archived": action("CRM", "An SEO property was archived."),
+  "seo.property_reactivated": action("CRM", "An archived SEO property was reactivated."),
+  "seo.keyword_added": action("CRM", "An SEO keyword was added to a property."),
+  "seo.keyword_archived": action("CRM", "An SEO keyword was archived."),
+  "seo.keyword_reactivated": action("CRM", "An archived SEO keyword was reactivated."),
+  "seo.rank_observation_recorded": action("CRM", "A manual rank observation was recorded."),
+  "seo.rank_observations_imported": action("CRM", "A batch of rank observations was imported from a file."),
+  "seo.audit_run_recorded": action("CRM", "A technical SEO audit run was recorded."),
+  "seo.issue_created": action("CRM", "An SEO issue was recorded."),
+  "seo.issue_acknowledged": action("CRM", "An SEO issue was acknowledged."),
+  "seo.issue_resolved": action("CRM", "An SEO issue was marked resolved."),
+  "seo.issue_ignored": action("CRM", "An SEO issue was marked ignored."),
+  "seo.issue_reopened": action("CRM", "A resolved or ignored SEO issue was reopened."),
+  "seo.issue_linked_to_task": action("CRM", "An SEO issue was converted into a task."),
 } as const satisfies Record<string, AuditActionDefinition>;
 
 export type AuditActionKey = keyof typeof AUDIT_CATALOG;

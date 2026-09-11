@@ -124,6 +124,12 @@ const PLATFORM_FULL: PermissionKey[] = [
   // immediately above. `.manage`/`.catalog_manage` stay separate,
   // narrower grants — see each role's own permissions list below.
   "delivery_services.read",
+  // Build 30 — SEO OS. `seo.read` is day-to-day platform staff
+  // visibility into SEO engagements/properties/keywords/rankings/
+  // issues/audits, same tier as `delivery_services.read` immediately
+  // above. `.manage`/`.measurements.manage` stay separate, narrower
+  // grants — see each role's own permissions list below.
+  "seo.read",
 ];
 
 const ORGANIZATION_FULL: PermissionKey[] = [
@@ -279,6 +285,11 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       // immediately above.
       "delivery_services.manage",
       "delivery_services.catalog_manage",
+      // Build 30 — SEO OS. Owner/admin administer engagements/properties/
+      // keywords AND record measurements — same tier as the Service
+      // Management grants immediately above.
+      "seo.manage",
+      "seo.measurements.manage",
     ],
   },
   platform_admin: {
@@ -369,6 +380,10 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "task_management.manage",
       "delivery_services.manage",
       "delivery_services.catalog_manage",
+      // Build 30 — same tier/reasoning as `delivery_services.manage`
+      // immediately above.
+      "seo.manage",
+      "seo.measurements.manage",
     ],
   },
   support_admin: {
@@ -438,6 +453,9 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     // (support staff plausibly need to see which services a customer
     // has and their operational status while helping them); deliberately
     // NOT `.manage`/`.catalog_manage`.
+    // Build 30 — `seo.read` ALSO granted, same reasoning (support staff
+    // plausibly need to see a customer's own SEO status/issues while
+    // helping them); deliberately NOT `.manage`/`.measurements.manage`.
     permissions: [
       "users.read",
       "organizations.read",
@@ -461,6 +479,7 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "delivery_projects.read",
       "task_management.read",
       "delivery_services.read",
+      "seo.read",
     ],
   },
   support_agent: {

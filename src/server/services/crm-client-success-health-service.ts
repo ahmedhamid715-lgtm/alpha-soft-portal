@@ -20,6 +20,7 @@ import {
   type CustomerHealthResult,
   type ChurnRiskResult,
   type HealthComponent,
+  type ServicePerformanceInput,
 } from "@/lib/crm/client-success";
 import type { CrmClientSuccessProfile } from "@/generated/prisma/client";
 
@@ -97,7 +98,7 @@ export async function getClientSuccessHealth(rawInput: unknown, precomputedCompa
   const engagement = evaluateEngagement(mostRecentActivityAt, now);
   const project = await resolveProjectHealth(company360, context.permissions.has("delivery_projects.read"), now);
   const support = evaluateSupportHealth(now);
-  const service = evaluateServicePerformance(now);
+  const service = resolveServicePerformance(company360, now);
 
   const components: HealthComponent[] = [payment, onboarding, engagement, project, support, service];
   const health = computeCustomerHealth(components);
@@ -135,4 +136,29 @@ async function resolveProjectHealth(company360: Customer360ViewModel, canSeeProj
   if (!company360.linkedOrganization || !canSeeProjects) return evaluateProjectHealth(null, now);
   const input = await getProjectHealthInputForCustomer360(company360.linkedOrganization.id);
   return evaluateProjectHealth(input, now);
+}
+
+/**
+ * NOT_MEASURABLE gate = no linked organization, OR `company360` itself
+ * says the caller can't see SEO performance (`canSeeSeoPerformance`) —
+ * the exact same shape `resolveProjectHealth()` establishes above
+ * (Build 27), mirrored here for Build 30's own SEO OS graduation of the
+ * "service" component. Client Success never escalates its own caller's
+ * privileges to read SEO data they couldn't otherwise see.
+ *
+ * Build 30 Codex Performance Engineer finding P3 — this function
+ * previously called `getSeoServicePerformanceInputForCustomer360()`
+ * AGAIN here, redundantly re-running the full SEO
+ * engagement→property→keyword→observation/issue query chain that
+ * `getCustomer360()` already ran to populate `company360.services`'
+ * own canonical items. Reused directly instead — `company360` is
+ * always a complete, freshly (or validly precomputed) resolved view
+ * model either way, so the embedded value is never stale relative to
+ * a fresh fetch would have been.
+ */
+function resolveServicePerformance(company360: Customer360ViewModel, now: Date): HealthComponent {
+  if (!company360.linkedOrganization || !company360.canSeeSeoPerformance) return evaluateServicePerformance(null, now);
+  const seo = company360.services?.source === "canonical" ? (company360.services.items.find((item) => item.seoPerformance !== null)?.seoPerformance ?? null) : null;
+  const input: ServicePerformanceInput = { seo };
+  return evaluateServicePerformance(input, now);
 }

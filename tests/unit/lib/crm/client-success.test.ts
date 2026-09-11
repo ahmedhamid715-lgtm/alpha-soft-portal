@@ -11,6 +11,8 @@ import {
   HEALTH_STATUS_SCORE,
   type HealthComponent,
   type ProjectHealthInput,
+  type ServicePerformanceInput,
+  type SeoServicePerformanceInput,
 } from "@/lib/crm/client-success";
 
 const NOW = new Date("2026-06-15T12:00:00Z");
@@ -108,14 +110,47 @@ describe("client-success", () => {
     });
   });
 
-  describe("evaluateSupportHealth / evaluateServicePerformance — data honesty", () => {
-    it("are always NOT_MEASURABLE, never fabricated, because their owning domains don't exist yet", () => {
-      for (const fn of [evaluateSupportHealth, evaluateServicePerformance]) {
-        const result = fn(NOW);
-        expect(result.status).toBe("NOT_MEASURABLE");
-        expect(result.measurable).toBe(false);
-        expect(result.score).toBeNull();
-      }
+  describe("evaluateSupportHealth — data honesty", () => {
+    it("is always NOT_MEASURABLE, never fabricated, because Support Center (Roadmap 30) doesn't exist yet", () => {
+      const result = evaluateSupportHealth(NOW);
+      expect(result.status).toBe("NOT_MEASURABLE");
+      expect(result.measurable).toBe(false);
+      expect(result.score).toBeNull();
+    });
+  });
+
+  describe("evaluateServicePerformance (Build 30 — SEO OS graduation)", () => {
+    function seoInput(overrides: Partial<SeoServicePerformanceInput>): ServicePerformanceInput {
+      return { seo: { observedKeywordCount: 10, improvingKeywordCount: 0, decliningKeywordCount: 0, openCriticalIssueCount: 0, openWarningIssueCount: 0, ...overrides } };
+    }
+
+    it("is NOT_MEASURABLE when input is null, seo is null, or zero keywords have ever been observed — never fabricated", () => {
+      expect(evaluateServicePerformance(null, NOW).status).toBe("NOT_MEASURABLE");
+      expect(evaluateServicePerformance({ seo: null }, NOW).status).toBe("NOT_MEASURABLE");
+      expect(evaluateServicePerformance(seoInput({ observedKeywordCount: 0 }), NOW).status).toBe("NOT_MEASURABLE");
+    });
+
+    it("is HEALTHY when there are no open critical/warning issues and rankings are stable or improving", () => {
+      const result = evaluateServicePerformance(seoInput({}), NOW);
+      expect(result.status).toBe("HEALTHY");
+      expect(result.measurable).toBe(true);
+      expect(result.score).toBe(HEALTH_STATUS_SCORE.HEALTHY);
+
+      expect(evaluateServicePerformance(seoInput({ improvingKeywordCount: 3, decliningKeywordCount: 1 }), NOW).status).toBe("HEALTHY");
+    });
+
+    it("is WATCH when declines equal gains, or an open warning issue exists", () => {
+      expect(evaluateServicePerformance(seoInput({ improvingKeywordCount: 2, decliningKeywordCount: 2 }), NOW).status).toBe("WATCH");
+      expect(evaluateServicePerformance(seoInput({ openWarningIssueCount: 1 }), NOW).status).toBe("WATCH");
+    });
+
+    it("is AT_RISK when more keywords declined than improved", () => {
+      expect(evaluateServicePerformance(seoInput({ improvingKeywordCount: 1, decliningKeywordCount: 3 }), NOW).status).toBe("AT_RISK");
+    });
+
+    it("is CRITICAL when any critical issue is open — outranks everything else", () => {
+      expect(evaluateServicePerformance(seoInput({ openCriticalIssueCount: 1 }), NOW).status).toBe("CRITICAL");
+      expect(evaluateServicePerformance(seoInput({ openCriticalIssueCount: 1, improvingKeywordCount: 5, decliningKeywordCount: 0 }), NOW).status).toBe("CRITICAL");
     });
   });
 

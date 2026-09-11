@@ -11,6 +11,8 @@ import { listOnboardings, getOnboardingDetail, type OnboardingDetail } from "./c
 import { listActivitiesForCompany } from "./crm-activity-service";
 import { getOrganizationBillingForPlatform, type PlatformBillingDetail } from "./billing-platform-service";
 import { listServicesForCustomer360, type Customer360ServiceSummary } from "./customer-service-service";
+import { getSeoServicePerformanceInputForCustomer360 } from "./seo-customer-360-service";
+import type { SeoServicePerformanceInput } from "@/lib/crm/client-success";
 import { organizationRepository } from "@/server/repositories/organization-repository";
 import { BillingAccountInvalidError } from "@/lib/billing/errors";
 import {
@@ -83,6 +85,8 @@ export interface Customer360ViewModel {
   currentOnboardingDetail: OnboardingDetail | null;
 
   canSeeServices: boolean;
+  /** `false` when the caller lacks `seo.read` — distinguishes "not authorized to see SEO performance" from "genuinely not yet measured" (both leave `seoPerformance: null` on a canonical service item). */
+  canSeeSeoPerformance: boolean;
   /**
    * Build 29 — real canonical `CustomerService` rows now take
    * precedence, falling back to the exact same sold/onboarding
@@ -94,7 +98,7 @@ export interface Customer360ViewModel {
    * exists for a mere commercial line item).
    */
   services:
-    | { source: "canonical"; items: Customer360ServiceSummary[] }
+    | { source: "canonical"; items: (Customer360ServiceSummary & { seoPerformance: SeoServicePerformanceInput | null })[] }
     | { source: "onboarding" | "accepted_proposal"; items: { title: string; description: string | null; quantity: number }[] }
     | null;
 
@@ -138,6 +142,7 @@ export async function getCustomer360(rawInput: unknown): Promise<Customer360View
   const canSeeOnboarding = context.permissions.has("crm.onboarding.read");
   const canSeeBilling = context.permissions.has("billing.readPlatform");
   const canSeeServices = context.permissions.has("delivery_services.read");
+  const canSeeSeoPerformance = context.permissions.has("seo.read");
 
   // Stage 1 — every one of these depends only on `company` (already
   // resolved), never on each other, so they all start together
@@ -168,7 +173,7 @@ export async function getCustomer360(rawInput: unknown): Promise<Customer360View
   // `currentOnboardingDetail` only on `onboardings`) — same fix as
   // Stage 1, running them concurrently instead of one four-step await
   // chain.
-  const [linkedOrganizationMemberCounts, billing, latestDeal, currentOnboardingDetail] = await Promise.all([
+  const [linkedOrganizationMemberCounts, billing, latestDeal, currentOnboardingDetail, seoPerformance] = await Promise.all([
     linkedOrganization && canSeeOrganizationDetail ? organizationRepository.membershipStatusCounts(linkedOrganization.id) : Promise.resolve(null),
     canSeeBilling && linkedOrganization
       ? getOrganizationBillingForPlatform({ organizationId: linkedOrganization.id }).catch((error) => {
@@ -178,12 +183,19 @@ export async function getCustomer360(rawInput: unknown): Promise<Customer360View
       : Promise.resolve(null),
     relevantDealId ? getDealWithRelations({ dealId: relevantDealId }) : Promise.resolve(null),
     currentOnboarding && canSeeOnboarding ? getOnboardingDetail({ onboardingId: currentOnboarding.id }) : Promise.resolve(null),
+    // Build 30 — SEO OS's own domain service, never a direct SEO Prisma
+    // query here (see seo-os.md "Customer 360 integration"). Aggregated
+    // across the customer's ACTIVE SEO engagement(s) as a whole, same
+    // "one unified per-customer signal" shape Client Success's own
+    // "service" HealthComponent already establishes — not per
+    // individual CustomerService row.
+    canSeeSeoPerformance && linkedOrganization ? getSeoServicePerformanceInputForCustomer360(linkedOrganization.id) : Promise.resolve(null),
   ]);
 
   const accountOwner = resolveAccountOwner(currentOnboardingDetail, latestDeal);
   const primaryContact = latestDeal?.primaryContact ?? null;
 
-  const services = await resolveServices(canonicalServices, currentOnboardingDetail, proposals);
+  const services = await resolveServices(canonicalServices, currentOnboardingDetail, proposals, seoPerformance);
   const documents = resolveDocuments(proposals, contracts, currentOnboardingDetail);
 
   const hasSoldSignal = Boolean((deals && deals.some((d) => d.status === "WON")) || (proposals && proposals.some((p) => p.status === "ACCEPTED")) || (contracts && contracts.some((c) => c.status === "ACTIVE")));
@@ -236,6 +248,7 @@ export async function getCustomer360(rawInput: unknown): Promise<Customer360View
     onboardings,
     currentOnboardingDetail,
     canSeeServices,
+    canSeeSeoPerformance,
     services,
     canSeeBilling,
     billing,
@@ -265,10 +278,28 @@ function resolveAccountOwner(onboardingDetail: OnboardingDetail | null, latestDe
 const SERVICE_ITEMS_CAP = 50;
 const DOCUMENTS_CAP = 50;
 
-/** Build 29 — `canonicalServices` (real `CustomerService` rows) takes precedence over the original Build 24 onboarding/proposal snapshot fallback, never both, never a merge. `null` (no `delivery_services.read`, or genuinely zero canonical rows) falls through to the exact original precedence unchanged. */
-async function resolveServices(canonicalServices: Customer360ServiceSummary[] | null, onboardingDetail: OnboardingDetail | null, proposals: CrmProposalWithRelations[] | null): Promise<Customer360ViewModel["services"]> {
+/**
+ * Build 29 — `canonicalServices` (real `CustomerService` rows) takes
+ * precedence over the original Build 24 onboarding/proposal snapshot
+ * fallback, never both, never a merge. `null` (no `delivery_services.
+ * read`, or genuinely zero canonical rows) falls through to the exact
+ * original precedence unchanged.
+ *
+ * Build 30 — `seoPerformance` (already resolved by the caller against
+ * the customer's ACTIVE SEO engagement(s) as a whole) is attached onto
+ * every canonical item whose own category is SEO — a single aggregated
+ * signal, not fetched per-item (there is normally exactly one SEO
+ * `CustomerService` per customer; see seo-customer-360-service.ts's own
+ * doc comment for the rare-multiple-engagements case).
+ */
+async function resolveServices(
+  canonicalServices: Customer360ServiceSummary[] | null,
+  onboardingDetail: OnboardingDetail | null,
+  proposals: CrmProposalWithRelations[] | null,
+  seoPerformance: SeoServicePerformanceInput | null,
+): Promise<Customer360ViewModel["services"]> {
   if (canonicalServices && canonicalServices.length > 0) {
-    return { source: "canonical", items: canonicalServices };
+    return { source: "canonical", items: canonicalServices.map((item) => ({ ...item, seoPerformance: item.category === "SEO" ? seoPerformance : null })) };
   }
   if (onboardingDetail && onboardingDetail.serviceItems.length > 0) {
     return { source: "onboarding", items: onboardingDetail.serviceItems.slice(0, SERVICE_ITEMS_CAP).map((i) => ({ title: i.title, description: i.description, quantity: i.quantity })) };

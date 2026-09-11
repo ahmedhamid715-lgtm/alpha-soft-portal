@@ -777,6 +777,41 @@ export const PERMISSION_CATALOG = {
   "delivery_services.read": permission("delivery_services", "read", "PLATFORM", "View the service catalog and customer service engagements.", false),
   "delivery_services.manage": permission("delivery_services", "manage", "PLATFORM", "Provision, edit, and transition the lifecycle of customer service engagements.", false),
   "delivery_services.catalog_manage": permission("delivery_services", "manage", "PLATFORM", "Create, edit, and archive service catalog definitions.", false, "delivery_services.catalog_manage"),
+
+  // --- seo (Build 30 — Roadmap Module 24, SEO OS) — PLATFORM-scope, same
+  // tier as `delivery_services.*`/`delivery_projects.*`: SEO specialist
+  // work is Alpha Page Rankers' own internal delivery work, never a
+  // customer organization's own data (the customer's own read-only view
+  // is `portal.access` + Service Management's existing Portal
+  // ORGANIZATION-scope isolation, not a separate SEO permission — see
+  // service-management.md's own "Customer Portal integration" precedent,
+  // reused here rather than reinvented). No `seo.*` key existed before
+  // this build (checked `permissions.ts` directly, per the standing "grep
+  // before claiming a resource name" lesson Build 27 already documents).
+  // `seo.read`/`seo.manage` mirror `delivery_services.read`/`.manage`'s
+  // own split exactly (view vs. restructure-the-engagement/properties/
+  // keywords). `seo.measurements.manage` is a THIRD, narrower tier below
+  // `seo.manage` — recording a rank observation, running a technical
+  // audit, or importing a CSV of measurements is meaningfully lower-
+  // consequence than creating/archiving a property or keyword (the same
+  // `delivery_services.catalog_manage`-vs-`.manage` tier-separation
+  // reasoning) — a junior specialist can be trusted to log real
+  // measurement data without also being trusted to restructure what's
+  // being tracked. No `seo.settings.manage` — this build has no
+  // platform-level SEO configuration to gate (no provider credentials,
+  // no crawl settings — see docs/architecture/seo-os.md "Background
+  // processing").
+  "seo.read": permission("seo", "read", "PLATFORM", "View SEO engagements, properties, keywords, rankings, issues, and audits.", false),
+  "seo.manage": permission("seo", "manage", "PLATFORM", "Create/archive SEO engagements, properties, and keywords.", false),
+  // Build 30 Codex Security Engineer finding SEO-SEC-06 — this
+  // description previously omitted issue-lifecycle management, while
+  // `seo.manage`'s own description claimed it — the catalog text and
+  // the actual `seo-measurement-service.ts` enforcement disagreed.
+  // Corrected here to match reality: acknowledge/resolve/ignore/
+  // reopen/link-to-task are deliberately gated on THIS narrower
+  // permission (day-to-day operational triage), not `seo.manage` — see
+  // that function file's own top comment for the reasoning.
+  "seo.measurements.manage": permission("seo", "manage", "PLATFORM", "Record manual rank observations and technical audits, import rank data, and manage issue lifecycle.", false, "seo.measurements.manage"),
 } as const satisfies Record<string, PermissionDefinition>;
 
 export type PermissionKey = keyof typeof PERMISSION_CATALOG;

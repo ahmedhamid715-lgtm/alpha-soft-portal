@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { resolvePlatformContext } from "@/lib/authorization/context";
 import { getCustomerServiceDetail } from "@/server/services/customer-service-service";
 import { listAssignableUsers } from "@/server/services/crm-shared";
+import { getSeoEngagementByCustomerService } from "@/server/services/seo-engagement-service";
 import { NotFoundError } from "@/lib/errors/app-error";
 import { CustomerServiceDetailView } from "./customer-service-detail-view";
 
@@ -35,10 +36,19 @@ export default async function CustomerServiceDetailPage({ params }: { params: Pr
   const canManage = context.permissions.has("delivery_services.manage");
   const assignableUsers = canManage ? await listAssignableUsers() : [];
 
+  // Build 30 — SEO OS. Only relevant when this service's own category is
+  // SEO; the workspace is reached FROM here, matching the master
+  // prompt's own "attach to the appropriate CustomerService" instruction
+  // — Service Management stays the one place a specialist workspace is
+  // provisioned from.
+  const canSeeSeo = context.permissions.has("seo.read");
+  const canManageSeo = context.permissions.has("seo.manage");
+  const seoEngagement = detail.category === "SEO" && canSeeSeo ? await getSeoEngagementByCustomerService({ customerServiceId: id }) : null;
+
   return (
     <div className="flex flex-col gap-8">
       <PageHeader title={detail.serviceName} breadcrumbs={[{ label: "Services", href: "/admin/services" }, { label: detail.companyName, href: "/admin/services?tab=customers" }, { label: detail.serviceName }]} />
-      <CustomerServiceDetailView detail={detail} canManage={canManage} assignableUsers={assignableUsers} />
+      <CustomerServiceDetailView detail={detail} canManage={canManage} assignableUsers={assignableUsers} canSeeSeo={canSeeSeo} canManageSeo={canManageSeo} seoEngagementId={seoEngagement?.id ?? null} />
     </div>
   );
 }

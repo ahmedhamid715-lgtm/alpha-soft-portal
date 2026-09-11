@@ -207,15 +207,16 @@ export function toPaymentHealthComponent(classification: HealthStatus, reasons: 
 // --- Not-yet-existing domains — typed extension seams ------------------
 
 /**
- * Support/Service Performance still return this same shape — their
- * owning Roadmap module (30/23+delivery) does not exist yet —
- * deliberately NOT a plugin registry or abstraction layer (the Build 25
- * authorization's own "no abstraction theater" instruction) — just one
- * small function per component, each documenting exactly which future
- * module will replace it. Project Health graduated out of this pattern
- * in Build 27 — see `evaluateProjectHealth()` below.
+ * Support still returns this same shape — its owning Roadmap module (30
+ * — Support Center) does not exist yet — deliberately NOT a plugin
+ * registry or abstraction layer (the Build 25 authorization's own "no
+ * abstraction theater" instruction) — just one small function per
+ * component, each documenting exactly which future module will replace
+ * it. Project Health graduated out of this pattern in Build 27 (see
+ * `evaluateProjectHealth()` below); Service Performance graduated in
+ * Build 30 — see `evaluateServicePerformance()` below.
  */
-function notYetAvailable(key: "project" | "support" | "service", label: string, futureModule: string, now: Date): HealthComponent {
+function notYetAvailable(key: "support", label: string, futureModule: string, now: Date): HealthComponent {
   return { key, label, status: "NOT_MEASURABLE", score: null, measurable: false, reason: `No authoritative ${label.toLowerCase()} domain exists yet — ${futureModule}.`, source: futureModule, lastEvaluatedAt: now };
 }
 
@@ -287,9 +288,71 @@ export function evaluateProjectHealth(input: ProjectHealthInput | null, now: Dat
 export function evaluateSupportHealth(now: Date = new Date()): HealthComponent {
   return notYetAvailable("support", "Support", "Roadmap Module 30 (Support Center)", now);
 }
-/** Distinct from Customer 360's own "Services" tab (sold/onboarding service snapshots) — this measures whether sold services are PERFORMING well, which no domain tracks yet. */
-export function evaluateServicePerformance(now: Date = new Date()): HealthComponent {
-  return notYetAvailable("service", "Service performance", "Roadmap Module 23 (Service Management) and future delivery modules", now);
+
+// --- Service performance (Build 30 — Roadmap Module 24, SEO OS) -----------
+
+/**
+ * Real facts from ONE specialist delivery domain's own measurement data.
+ * As of Build 30, SEO OS (Roadmap Module 24) is the only specialist
+ * module with real performance data — future specialist modules (GBP,
+ * Website, E-Commerce, GHL, Creative) extend this SAME input shape
+ * additively (e.g. a sibling `gbp: GbpServicePerformanceInput | null`
+ * field) rather than each claiming a brand-new `HealthComponent["key"]`.
+ * "Service performance" stays ONE unified customer-facing component —
+ * see this file's own top comment on why a magic per-domain score would
+ * violate the "never fabricate" rule once a customer has several
+ * specialist services and no single one of them should silently own the
+ * whole component's verdict alone. Resolved by
+ * `src/server/services/seo-customer-360-service.ts`'s own
+ * `getSeoServicePerformanceInputForCustomer360()` — this file never
+ * queries a database.
+ */
+export interface SeoServicePerformanceInput {
+  /** ACTIVE SEO keywords with at least one real recorded observation ever. */
+  observedKeywordCount: number;
+  /** Of those, keywords whose latest-vs-previous real observation shows an improved (lower) position. */
+  improvingKeywordCount: number;
+  /** Of those, keywords whose latest-vs-previous real observation shows a declined (higher) position. */
+  decliningKeywordCount: number;
+  /** OPEN or ACKNOWLEDGED issues with severity CRITICAL. */
+  openCriticalIssueCount: number;
+  /** OPEN or ACKNOWLEDGED issues with severity WARNING. */
+  openWarningIssueCount: number;
+}
+
+export interface ServicePerformanceInput {
+  seo: SeoServicePerformanceInput | null;
+}
+
+/**
+ * Frozen formula (Build 30). `input === null`, or `input.seo === null`,
+ * or zero observed keywords, all mean the same thing: no specialist
+ * domain has real measurable performance data for this customer yet —
+ * `NOT_MEASURABLE`, never a fabricated middle value. Distinct from
+ * Customer 360's own "Services" tab (sold/onboarding service snapshots,
+ * commercial facts) — this measures whether sold services are
+ * PERFORMING well operationally. Checks run highest-severity-first,
+ * same discipline every other component in this file already uses.
+ */
+export function evaluateServicePerformance(input: ServicePerformanceInput | null, now: Date = new Date()): HealthComponent {
+  const base = { key: "service" as const, label: "Service performance", source: "seo_os_service+future_specialist_modules", lastEvaluatedAt: now };
+  const seo = input?.seo ?? null;
+  if (!seo || seo.observedKeywordCount === 0) {
+    return { ...base, status: "NOT_MEASURABLE", score: null, measurable: false, reason: "No specialist service domain has measurable performance data for this customer yet." };
+  }
+  if (seo.openCriticalIssueCount > 0) {
+    return { ...base, status: "CRITICAL", score: HEALTH_STATUS_SCORE.CRITICAL, measurable: true, reason: `${seo.openCriticalIssueCount} critical SEO issue(s) are open.` };
+  }
+  if (seo.decliningKeywordCount > seo.improvingKeywordCount) {
+    return { ...base, status: "AT_RISK", score: HEALTH_STATUS_SCORE.AT_RISK, measurable: true, reason: `${seo.decliningKeywordCount} tracked keyword(s) declined in rank vs. ${seo.improvingKeywordCount} that improved.` };
+  }
+  if (seo.openWarningIssueCount > 0) {
+    return { ...base, status: "WATCH", score: HEALTH_STATUS_SCORE.WATCH, measurable: true, reason: `${seo.openWarningIssueCount} SEO issue(s) need attention.` };
+  }
+  if (seo.decliningKeywordCount > 0 && seo.decliningKeywordCount === seo.improvingKeywordCount) {
+    return { ...base, status: "WATCH", score: HEALTH_STATUS_SCORE.WATCH, measurable: true, reason: "Keyword rankings are mixed this period — as many declined as improved." };
+  }
+  return { ...base, status: "HEALTHY", score: HEALTH_STATUS_SCORE.HEALTHY, measurable: true, reason: "No open critical or warning SEO issues, and rankings are stable or improving." };
 }
 
 // --- Churn risk (NOT the future Churn & Risk Engine — Roadmap Module 69) ---

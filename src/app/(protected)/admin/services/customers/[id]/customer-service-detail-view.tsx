@@ -14,6 +14,7 @@ import {
   reopenCustomerServiceAction,
   cancelCustomerServiceAction,
 } from "../../actions";
+import { createSeoEngagementAction } from "../../../seo/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,7 +28,21 @@ import { projectStatusVariant } from "@/components/projects/project-status";
 import type { CustomerServiceDetail } from "@/server/services/customer-service-service";
 import type { User } from "@/generated/prisma/client";
 
-export function CustomerServiceDetailView({ detail, canManage, assignableUsers }: { detail: CustomerServiceDetail; canManage: boolean; assignableUsers: User[] }) {
+export function CustomerServiceDetailView({
+  detail,
+  canManage,
+  assignableUsers,
+  canSeeSeo,
+  canManageSeo,
+  seoEngagementId,
+}: {
+  detail: CustomerServiceDetail;
+  canManage: boolean;
+  assignableUsers: User[];
+  canSeeSeo: boolean;
+  canManageSeo: boolean;
+  seoEngagementId: string | null;
+}) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState("");
@@ -203,6 +218,36 @@ export function CustomerServiceDetailView({ detail, canManage, assignableUsers }
           </p>
         )}
       </section>
+
+      {detail.category === "SEO" ? (
+        <section className="flex flex-col gap-3">
+          <SectionHeader title="SEO workspace" />
+          {!canSeeSeo ? (
+            <p className="text-sm text-muted-foreground">Viewing the SEO workspace requires the seo.read permission.</p>
+          ) : seoEngagementId ? (
+            <Button asChild variant="outline" className="w-fit">
+              <Link href={`/admin/seo/${seoEngagementId}`}>Open SEO workspace</Link>
+            </Button>
+          ) : canManageSeo ? (
+            <Button
+              variant="outline"
+              className="w-fit"
+              disabled={pending}
+              onClick={() =>
+                runAction(async () => {
+                  const result = await createSeoEngagementAction({ customerServiceId: detail.id });
+                  if (!result.error && result.data) router.push(`/admin/seo/${result.data.id}`);
+                  return result;
+                })
+              }
+            >
+              Set up SEO workspace
+            </Button>
+          ) : (
+            <p className="text-sm text-muted-foreground">No SEO workspace set up yet.</p>
+          )}
+        </section>
+      ) : null}
 
       <section className="flex flex-col gap-3">
         <SectionHeader title="Linked projects" />

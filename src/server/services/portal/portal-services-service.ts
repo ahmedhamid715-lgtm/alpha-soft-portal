@@ -9,7 +9,8 @@ import { crmProposalVersionRepository } from "@/server/repositories/crm-proposal
 import { crmProposalLineItemRepository } from "@/server/repositories/crm-proposal-line-item-repository";
 import { customerServiceRepository } from "@/server/repositories/customer-service-repository";
 import { projectRepository } from "@/server/repositories/project-repository";
-import type { CrmCompany, CustomerServiceStatus } from "@/generated/prisma/client";
+import { getSeoPortalSummaryForCustomerServices, type PortalSeoPerformanceSummary } from "@/server/services/seo-portal-service";
+import type { CrmCompany, CustomerServiceStatus, ServiceCategory } from "@/generated/prisma/client";
 import type { CrmClientOnboardingWithRelations } from "@/server/repositories/crm-client-onboarding-repository";
 import type { TenantTransactionClient } from "@/lib/tenancy/context";
 
@@ -37,9 +38,12 @@ export interface PortalCanonicalServiceItem {
   title: string;
   description: string | null;
   status: CustomerServiceStatus;
+  category: ServiceCategory;
   startDate: Date | null;
   targetEndDate: Date | null;
   linkedProjects: { id: string; title: string }[];
+  /** Build 30 — SEO OS's own customer-safe projection, only ever non-null when `category === "SEO"`. Aggregated across every ACTIVE SEO engagement, not fetched per item (see `getSeoPortalSummaryForCustomerServices()`'s own doc comment). */
+  seoPerformance: PortalSeoPerformanceSummary | null;
 }
 
 export type PortalServices = { source: "onboarding" | "accepted_proposal" | "none"; items: PortalServiceItem[] } | { source: "canonical"; items: PortalCanonicalServiceItem[] };
@@ -63,9 +67,10 @@ async function resolveCanonicalServices(customerOrganizationId: string, tx: Tena
 
   const definitionIds = [...new Set(customerServices.map((cs) => cs.serviceDefinitionId))];
   const customerServiceIds = customerServices.map((cs) => cs.id);
-  const [definitions, linkedProjects] = await Promise.all([
-    tx.serviceDefinition.findMany({ where: { id: { in: definitionIds } }, select: { id: true, name: true, description: true } }),
+  const [definitions, linkedProjects, seoPerformance] = await Promise.all([
+    tx.serviceDefinition.findMany({ where: { id: { in: definitionIds } }, select: { id: true, name: true, description: true, category: true } }),
     projectRepository.listForCustomerServices(customerServiceIds, tx),
+    getSeoPortalSummaryForCustomerServices(customerServices, tx),
   ]);
   const definitionById = new Map(definitions.map((d) => [d.id, d]));
   const projectsByServiceId = new Map<string, { id: string; title: string; status: string }[]>();
@@ -81,14 +86,17 @@ async function resolveCanonicalServices(customerOrganizationId: string, tx: Tena
     // DRAFT projects are never customer-visible — same exclusion Build
     // 26/27's own `listMyProjects()` already establishes.
     const visibleProjects = (projectsByServiceId.get(cs.id) ?? []).filter((p) => p.status !== "DRAFT");
+    const category = definition?.category ?? ("OTHER" as ServiceCategory);
     return {
       id: cs.id,
       title: definition?.name ?? "Service",
       description: definition?.description ?? null,
       status: cs.status,
+      category,
       startDate: cs.startDate,
       targetEndDate: cs.targetEndDate,
       linkedProjects: visibleProjects.map((p) => ({ id: p.id, title: p.title })),
+      seoPerformance: category === "SEO" ? seoPerformance : null,
     };
   });
 }

@@ -29,6 +29,7 @@ import { listProjectsForCustomer360, type Customer360ProjectSummary } from "@/se
 import { ProjectProgressDisplay } from "@/components/projects/project-progress-display";
 import { projectStatusVariant, projectPriorityVariant } from "@/components/projects/project-status";
 import { customerServiceStatusVariant, SERVICE_CATEGORY_LABELS } from "@/components/services/service-status";
+import type { SeoServicePerformanceInput } from "@/lib/crm/client-success";
 
 export const metadata: Metadata = { title: "Customer 360" };
 
@@ -298,6 +299,7 @@ function ServicesTab({ view }: { view: Customer360ViewModel }) {
                     {item.targetEndDate ? <span>Target: {fmtDate(item.targetEndDate)}</span> : null}
                     {item.linkedProjectTitles.length > 0 ? <span>{item.linkedProjectTitles.length} linked project(s)</span> : null}
                   </div>
+                  {item.category === "SEO" ? <SeoPerformanceSummaryRow canSee={view.canSeeSeoPerformance} performance={item.seoPerformance} /> : null}
                 </CardContent>
               </Card>
             </Link>
@@ -322,6 +324,21 @@ function ServicesTab({ view }: { view: Customer360ViewModel }) {
           </Card>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** Build 30 — SEO OS's own aggregated performance signal for this customer's ACTIVE SEO engagement(s), rendered inline on the canonical service card (no separate Customer 360 tab — the "smallest specialist integration seam" the master prompt calls for). `performance === null` is ambiguous between "not authorized" and "no data yet" — `canSee` disambiguates, matching every other `canSeeX` gate on this page. */
+function SeoPerformanceSummaryRow({ canSee, performance }: { canSee: boolean; performance: SeoServicePerformanceInput | null }) {
+  if (!canSee) return <p className="text-xs text-muted-foreground">SEO performance requires the seo.read permission.</p>;
+  if (!performance || performance.observedKeywordCount === 0) return <p className="text-xs text-muted-foreground">No SEO performance data yet.</p>;
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t pt-2 text-xs text-muted-foreground">
+      <span>{performance.observedKeywordCount} keyword(s) tracked</span>
+      <span>{performance.improvingKeywordCount} improving</span>
+      <span>{performance.decliningKeywordCount} declining</span>
+      {performance.openCriticalIssueCount > 0 ? <span className="text-destructive">{performance.openCriticalIssueCount} critical issue(s)</span> : null}
+      {performance.openWarningIssueCount > 0 ? <span>{performance.openWarningIssueCount} warning issue(s)</span> : null}
     </div>
   );
 }

@@ -894,3 +894,30 @@ events.on<CustomerServiceLifecyclePayload>("services.customer_service_completed"
     templateData: { customerServiceId, serviceName, companyName },
   });
 });
+
+interface SeoCriticalIssueDetectedPayload {
+  issueId: string;
+  engagementId: string;
+  organizationId: string;
+  ownerUserId: string;
+  propertyDisplayUrl: string;
+  issueTitle: string;
+  companyName: string;
+}
+
+// Build 30 — SEO OS. No recipient = no owner assigned = no notification
+// (same "never emit with no real target" rule Service Management's own
+// `notifyLifecycleEvent()` establishes) — the service layer only emits
+// this event when the engagement's CustomerService has an owner.
+events.on<SeoCriticalIssueDetectedPayload>("seo.critical_issue_detected", async (event) => {
+  const { issueId, engagementId, organizationId, ownerUserId, propertyDisplayUrl, issueTitle, companyName } = event.payload;
+  await notificationService.notify({
+    templateKey: "seo.critical_issue_detected",
+    recipientUserId: ownerUserId,
+    organizationId,
+    sourceEventType: "seo.critical_issue_detected",
+    sourceEntityType: "seo_issue",
+    sourceEntityId: issueId,
+    templateData: { engagementId, propertyDisplayUrl, issueTitle, companyName },
+  });
+});
