@@ -252,6 +252,11 @@ model Organization {
   localReviews                       LocalReview[]                          @relation("LocalReviewPlatformOwner")
   localSeoAuditRuns                  LocalSeoAuditRun[]                     @relation("LocalSeoAuditRunPlatformOwner")
   localSeoIssues                     LocalSeoIssue[]                        @relation("LocalSeoIssuePlatformOwner")
+  websiteEngagements                 WebsiteEngagement[]                    @relation("WebsiteEngagementPlatformOwner")
+  websiteSites                       WebsiteSite[]                          @relation("WebsiteSitePlatformOwner")
+  websiteEnvironments                WebsiteEnvironment[]                   @relation("WebsiteEnvironmentPlatformOwner")
+  websitePages                       WebsitePage[]                          @relation("WebsitePagePlatformOwner")
+  websiteDeployments                 WebsiteDeployment[]                    @relation("WebsiteDeploymentPlatformOwner")
 
   @@index([status])
   @@index([isPlatform])
@@ -435,6 +440,11 @@ model User {
   localSeoIssuesAcknowledged           LocalSeoIssue[]                        @relation("LocalSeoIssueAcknowledgedBy")
   localSeoIssuesResolved               LocalSeoIssue[]                        @relation("LocalSeoIssueResolvedBy")
   localSeoIssuesIgnored                LocalSeoIssue[]                        @relation("LocalSeoIssueIgnoredBy")
+  websiteEngagementsCreated            WebsiteEngagement[]                    @relation("WebsiteEngagementCreatedBy")
+  websiteSitesCreated                  WebsiteSite[]                          @relation("WebsiteSiteCreatedBy")
+  websiteEnvironmentsCreated           WebsiteEnvironment[]                   @relation("WebsiteEnvironmentCreatedBy")
+  websitePagesCreated                  WebsitePage[]                          @relation("WebsitePageCreatedBy")
+  websiteDeploymentsCreated            WebsiteDeployment[]                    @relation("WebsiteDeploymentCreatedBy")
 
   @@index([status])
   @@map("users")
@@ -4154,6 +4164,7 @@ model Project {
   attachments           ProjectAttachment[]
   approvals             ProjectApproval[]
   qaChecks              ProjectQaCheck[]
+  websiteEngagements    WebsiteEngagement[]             @relation("WebsiteEngagementProject")
 
   @@index([organizationId, status, createdAt])
   // Supports the unfiltered newest-first tenant list; the status-leading index
@@ -4346,6 +4357,7 @@ model ProjectTask {
   comments        ProjectComment[]
   attachments     ProjectAttachment[]
   qaChecks        ProjectQaCheck[]
+  websitePages    WebsitePage[]           @relation("WebsitePageProjectTask")
 
   @@index([organizationId, projectId, sortOrder])
   @@index([organizationId, projectId, status])
@@ -4713,6 +4725,7 @@ model CustomerService {
   projects                    Project[]                        @relation("ProjectCustomerService")
   seoEngagement               SeoEngagement?
   localSeoEngagement          LocalSeoEngagement?
+  websiteEngagement           WebsiteEngagement?
 
   @@index([organizationId, customerOrganizationId, status])
   @@index([organizationId, status, createdAt])
@@ -5539,4 +5552,273 @@ model LocalSeoIssue {
   @@index([organizationId])
   @@index([locationId, status])
   @@map("local_seo_issues")
+}
+
+// =============================================================================
+// Build 32 — Website Development OS (Canonical Roadmap Module 26)
+// =============================================================================
+
+enum WebsiteSiteStatus {
+  PLANNING
+  IN_DEVELOPMENT
+  LAUNCHED
+  MAINTENANCE
+  ARCHIVED
+
+  @@map("website_site_status")
+}
+
+enum WebsiteSiteType {
+  STANDARD
+  ECOMMERCE
+  OTHER
+
+  @@map("website_site_type")
+}
+
+enum WebsitePlatform {
+  WORDPRESS
+  SHOPIFY
+  WEBFLOW
+  CUSTOM_NEXTJS
+  OTHER
+
+  @@map("website_platform")
+}
+
+enum WebsiteConfigurationState {
+  YES
+  NO
+  UNKNOWN
+
+  @@map("website_configuration_state")
+}
+
+enum WebsiteEnvironmentType {
+  LOCAL
+  DEVELOPMENT
+  STAGING
+  PRODUCTION
+
+  @@map("website_environment_type")
+}
+
+enum WebsiteEnvironmentStatus {
+  NOT_SET_UP
+  ACTIVE
+  INACTIVE
+
+  @@map("website_environment_status")
+}
+
+enum WebsitePageType {
+  PAGE
+  TEMPLATE
+  COMPONENT
+  OTHER
+
+  @@map("website_page_type")
+}
+
+enum WebsitePageStatus {
+  PLANNED
+  IN_PROGRESS
+  QA
+  READY_FOR_LAUNCH
+  LIVE
+  ARCHIVED
+
+  @@map("website_page_status")
+}
+
+enum WebsiteDeploymentStatus {
+  SUCCEEDED
+  FAILED
+  ROLLED_BACK
+
+  @@map("website_deployment_status")
+}
+
+/// The specialist root — one per eligible CustomerService, forever. No
+/// own status field — its lifecycle IS the linked CustomerService's
+/// (mirrors SeoEngagement/LocalSeoEngagement exactly). `projectId` is
+/// an OPTIONAL link to an existing/created Project Management project
+/// (Project Management owns delivery work — Website OS never builds a
+/// second project engine).
+model WebsiteEngagement {
+  id                String  @id @db.Uuid
+  organizationId    String  @map("organization_id") @db.Uuid
+  customerServiceId String  @unique @map("customer_service_id") @db.Uuid
+  projectId         String? @map("project_id") @db.Uuid
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization    Organization    @relation("WebsiteEngagementPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  customerService CustomerService @relation(fields: [customerServiceId], references: [id], onDelete: Cascade)
+  project         Project?        @relation("WebsiteEngagementProject", fields: [projectId], references: [id], onDelete: SetNull)
+  createdByUser   User            @relation("WebsiteEngagementCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  sites           WebsiteSite[]
+
+  @@index([organizationId])
+  @@map("website_engagements")
+}
+
+/// One engagement may deliver one or more sites. `primaryUrl` is the
+/// canonical/intended production domain — nullable (a site may not have
+/// a domain decided yet). `normalizedPrimaryOrigin` is the WHATWG-URL
+/// canonical scheme+host form, computed and stored the same way
+/// `SeoProperty.normalizedOrigin` already is (this is the canonical
+/// value itself, not an external observation being compared against
+/// one — unlike NAP, storing the normalized form here is correct and
+/// matches precedent). `analyticsConfigured`/`tagManagerConfigured`
+/// reflect a manually-recorded fact only, never live telemetry.
+/// `launchDeploymentId` optionally points at the WebsiteDeployment
+/// staff consider the actual launch event — set only by
+/// `recordWebsiteLaunch()`, never implied by a production URL merely
+/// existing.
+model WebsiteSite {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  engagementId   String @map("engagement_id") @db.Uuid
+
+  name                    String
+  primaryUrl              String?                   @map("primary_url")
+  normalizedPrimaryOrigin String?                   @map("normalized_primary_origin")
+  siteType                WebsiteSiteType           @default(STANDARD) @map("site_type")
+  platform                WebsitePlatform           @default(OTHER)
+  technologyNotes         String?                   @map("technology_notes")
+  repositoryUrl           String?                   @map("repository_url")
+  analyticsConfigured     WebsiteConfigurationState @default(UNKNOWN) @map("analytics_configured")
+  tagManagerConfigured    WebsiteConfigurationState @default(UNKNOWN) @map("tag_manager_configured")
+  status                  WebsiteSiteStatus         @default(PLANNING)
+  launchTargetDate        DateTime?                 @map("launch_target_date") @db.Date
+  launchedAt              DateTime?                 @map("launched_at") @db.Timestamptz(3)
+  launchDeploymentId      String?                   @map("launch_deployment_id") @db.Uuid
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization     Organization         @relation("WebsiteSitePlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  engagement       WebsiteEngagement    @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+  launchDeployment WebsiteDeployment?   @relation("WebsiteSiteLaunchDeployment", fields: [launchDeploymentId], references: [id], onDelete: SetNull)
+  createdByUser    User                 @relation("WebsiteSiteCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  environments     WebsiteEnvironment[]
+  pages            WebsitePage[]
+  deployments      WebsiteDeployment[]  @relation("WebsiteDeploymentSite")
+
+  @@index([organizationId])
+  @@index([engagementId, status])
+  @@map("website_sites")
+}
+
+/// LOCAL/DEVELOPMENT/STAGING/PRODUCTION — at most one row per (site,
+/// type). `customerVisible` gates whether the URL may ever be shown to
+/// the Portal (staging is typically false, production typically true
+/// once launched — this is a staff-set flag, not automatic). No
+/// credentials of any kind.
+model WebsiteEnvironment {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  siteId         String @map("site_id") @db.Uuid
+
+  type             WebsiteEnvironmentType   @map("type")
+  url              String?
+  normalizedOrigin String?                  @map("normalized_origin")
+  status           WebsiteEnvironmentStatus @default(NOT_SET_UP)
+  providerLabel    String?                  @map("provider_label")
+  customerVisible  Boolean                  @default(false) @map("customer_visible")
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization  Organization        @relation("WebsiteEnvironmentPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  site          WebsiteSite         @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  createdByUser User                @relation("WebsiteEnvironmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  deployments   WebsiteDeployment[] @relation("WebsiteDeploymentEnvironment")
+
+  @@unique([siteId, type])
+  @@index([organizationId])
+  @@map("website_environments")
+}
+
+/// The page/template inventory. `path` is unique per site (canonical,
+/// e.g. "/", "/about", "/services/seo"). `pageType` collapses
+/// page-vs-template into one field rather than two tables (the
+/// narrowest architecture that preserves domain meaning). `required`
+/// marks a page as counted in the launch-readiness formula.
+/// `projectTaskId` optionally links to the ProjectTask actually
+/// delivering it — Website OS never creates its own task entity.
+model WebsitePage {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  siteId         String @map("site_id") @db.Uuid
+
+  title         String
+  path          String
+  pageType      WebsitePageType   @default(PAGE) @map("page_type")
+  status        WebsitePageStatus @default(PLANNED)
+  required      Boolean           @default(true)
+  sortOrder     Int               @default(0) @map("sort_order")
+  projectTaskId String?           @map("project_task_id") @db.Uuid
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization  Organization @relation("WebsitePagePlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  site          WebsiteSite  @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  projectTask   ProjectTask? @relation("WebsitePageProjectTask", fields: [projectTaskId], references: [id], onDelete: SetNull)
+  createdByUser User         @relation("WebsitePageCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([siteId, path])
+  @@index([organizationId])
+  @@index([siteId, status])
+  // Codex Performance Engineer finding PERF-02 (Build 32 review) — the
+  // paginated page list always orders by (sortOrder, createdAt), optionally
+  // filtered by status; without these, Postgres must sort the matched rows
+  // itself rather than performing an index-ordered top-N scan at the
+  // documented thousands-of-pages-per-site scale.
+  @@index([siteId, sortOrder, createdAt])
+  @@index([siteId, status, sortOrder, createdAt])
+  @@map("website_pages")
+}
+
+/// Pure append-only historical evidence — an event that actually
+/// happened (or was manually recorded as having happened). NEVER
+/// implies Alpha OS itself performed a deployment — purely evidence.
+/// `status` is deliberately a SMALL, HONEST 3-value set (no `STARTED` —
+/// staff record outcomes after the fact, never live in-progress
+/// tracking that doesn't exist). `rollbackOfDeploymentId` self-references
+/// the deployment being rolled back, for provenance only.
+model WebsiteDeployment {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  siteId         String @map("site_id") @db.Uuid
+  environmentId  String @map("environment_id") @db.Uuid
+
+  deployedAt             DateTime                @map("deployed_at") @db.Timestamptz(3)
+  status                 WebsiteDeploymentStatus
+  versionLabel           String?                 @map("version_label")
+  notes                  String?
+  rollbackOfDeploymentId String?                 @map("rollback_of_deployment_id") @db.Uuid
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization         Organization        @relation("WebsiteDeploymentPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  site                 WebsiteSite         @relation("WebsiteDeploymentSite", fields: [siteId], references: [id], onDelete: Cascade)
+  environment          WebsiteEnvironment  @relation("WebsiteDeploymentEnvironment", fields: [environmentId], references: [id], onDelete: Cascade)
+  rollbackOfDeployment WebsiteDeployment?  @relation("WebsiteDeploymentRollback", fields: [rollbackOfDeploymentId], references: [id], onDelete: SetNull)
+  rollbacks            WebsiteDeployment[] @relation("WebsiteDeploymentRollback")
+  createdByUser        User                @relation("WebsiteDeploymentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  launchedSites        WebsiteSite[]       @relation("WebsiteSiteLaunchDeployment")
+
+  @@index([organizationId])
+  @@index([siteId, deployedAt(sort: Desc)])
+  @@index([environmentId, deployedAt(sort: Desc)])
+  @@map("website_deployments")
 }

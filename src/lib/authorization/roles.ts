@@ -138,6 +138,13 @@ const PLATFORM_FULL: PermissionKey[] = [
   // stay separate, narrower grants — see each role's own permissions
   // list below.
   "local_seo.read",
+  // Build 32 — Website Development OS. `website_development.read` is
+  // day-to-day platform staff visibility into Website Development
+  // engagements/sites/environments/pages/deployment history — the
+  // THIRD specialist domain (`ServiceCategory.WEB_DEVELOPMENT`), same
+  // tier. `.manage`/`.deploy` stay separate, narrower grants — see
+  // each role's own permissions list below.
+  "website_development.read",
 ];
 
 const ORGANIZATION_FULL: PermissionKey[] = [
@@ -303,6 +310,11 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       // specialist domain from SEO OS immediately above, same tier.
       "local_seo.manage",
       "local_seo.measurements.manage",
+      // Build 32 — Website Development OS. Owner/admin administer
+      // engagements/sites/environments/pages AND record deployments/
+      // launches — a THIRD SEPARATE specialist domain, same tier.
+      "website_development.manage",
+      "website_development.deploy",
     ],
   },
   platform_admin: {
@@ -401,6 +413,10 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       // above — a SEPARATE specialist domain (GBP / Local SEO).
       "local_seo.manage",
       "local_seo.measurements.manage",
+      // Build 32 — same tier/reasoning as `local_seo.manage` immediately
+      // above — a THIRD SEPARATE specialist domain (Website Development).
+      "website_development.manage",
+      "website_development.deploy",
     ],
   },
   support_admin: {
@@ -476,6 +492,9 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     // Build 31 — `local_seo.read` ALSO granted, same reasoning — a
     // SEPARATE specialist domain (GBP / Local SEO); deliberately NOT
     // `.manage`/`.measurements.manage`.
+    // Build 32 — `website_development.read` ALSO granted, same
+    // reasoning — a THIRD SEPARATE specialist domain (Website
+    // Development); deliberately NOT `.manage`/`.deploy`.
     permissions: [
       "users.read",
       "organizations.read",
@@ -501,6 +520,7 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "delivery_services.read",
       "seo.read",
       "local_seo.read",
+      "website_development.read",
     ],
   },
   support_agent: {

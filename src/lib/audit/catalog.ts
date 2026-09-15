@@ -409,6 +409,27 @@ export const AUDIT_CATALOG = {
   "localseo.issue_ignored": action("CRM", "A Local SEO issue was marked ignored."),
   "localseo.issue_reopened": action("CRM", "A resolved or ignored Local SEO issue was reopened."),
   "localseo.issue_linked_to_task": action("CRM", "A Local SEO issue was converted into a task."),
+
+  // Build 32 — Website Development OS. Same CRM-category/delivery-
+  // domain-family reasoning as `seo.*`/`localseo.*` immediately above —
+  // a THIRD SEPARATE specialist domain, own action namespace. Action
+  // keys use `websitedev.*` (no underscore in the first dot-segment,
+  // matching the SAME audit-catalog naming-regex workaround
+  // `localseo.*` already established — the permission-key prefix
+  // `website_development` and the audit-key prefix `websitedev` are
+  // deliberately different strings for this same reason). High-level
+  // events only — never one audit event per field save.
+  "websitedev.engagement_created": action("CRM", "A Website Development engagement was created for a customer service."),
+  "websitedev.site_created": action("CRM", "A website was added to a Website Development engagement."),
+  "websitedev.site_archived": action("CRM", "A website was archived."),
+  "websitedev.site_reactivated": action("CRM", "An archived website was reactivated."),
+  "websitedev.environment_recorded": action("CRM", "A website environment was recorded or updated."),
+  "websitedev.page_created": action("CRM", "A website page/template was added to the inventory."),
+  "websitedev.page_status_changed": action("CRM", "A website page/template's delivery status changed."),
+  "websitedev.deployment_recorded": action("CRM", "A website deployment was recorded."),
+  "websitedev.launch_recorded": action("CRM", "A website launch was recorded."),
+  "websitedev.launch_override_recorded": action("CRM", "A website launch was recorded bypassing launch-readiness, with an explicit reason."),
+  "websitedev.project_linked": action("CRM", "A Website Development engagement was linked to a delivery project."),
 } as const satisfies Record<string, AuditActionDefinition>;
 
 export type AuditActionKey = keyof typeof AUDIT_CATALOG;

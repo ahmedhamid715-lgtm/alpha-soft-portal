@@ -65,6 +65,26 @@ export default async function PortalServicesPage() {
                         <span>{SEO_FRESHNESS_LABELS[item.seoPerformance.freshness]}</span>
                       </div>
                     ) : null}
+                    {item.category === "WEB_DEVELOPMENT" && item.websiteDevPerformance ? (
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t pt-2 text-xs text-muted-foreground">
+                        {item.websiteDevPerformance.primarySiteName ? <span>{item.websiteDevPerformance.primarySiteName}</span> : null}
+                        {item.websiteDevPerformance.requiredPageCount > 0 ? (
+                          <span>
+                            {item.websiteDevPerformance.completedRequiredPageCount}/{item.websiteDevPerformance.requiredPageCount} required pages ready
+                          </span>
+                        ) : null}
+                        {item.websiteDevPerformance.launchedAt ? (
+                          <span>Launched {formatInTimeZone(item.websiteDevPerformance.launchedAt, "UTC", { hour: undefined, minute: undefined })}</span>
+                        ) : item.websiteDevPerformance.launchTargetDate ? (
+                          <span>Launch target: {formatInTimeZone(item.websiteDevPerformance.launchTargetDate, "UTC", { hour: undefined, minute: undefined })}</span>
+                        ) : null}
+                        {item.websiteDevPerformance.productionUrl ? (
+                          <a href={item.websiteDevPerformance.productionUrl} target="_blank" rel="noopener noreferrer" className="underline">
+                            Visit site
+                          </a>
+                        ) : null}
+                      </div>
+                    ) : null}
                     {item.category === "LOCAL_SEO" && item.localSeoPerformance ? (
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t pt-2 text-xs text-muted-foreground">
                         <span>{item.localSeoPerformance.activeLocationCount} location(s)</span>

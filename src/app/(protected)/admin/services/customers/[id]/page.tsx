@@ -8,6 +8,7 @@ import { getCustomerServiceDetail } from "@/server/services/customer-service-ser
 import { listAssignableUsers } from "@/server/services/crm-shared";
 import { getSeoEngagementByCustomerService } from "@/server/services/seo-engagement-service";
 import { getLocalSeoEngagementByCustomerService } from "@/server/services/local-seo-engagement-service";
+import { getWebsiteEngagementByCustomerService } from "@/server/services/website-engagement-service";
 import { NotFoundError } from "@/lib/errors/app-error";
 import { CustomerServiceDetailView } from "./customer-service-detail-view";
 
@@ -54,6 +55,15 @@ export default async function CustomerServiceDetailPage({ params }: { params: Pr
   const canManageLocalSeo = context.permissions.has("local_seo.manage");
   const localSeoEngagement = detail.category === "LOCAL_SEO" && canSeeLocalSeo ? await getLocalSeoEngagementByCustomerService({ customerServiceId: id }) : null;
 
+  // Build 32 — Website Development OS. Same "attach to the appropriate
+  // CustomerService, provisioned from Service Management" reasoning as
+  // SEO OS/Local SEO immediately above — a THIRD, separate specialist
+  // domain, own eligibility category (WEB_DEVELOPMENT, never SEO/
+  // LOCAL_SEO).
+  const canSeeWebsiteDev = context.permissions.has("website_development.read");
+  const canManageWebsiteDev = context.permissions.has("website_development.manage");
+  const websiteEngagement = detail.category === "WEB_DEVELOPMENT" && canSeeWebsiteDev ? await getWebsiteEngagementByCustomerService({ customerServiceId: id }) : null;
+
   return (
     <div className="flex flex-col gap-8">
       <PageHeader title={detail.serviceName} breadcrumbs={[{ label: "Services", href: "/admin/services" }, { label: detail.companyName, href: "/admin/services?tab=customers" }, { label: detail.serviceName }]} />
@@ -67,6 +77,9 @@ export default async function CustomerServiceDetailPage({ params }: { params: Pr
         canSeeLocalSeo={canSeeLocalSeo}
         canManageLocalSeo={canManageLocalSeo}
         localSeoEngagementId={localSeoEngagement?.id ?? null}
+        canSeeWebsiteDev={canSeeWebsiteDev}
+        canManageWebsiteDev={canManageWebsiteDev}
+        websiteEngagementId={websiteEngagement?.id ?? null}
       />
     </div>
   );

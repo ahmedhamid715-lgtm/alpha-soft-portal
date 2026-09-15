@@ -13,7 +13,16 @@ import { getOrganizationBillingForPlatform, type PlatformBillingDetail } from ".
 import { listServicesForCustomer360, type Customer360ServiceSummary } from "./customer-service-service";
 import { getSeoServicePerformanceInputForCustomer360 } from "./seo-customer-360-service";
 import { getLocalSeoServicePerformanceInputForCustomer360 } from "./local-seo-customer-360-service";
-import { classifySeoServicePerformance, classifyLocalSeoServicePerformance, type SeoServicePerformanceInput, type LocalSeoServicePerformanceInput, type SpecialistServicePerformanceInput } from "@/lib/crm/client-success";
+import { getWebsiteServicePerformanceInputForCustomer360 } from "./website-customer-360-service";
+import {
+  classifySeoServicePerformance,
+  classifyLocalSeoServicePerformance,
+  classifyWebsiteServicePerformance,
+  type SeoServicePerformanceInput,
+  type LocalSeoServicePerformanceInput,
+  type WebsiteServicePerformanceInput,
+  type SpecialistServicePerformanceInput,
+} from "@/lib/crm/client-success";
 import { organizationRepository } from "@/server/repositories/organization-repository";
 import { BillingAccountInvalidError } from "@/lib/billing/errors";
 import {
@@ -90,6 +99,8 @@ export interface Customer360ViewModel {
   canSeeSeoPerformance: boolean;
   /** `false` when the caller lacks `local_seo.read` — same reasoning as `canSeeSeoPerformance` immediately above, for the SEPARATE Local SEO specialist domain (Build 31). */
   canSeeLocalSeoPerformance: boolean;
+  /** `false` when the caller lacks `website_development.read` — same reasoning, for the THIRD SEPARATE Website Development specialist domain (Build 32). */
+  canSeeWebsiteDevPerformance: boolean;
   /**
    * Build 29 — real canonical `CustomerService` rows now take
    * precedence, falling back to the exact same sold/onboarding
@@ -101,7 +112,10 @@ export interface Customer360ViewModel {
    * exists for a mere commercial line item).
    */
   services:
-    | { source: "canonical"; items: (Customer360ServiceSummary & { seoPerformance: SeoServicePerformanceInput | null; localSeoPerformance: LocalSeoServicePerformanceInput | null })[] }
+    | {
+        source: "canonical";
+        items: (Customer360ServiceSummary & { seoPerformance: SeoServicePerformanceInput | null; localSeoPerformance: LocalSeoServicePerformanceInput | null; websiteDevPerformance: WebsiteServicePerformanceInput | null })[];
+      }
     | { source: "onboarding" | "accepted_proposal"; items: { title: string; description: string | null; quantity: number }[] }
     | null;
   /**
@@ -159,6 +173,7 @@ export async function getCustomer360(rawInput: unknown): Promise<Customer360View
   const canSeeServices = context.permissions.has("delivery_services.read");
   const canSeeSeoPerformance = context.permissions.has("seo.read");
   const canSeeLocalSeoPerformance = context.permissions.has("local_seo.read");
+  const canSeeWebsiteDevPerformance = context.permissions.has("website_development.read");
 
   // Stage 1 — every one of these depends only on `company` (already
   // resolved), never on each other, so they all start together
@@ -189,7 +204,7 @@ export async function getCustomer360(rawInput: unknown): Promise<Customer360View
   // `currentOnboardingDetail` only on `onboardings`) — same fix as
   // Stage 1, running them concurrently instead of one four-step await
   // chain.
-  const [linkedOrganizationMemberCounts, billing, latestDeal, currentOnboardingDetail, seoPerformance, localSeoPerformance] = await Promise.all([
+  const [linkedOrganizationMemberCounts, billing, latestDeal, currentOnboardingDetail, seoPerformance, localSeoPerformance, websiteDevPerformance] = await Promise.all([
     linkedOrganization && canSeeOrganizationDetail ? organizationRepository.membershipStatusCounts(linkedOrganization.id) : Promise.resolve(null),
     canSeeBilling && linkedOrganization
       ? getOrganizationBillingForPlatform({ organizationId: linkedOrganization.id }).catch((error) => {
@@ -210,12 +225,16 @@ export async function getCustomer360(rawInput: unknown): Promise<Customer360View
     // domain, same "aggregated per-category, never a direct Prisma
     // query here" reasoning as `seoPerformance` immediately above.
     canSeeLocalSeoPerformance && linkedOrganization ? getLocalSeoServicePerformanceInputForCustomer360(linkedOrganization.id) : Promise.resolve(null),
+    // Build 32 — Website Development's own domain service, THIRD
+    // SEPARATE specialist domain, same reasoning as `seoPerformance`/
+    // `localSeoPerformance` immediately above.
+    canSeeWebsiteDevPerformance && linkedOrganization ? getWebsiteServicePerformanceInputForCustomer360(linkedOrganization.id) : Promise.resolve(null),
   ]);
 
   const accountOwner = resolveAccountOwner(currentOnboardingDetail, latestDeal);
   const primaryContact = latestDeal?.primaryContact ?? null;
 
-  const services = await resolveServices(canonicalServices, currentOnboardingDetail, proposals, seoPerformance, localSeoPerformance);
+  const services = await resolveServices(canonicalServices, currentOnboardingDetail, proposals, seoPerformance, localSeoPerformance, websiteDevPerformance);
   const specialistPerformances = resolveSpecialistPerformances(services);
   const documents = resolveDocuments(proposals, contracts, currentOnboardingDetail);
 
@@ -271,6 +290,7 @@ export async function getCustomer360(rawInput: unknown): Promise<Customer360View
     canSeeServices,
     canSeeSeoPerformance,
     canSeeLocalSeoPerformance,
+    canSeeWebsiteDevPerformance,
     services,
     specialistPerformances,
     canSeeBilling,
@@ -318,6 +338,10 @@ const DOCUMENTS_CAP = 50;
  * Build 31 — `localSeoPerformance` is attached the same way onto every
  * canonical item whose category is LOCAL_SEO — a SEPARATE specialist
  * domain, own aggregated signal, never merged with `seoPerformance`.
+ *
+ * Build 32 — `websiteDevPerformance` is attached the same way onto every
+ * canonical item whose category is WEB_DEVELOPMENT — a THIRD, separate
+ * specialist domain, own aggregated signal.
  */
 async function resolveServices(
   canonicalServices: Customer360ServiceSummary[] | null,
@@ -325,11 +349,17 @@ async function resolveServices(
   proposals: CrmProposalWithRelations[] | null,
   seoPerformance: SeoServicePerformanceInput | null,
   localSeoPerformance: LocalSeoServicePerformanceInput | null,
+  websiteDevPerformance: WebsiteServicePerformanceInput | null,
 ): Promise<Customer360ViewModel["services"]> {
   if (canonicalServices && canonicalServices.length > 0) {
     return {
       source: "canonical",
-      items: canonicalServices.map((item) => ({ ...item, seoPerformance: item.category === "SEO" ? seoPerformance : null, localSeoPerformance: item.category === "LOCAL_SEO" ? localSeoPerformance : null })),
+      items: canonicalServices.map((item) => ({
+        ...item,
+        seoPerformance: item.category === "SEO" ? seoPerformance : null,
+        localSeoPerformance: item.category === "LOCAL_SEO" ? localSeoPerformance : null,
+        websiteDevPerformance: item.category === "WEB_DEVELOPMENT" ? websiteDevPerformance : null,
+      })),
     };
   }
   if (onboardingDetail && onboardingDetail.serviceItems.length > 0) {
@@ -365,6 +395,7 @@ function resolveSpecialistPerformances(services: Customer360ViewModel["services"
   for (const item of services.items) {
     if (item.category === "SEO") results.push(classifySeoServicePerformance(item.id, item.seoPerformance));
     else if (item.category === "LOCAL_SEO") results.push(classifyLocalSeoServicePerformance(item.id, item.localSeoPerformance));
+    else if (item.category === "WEB_DEVELOPMENT") results.push(classifyWebsiteServicePerformance(item.id, item.websiteDevPerformance));
   }
   return results;
 }

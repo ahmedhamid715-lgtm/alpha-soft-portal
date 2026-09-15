@@ -29,7 +29,7 @@ import { listProjectsForCustomer360, type Customer360ProjectSummary } from "@/se
 import { ProjectProgressDisplay } from "@/components/projects/project-progress-display";
 import { projectStatusVariant, projectPriorityVariant } from "@/components/projects/project-status";
 import { customerServiceStatusVariant, SERVICE_CATEGORY_LABELS } from "@/components/services/service-status";
-import type { SeoServicePerformanceInput, LocalSeoServicePerformanceInput } from "@/lib/crm/client-success";
+import type { SeoServicePerformanceInput, LocalSeoServicePerformanceInput, WebsiteServicePerformanceInput } from "@/lib/crm/client-success";
 
 export const metadata: Metadata = { title: "Customer 360" };
 
@@ -301,6 +301,7 @@ function ServicesTab({ view }: { view: Customer360ViewModel }) {
                   </div>
                   {item.category === "SEO" ? <SeoPerformanceSummaryRow canSee={view.canSeeSeoPerformance} performance={item.seoPerformance} /> : null}
                   {item.category === "LOCAL_SEO" ? <LocalSeoPerformanceSummaryRow canSee={view.canSeeLocalSeoPerformance} performance={item.localSeoPerformance} /> : null}
+                  {item.category === "WEB_DEVELOPMENT" ? <WebsiteDevPerformanceSummaryRow canSee={view.canSeeWebsiteDevPerformance} performance={item.websiteDevPerformance} /> : null}
                 </CardContent>
               </Card>
             </Link>
@@ -360,6 +361,24 @@ function LocalSeoPerformanceSummaryRow({ canSee, performance }: { canSee: boolea
       ) : null}
       {performance.openCriticalIssueCount > 0 ? <span className="text-destructive">{performance.openCriticalIssueCount} critical issue(s)</span> : null}
       {performance.openWarningIssueCount > 0 ? <span>{performance.openWarningIssueCount} warning issue(s)</span> : null}
+    </div>
+  );
+}
+
+/** Build 32 — Website Development's own SEPARATE aggregated delivery-performance signal (never website traffic/business performance — see docs/architecture/website-development-os.md), same rendering/authorization-gate discipline as `SeoPerformanceSummaryRow`/`LocalSeoPerformanceSummaryRow` above. */
+function WebsiteDevPerformanceSummaryRow({ canSee, performance }: { canSee: boolean; performance: WebsiteServicePerformanceInput | null }) {
+  if (!canSee) return <p className="text-xs text-muted-foreground">Website Development performance requires the website_development.read permission.</p>;
+  if (!performance || performance.activeSiteCount === 0) return <p className="text-xs text-muted-foreground">No Website Development performance data yet.</p>;
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t pt-2 text-xs text-muted-foreground">
+      <span>
+        {performance.activeSiteCount} active site{performance.activeSiteCount === 1 ? "" : "s"}
+      </span>
+      {performance.anyOverdueUnlaunchedSite ? <span className="text-destructive">Launch overdue</span> : null}
+      {performance.requiredQaFailedCount > 0 ? <span className="text-destructive">{performance.requiredQaFailedCount} required QA failed</span> : null}
+      {performance.requiredQaPendingCount > 0 ? <span>{performance.requiredQaPendingCount} required QA pending</span> : null}
+      {performance.anyReadinessNotReady ? <span>Not launch-ready</span> : null}
+      {performance.nearestUpcomingLaunchTargetDate ? <span>Next launch target: {fmtDate(performance.nearestUpcomingLaunchTargetDate)}</span> : null}
     </div>
   );
 }

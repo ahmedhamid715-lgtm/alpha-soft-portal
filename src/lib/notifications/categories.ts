@@ -197,6 +197,19 @@ export const NOTIFICATION_CATEGORIES = {
     mandatoryChannels: ["IN_APP"],
     defaultEnabled: { IN_APP: true, EMAIL: true },
   }),
+  /// Build 32 — Website Development OS. A THIRD SEPARATE specialist
+  /// domain, own category. High-signal only: a website launch was
+  /// recorded, or a recorded deployment failed. Routine page-status
+  /// changes, QA outcomes (Project QA's own concern), and ordinary
+  /// deployment successes are deliberately NOT notification-worthy.
+  WEBSITE_DEVELOPMENT_ACTIVITY: category({
+    label: "Website Development activity",
+    description: "When a website launch is recorded, or a recorded deployment fails, on a service you own.",
+    group: "Platform",
+    supportedChannels: ["IN_APP", "EMAIL"],
+    mandatoryChannels: ["IN_APP"],
+    defaultEnabled: { IN_APP: true, EMAIL: true },
+  }),
 } as const satisfies Record<string, NotificationCategoryDefinition>;
 
 export type NotificationCategoryKey = keyof typeof NOTIFICATION_CATEGORIES;

@@ -830,6 +830,31 @@ export const PERMISSION_CATALOG = {
     false,
     "local_seo.measurements.manage",
   ),
+
+  // --- website_development (Build 32 — Roadmap Module 26, Website
+  // Development OS) — PLATFORM-scope, same tier as `seo.*`/`local_seo.*`:
+  // the THIRD specialist domain (`ServiceCategory.WEB_DEVELOPMENT`,
+  // never `SEO`/`LOCAL_SEO`), own permission namespace. A two-tier split
+  // (not three, unlike `seo.*`/`local_seo.*`) — QA is reused directly
+  // through Project QA's own `delivery_projects.qa` permission (no
+  // second QA engine, no need for a `website_development.qa` key), so
+  // the narrower-tier split here is structural manage vs. the launch/
+  // deployment-recording authority specifically (higher stakes — a
+  // launch is a customer-facing, effectively irreversible act, the same
+  // reasoning `billing.refund` being owner-tier-only already
+  // establishes for a different irreversible action elsewhere in this
+  // catalog). No `website_development.*` key existed before this build
+  // (checked directly).
+  "website_development.read": permission("website_development", "read", "PLATFORM", "View Website Development engagements, sites, environments, pages, and deployment history.", false),
+  "website_development.manage": permission("website_development", "manage", "PLATFORM", "Create/archive Website Development engagements, sites, environments, and pages.", false),
+  "website_development.deploy": permission(
+    "website_development",
+    "manage",
+    "PLATFORM",
+    "Record deployments, record a site launch (including a launch-readiness override), and record a rollback.",
+    false,
+    "website_development.deploy",
+  ),
 } as const satisfies Record<string, PermissionDefinition>;
 
 export type PermissionKey = keyof typeof PERMISSION_CATALOG;

@@ -947,3 +947,52 @@ events.on<LocalSeoCriticalIssueDetectedPayload>("local_seo.critical_issue_detect
     templateData: { engagementId, locationDisplayName, issueTitle, companyName },
   });
 });
+
+interface WebsiteLaunchRecordedPayload {
+  siteId: string;
+  engagementId: string;
+  organizationId: string;
+  ownerUserId: string;
+  siteName: string;
+  companyName: string;
+}
+
+// Build 32 — Website Development OS. Same "no recipient = no
+// notification" rule every specialist domain's own critical-event
+// subscriber already establishes — the service layer only emits this
+// when the engagement's CustomerService has an owner.
+events.on<WebsiteLaunchRecordedPayload>("websitedev.launch_recorded", async (event) => {
+  const { siteId, engagementId, organizationId, ownerUserId, siteName, companyName } = event.payload;
+  await notificationService.notify({
+    templateKey: "websitedev.launch_recorded",
+    recipientUserId: ownerUserId,
+    organizationId,
+    sourceEventType: "websitedev.launch_recorded",
+    sourceEntityType: "website_site",
+    sourceEntityId: siteId,
+    templateData: { engagementId, siteName, companyName },
+  });
+});
+
+interface WebsiteDeploymentFailedPayload {
+  deploymentId: string;
+  engagementId: string;
+  organizationId: string;
+  ownerUserId: string;
+  siteName: string;
+  environmentLabel: string;
+  companyName: string;
+}
+
+events.on<WebsiteDeploymentFailedPayload>("websitedev.deployment_failed", async (event) => {
+  const { deploymentId, engagementId, organizationId, ownerUserId, siteName, environmentLabel, companyName } = event.payload;
+  await notificationService.notify({
+    templateKey: "websitedev.deployment_failed",
+    recipientUserId: ownerUserId,
+    organizationId,
+    sourceEventType: "websitedev.deployment_failed",
+    sourceEntityType: "website_deployment",
+    sourceEntityId: deploymentId,
+    templateData: { engagementId, siteName, environmentLabel, companyName },
+  });
+});

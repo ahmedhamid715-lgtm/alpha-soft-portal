@@ -641,6 +641,28 @@ export const NOTIFICATION_TEMPLATES = {
       actionUrl: `/admin/local-seo/${data.engagementId}`,
     }),
   }),
+  "websitedev.launch_recorded": template({
+    version: 1,
+    active: true,
+    category: "WEBSITE_DEVELOPMENT_ACTIVITY",
+    severity: "INFO",
+    render: (data: { engagementId: string; siteName: string; companyName: string }) => ({
+      title: "Website launched",
+      body: `"${data.siteName}" for ${data.companyName} was recorded as launched.`,
+      actionUrl: `/admin/websites/${data.engagementId}`,
+    }),
+  }),
+  "websitedev.deployment_failed": template({
+    version: 1,
+    active: true,
+    category: "WEBSITE_DEVELOPMENT_ACTIVITY",
+    severity: "WARNING",
+    render: (data: { engagementId: string; siteName: string; environmentLabel: string; companyName: string }) => ({
+      title: "Website deployment failed",
+      body: `A deployment to ${data.environmentLabel} for "${data.siteName}" (${data.companyName}) was recorded as failed.`,
+      actionUrl: `/admin/websites/${data.engagementId}`,
+    }),
+  }),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as const satisfies Record<string, NotificationTemplateDefinition<any>>;
 

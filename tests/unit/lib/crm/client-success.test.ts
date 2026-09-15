@@ -8,6 +8,7 @@ import {
   evaluateServicePerformance,
   classifySeoServicePerformance,
   classifyLocalSeoServicePerformance,
+  classifyWebsiteServicePerformance,
   toPaymentHealthComponent,
   evaluateChurnRisk,
   HEALTH_STATUS_SCORE,
@@ -16,6 +17,7 @@ import {
   type ServicePerformanceInput,
   type SeoServicePerformanceInput,
   type LocalSeoServicePerformanceInput,
+  type WebsiteServicePerformanceInput,
   type SpecialistServicePerformanceInput,
 } from "@/lib/crm/client-success";
 
@@ -201,13 +203,69 @@ describe("client-success", () => {
     });
   });
 
-  describe("evaluateServicePerformance — multi-specialist aggregation (Build 31)", () => {
+  describe("classifyWebsiteServicePerformance (Build 32 — Website Development OS)", () => {
+    function websiteInput(overrides: Partial<WebsiteServicePerformanceInput>): WebsiteServicePerformanceInput {
+      return { activeSiteCount: 1, anyReadinessNotReady: false, anyOverdueUnlaunchedSite: false, nearestUpcomingLaunchTargetDate: null, linkedProjectStatus: null, requiredQaFailedCount: 0, requiredQaPendingCount: 0, ...overrides };
+    }
+
+    it("is NOT_MEASURABLE when input is null, or zero active sites — never fabricated", () => {
+      expect(classifyWebsiteServicePerformance("cs-1", null).status).toBe("NOT_MEASURABLE");
+      expect(classifyWebsiteServicePerformance("cs-1", null).measurable).toBe(false);
+      expect(classifyWebsiteServicePerformance("cs-1", websiteInput({ activeSiteCount: 0 })).status).toBe("NOT_MEASURABLE");
+    });
+
+    it("is HEALTHY when there are no overdue/at-risk sites and no failed/pending required QA", () => {
+      const result = classifyWebsiteServicePerformance("cs-1", websiteInput({}));
+      expect(result.status).toBe("HEALTHY");
+      expect(result.measurable).toBe(true);
+    });
+
+    it("is CRITICAL when any required QA check has failed — outranks everything else", () => {
+      expect(classifyWebsiteServicePerformance("cs-1", websiteInput({ requiredQaFailedCount: 1 })).status).toBe("CRITICAL");
+      expect(classifyWebsiteServicePerformance("cs-1", websiteInput({ requiredQaFailedCount: 1, anyOverdueUnlaunchedSite: true })).status).toBe("CRITICAL");
+    });
+
+    it("is CRITICAL when a site's launch target date has passed without a recorded launch", () => {
+      expect(classifyWebsiteServicePerformance("cs-1", websiteInput({ anyOverdueUnlaunchedSite: true })).status).toBe("CRITICAL");
+    });
+
+    it("is AT_RISK when the linked project is CANCELLED or ON_HOLD", () => {
+      expect(classifyWebsiteServicePerformance("cs-1", websiteInput({ linkedProjectStatus: "CANCELLED" })).status).toBe("AT_RISK");
+      expect(classifyWebsiteServicePerformance("cs-1", websiteInput({ linkedProjectStatus: "ON_HOLD" })).status).toBe("AT_RISK");
+    });
+
+    it("is AT_RISK when not launch-ready and the nearest launch target is within the 14-day warning window", () => {
+      const soon = new Date(NOW.getTime() + 5 * 24 * 60 * 60 * 1000);
+      const result = classifyWebsiteServicePerformance("cs-1", websiteInput({ anyReadinessNotReady: true, nearestUpcomingLaunchTargetDate: soon }), NOW);
+      expect(result.status).toBe("AT_RISK");
+    });
+
+    it("is WATCH when not launch-ready but the launch target is far away (or unset)", () => {
+      const far = new Date(NOW.getTime() + 60 * 24 * 60 * 60 * 1000);
+      expect(classifyWebsiteServicePerformance("cs-1", websiteInput({ anyReadinessNotReady: true, nearestUpcomingLaunchTargetDate: far }), NOW).status).toBe("WATCH");
+      expect(classifyWebsiteServicePerformance("cs-1", websiteInput({ anyReadinessNotReady: true, nearestUpcomingLaunchTargetDate: null })).status).toBe("WATCH");
+    });
+
+    it("is WATCH when required QA is still pending", () => {
+      expect(classifyWebsiteServicePerformance("cs-1", websiteInput({ requiredQaPendingCount: 2 })).status).toBe("WATCH");
+    });
+
+    it("never counts missing/zero QA data as a failure — zero required QA checks is not penalized", () => {
+      const result = classifyWebsiteServicePerformance("cs-1", websiteInput({ requiredQaFailedCount: 0, requiredQaPendingCount: 0 }));
+      expect(result.status).toBe("HEALTHY");
+    });
+  });
+
+  describe("evaluateServicePerformance — multi-specialist aggregation (Build 31, extended Build 32)", () => {
     const seoHealthy: SpecialistServicePerformanceInput = { customerServiceId: "cs-seo", category: "SEO", measurable: true, status: "HEALTHY", reason: "SEO healthy." };
     const seoCritical: SpecialistServicePerformanceInput = { customerServiceId: "cs-seo", category: "SEO", measurable: true, status: "CRITICAL", reason: "SEO critical." };
     const seoNotMeasurable: SpecialistServicePerformanceInput = { customerServiceId: "cs-seo", category: "SEO", measurable: false, status: "NOT_MEASURABLE", reason: "SEO not measurable." };
     const localSeoHealthy: SpecialistServicePerformanceInput = { customerServiceId: "cs-local", category: "LOCAL_SEO", measurable: true, status: "HEALTHY", reason: "Local SEO healthy." };
     const localSeoAtRisk: SpecialistServicePerformanceInput = { customerServiceId: "cs-local", category: "LOCAL_SEO", measurable: true, status: "AT_RISK", reason: "Local SEO at risk." };
     const localSeoNotMeasurable: SpecialistServicePerformanceInput = { customerServiceId: "cs-local", category: "LOCAL_SEO", measurable: false, status: "NOT_MEASURABLE", reason: "Local SEO not measurable." };
+    const websiteHealthy: SpecialistServicePerformanceInput = { customerServiceId: "cs-website", category: "WEB_DEVELOPMENT", measurable: true, status: "HEALTHY", reason: "Website Development healthy." };
+    const websiteCritical: SpecialistServicePerformanceInput = { customerServiceId: "cs-website", category: "WEB_DEVELOPMENT", measurable: true, status: "CRITICAL", reason: "Website Development critical." };
+    const websiteNotMeasurable: SpecialistServicePerformanceInput = { customerServiceId: "cs-website", category: "WEB_DEVELOPMENT", measurable: false, status: "NOT_MEASURABLE", reason: "Website Development not measurable." };
 
     function input(specialists: SpecialistServicePerformanceInput[]): ServicePerformanceInput {
       return { specialists };
@@ -259,6 +317,41 @@ describe("client-success", () => {
       expect(a.status).toBe("CRITICAL");
       expect(b.status).toBe("CRITICAL");
       expect(a.score).toBe(HEALTH_STATUS_SCORE.CRITICAL);
+    });
+
+    it("Website Development only, measurable — reflects Website Development's own status (Build 32 regression)", () => {
+      expect(evaluateServicePerformance(input([websiteHealthy]), NOW).status).toBe("HEALTHY");
+      expect(evaluateServicePerformance(input([websiteCritical]), NOW).status).toBe("CRITICAL");
+    });
+
+    it("SEO + Website Development both measurable — takes the WORST status among them", () => {
+      expect(evaluateServicePerformance(input([seoHealthy, websiteCritical]), NOW).status).toBe("CRITICAL");
+      expect(evaluateServicePerformance(input([seoCritical, websiteHealthy]), NOW).status).toBe("CRITICAL");
+    });
+
+    it("Local SEO + Website Development both measurable — takes the WORST status among them", () => {
+      expect(evaluateServicePerformance(input([localSeoAtRisk, websiteHealthy]), NOW).status).toBe("AT_RISK");
+      expect(evaluateServicePerformance(input([localSeoHealthy, websiteCritical]), NOW).status).toBe("CRITICAL");
+    });
+
+    it("all three specialists (SEO + Local SEO + Website Development) — worst status wins regardless of order", () => {
+      const a = evaluateServicePerformance(input([seoHealthy, localSeoHealthy, websiteCritical]), NOW);
+      const b = evaluateServicePerformance(input([websiteCritical, seoHealthy, localSeoHealthy]), NOW);
+      expect(a.status).toBe("CRITICAL");
+      expect(b.status).toBe("CRITICAL");
+    });
+
+    it("one measurable (Website Development), others NOT_MEASURABLE — reflects the one measurable specialist only", () => {
+      const result = evaluateServicePerformance(input([websiteHealthy, seoNotMeasurable, localSeoNotMeasurable]), NOW);
+      expect(result.status).toBe("HEALTHY");
+      expect(result.measurable).toBe(true);
+    });
+
+    it("none measurable across all three specialists — NOT_MEASURABLE, never a fabricated score", () => {
+      const result = evaluateServicePerformance(input([seoNotMeasurable, localSeoNotMeasurable, websiteNotMeasurable]), NOW);
+      expect(result.status).toBe("NOT_MEASURABLE");
+      expect(result.measurable).toBe(false);
+      expect(result.score).toBeNull();
     });
   });
 

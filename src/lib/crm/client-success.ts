@@ -363,7 +363,7 @@ export interface LocalSeoServicePerformanceInput {
  */
 export interface SpecialistServicePerformanceInput {
   customerServiceId: string;
-  category: "SEO" | "LOCAL_SEO";
+  category: "SEO" | "LOCAL_SEO" | "WEB_DEVELOPMENT";
   measurable: boolean;
   status: HealthStatus;
   reason: string;
@@ -424,6 +424,74 @@ export function classifyLocalSeoServicePerformance(customerServiceId: string, in
     return { ...base, measurable: true, status: "WATCH", reason: "Local keyword rankings are mixed this period — as many declined as improved." };
   }
   return { ...base, measurable: true, status: "HEALTHY", reason: "No open critical or warning Local SEO issues, listings are consistent, and rankings are stable or improving." };
+}
+
+/**
+ * Website Development's own specialist performance facts (Build 32 —
+ * Roadmap Module 26). A THIRD SEPARATE specialist domain — this
+ * measures WEBSITE DEVELOPMENT DELIVERY PERFORMANCE (is the build on
+ * track, is it QA-clean, is it launching on schedule), never website
+ * BUSINESS performance (traffic, conversion, Core Web Vitals, uptime,
+ * SEO performance) — no such data exists here, and none is fabricated.
+ * `activeSiteCount` excludes ARCHIVED sites. Required QA is reused
+ * DIRECTLY from Project QA via the engagement's own linked Project
+ * (never a second QA engine) — engagement-scoped, not per-site, since
+ * one Project may deliver several sites at once. Resolved by
+ * `src/server/services/website-customer-360-service.ts`'s own
+ * `getWebsiteServicePerformanceInputForCustomer360()` — this file never
+ * queries a database.
+ */
+export interface WebsiteServicePerformanceInput {
+  /** Sites with `status !== ARCHIVED`. */
+  activeSiteCount: number;
+  /** `true` when at least one active site's own launch-readiness formula (`src/lib/website-dev/launch-readiness.ts`) evaluated to `NOT_READY`. */
+  anyReadinessNotReady: boolean;
+  /** `true` when at least one active, not-yet-launched site's `launchTargetDate` is already in the past. */
+  anyOverdueUnlaunchedSite: boolean;
+  /** The nearest upcoming `launchTargetDate` among active, not-yet-launched sites, if any. */
+  nearestUpcomingLaunchTargetDate: Date | null;
+  /** The linked Project's own `status`, if a Project is linked — `null` when no Project is linked yet (never treated as a failure on its own). */
+  linkedProjectStatus: "DRAFT" | "PLANNED" | "ACTIVE" | "ON_HOLD" | "COMPLETED" | "CANCELLED" | "ARCHIVED" | null;
+  /** Required `ProjectQaCheck` rows (on the linked Project) with `status = FAILED`. */
+  requiredQaFailedCount: number;
+  /** Required `ProjectQaCheck` rows (on the linked Project) still `PENDING`. */
+  requiredQaPendingCount: number;
+}
+
+const LAUNCH_TARGET_WARNING_WINDOW_DAYS = 14;
+
+/**
+ * Classifies one Website Development `CustomerService`'s own
+ * performance facts — same highest-severity-first discipline every
+ * other specialist classifier in this file already uses.
+ */
+export function classifyWebsiteServicePerformance(customerServiceId: string, input: WebsiteServicePerformanceInput | null, now: Date = new Date()): SpecialistServicePerformanceInput {
+  const base = { customerServiceId, category: "WEB_DEVELOPMENT" as const };
+  if (!input || input.activeSiteCount === 0) {
+    return { ...base, measurable: false, status: "NOT_MEASURABLE", reason: "No measurable Website Development performance data yet." };
+  }
+  if (input.requiredQaFailedCount > 0) {
+    return { ...base, measurable: true, status: "CRITICAL", reason: `${input.requiredQaFailedCount} required QA check(s) failed.` };
+  }
+  if (input.anyOverdueUnlaunchedSite) {
+    return { ...base, measurable: true, status: "CRITICAL", reason: "A site's launch target date has passed without a recorded launch." };
+  }
+  if (input.linkedProjectStatus === "CANCELLED" || input.linkedProjectStatus === "ON_HOLD") {
+    return { ...base, measurable: true, status: "AT_RISK", reason: `The linked delivery project is ${input.linkedProjectStatus}.` };
+  }
+  if (input.anyReadinessNotReady && input.nearestUpcomingLaunchTargetDate) {
+    const daysUntilTarget = Math.ceil((input.nearestUpcomingLaunchTargetDate.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
+    if (daysUntilTarget <= LAUNCH_TARGET_WARNING_WINDOW_DAYS) {
+      return { ...base, measurable: true, status: "AT_RISK", reason: `A site is not launch-ready with its target date ${daysUntilTarget} day(s) away.` };
+    }
+  }
+  if (input.anyReadinessNotReady) {
+    return { ...base, measurable: true, status: "WATCH", reason: "A site is not yet launch-ready." };
+  }
+  if (input.requiredQaPendingCount > 0) {
+    return { ...base, measurable: true, status: "WATCH", reason: `${input.requiredQaPendingCount} required QA check(s) are still pending.` };
+  }
+  return { ...base, measurable: true, status: "HEALTHY", reason: "No overdue or at-risk sites, and no failed required QA checks." };
 }
 
 export interface ServicePerformanceInput {

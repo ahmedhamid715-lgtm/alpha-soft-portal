@@ -126,6 +126,13 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     // keywords/listings/reviews/issues/audits/import) stays reachable
     // via `/admin/local-seo`'s own links, not a sidebar sub-menu.
     { key: "admin-local-seo", label: "Local SEO", href: "/admin/local-seo", icon: "mapPin", permission: "local_seo.read" as const },
+    // Build 32 — Website Development OS (Roadmap Module 26). A THIRD,
+    // SEPARATE specialist domain from SEO OS/Local SEO immediately
+    // above — same flat, single-link shape; a site's own workspace
+    // (tabs for overview/pages/environments/qa/deployments) stays
+    // reachable via `/admin/websites`'s own links, not a sidebar
+    // sub-menu.
+    { key: "admin-websites", label: "Website Development", href: "/admin/websites", icon: "globe", permission: "website_development.read" as const },
   ].filter((item) => platformContext.permissions.has(item.permission));
 
   if (platformItems.length > 0) {

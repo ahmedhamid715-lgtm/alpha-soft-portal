@@ -16,6 +16,7 @@ import {
 } from "../../actions";
 import { createSeoEngagementAction } from "../../../seo/actions";
 import { createLocalSeoEngagementAction } from "../../../local-seo/actions";
+import { createWebsiteEngagementAction } from "../../../websites/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,6 +40,9 @@ export function CustomerServiceDetailView({
   canSeeLocalSeo,
   canManageLocalSeo,
   localSeoEngagementId,
+  canSeeWebsiteDev,
+  canManageWebsiteDev,
+  websiteEngagementId,
 }: {
   detail: CustomerServiceDetail;
   canManage: boolean;
@@ -49,6 +53,9 @@ export function CustomerServiceDetailView({
   canSeeLocalSeo: boolean;
   canManageLocalSeo: boolean;
   localSeoEngagementId: string | null;
+  canSeeWebsiteDev: boolean;
+  canManageWebsiteDev: boolean;
+  websiteEngagementId: string | null;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -282,6 +289,36 @@ export function CustomerServiceDetailView({
             </Button>
           ) : (
             <p className="text-sm text-muted-foreground">No Local SEO workspace set up yet.</p>
+          )}
+        </section>
+      ) : null}
+
+      {detail.category === "WEB_DEVELOPMENT" ? (
+        <section className="flex flex-col gap-3">
+          <SectionHeader title="Website Development workspace" />
+          {!canSeeWebsiteDev ? (
+            <p className="text-sm text-muted-foreground">Viewing the Website Development workspace requires the website_development.read permission.</p>
+          ) : websiteEngagementId ? (
+            <Button asChild variant="outline" className="w-fit">
+              <Link href={`/admin/websites/${websiteEngagementId}`}>Open Website workspace</Link>
+            </Button>
+          ) : canManageWebsiteDev ? (
+            <Button
+              variant="outline"
+              className="w-fit"
+              disabled={pending}
+              onClick={() =>
+                runAction(async () => {
+                  const result = await createWebsiteEngagementAction({ customerServiceId: detail.id });
+                  if (!result.error && result.data) router.push(`/admin/websites/${result.data.id}`);
+                  return result;
+                })
+              }
+            >
+              Set up Website workspace
+            </Button>
+          ) : (
+            <p className="text-sm text-muted-foreground">No Website workspace set up yet.</p>
           )}
         </section>
       ) : null}
