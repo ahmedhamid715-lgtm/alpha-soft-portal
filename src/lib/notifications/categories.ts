@@ -183,6 +183,20 @@ export const NOTIFICATION_CATEGORIES = {
     mandatoryChannels: ["IN_APP"],
     defaultEnabled: { IN_APP: true, EMAIL: true },
   }),
+  /// Build 31 — GBP / Local SEO. Same deliberately-narrow reasoning as
+  /// `SEO_ACTIVITY` immediately above — a SEPARATE specialist domain, own
+  /// category: a critical Local SEO issue only (NAP inconsistency,
+  /// missing listing, unverified profile, review-response backlog). Local
+  /// rank fluctuations, routine audit runs, and individual review imports
+  /// are never notification-worthy on their own.
+  LOCAL_SEO_ACTIVITY: category({
+    label: "Local SEO activity",
+    description: "When a critical Local SEO issue is detected on a service you own.",
+    group: "Platform",
+    supportedChannels: ["IN_APP", "EMAIL"],
+    mandatoryChannels: ["IN_APP"],
+    defaultEnabled: { IN_APP: true, EMAIL: true },
+  }),
 } as const satisfies Record<string, NotificationCategoryDefinition>;
 
 export type NotificationCategoryKey = keyof typeof NOTIFICATION_CATEGORIES;

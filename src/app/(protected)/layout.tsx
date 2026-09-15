@@ -120,6 +120,12 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     // `/admin/seo`'s own links, not a sidebar sub-menu. Reuses the
     // existing `search` icon (no new icon needed).
     { key: "admin-seo", label: "SEO", href: "/admin/seo", icon: "search", permission: "seo.read" as const },
+    // Build 31 — GBP / Local SEO (Roadmap Module 25). A SEPARATE
+    // specialist domain from SEO OS immediately above — same flat,
+    // single-link shape; a location's own workspace (tabs for profile/
+    // keywords/listings/reviews/issues/audits/import) stays reachable
+    // via `/admin/local-seo`'s own links, not a sidebar sub-menu.
+    { key: "admin-local-seo", label: "Local SEO", href: "/admin/local-seo", icon: "mapPin", permission: "local_seo.read" as const },
   ].filter((item) => platformContext.permissions.has(item.permission));
 
   if (platformItems.length > 0) {

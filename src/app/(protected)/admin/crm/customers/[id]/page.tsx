@@ -29,7 +29,7 @@ import { listProjectsForCustomer360, type Customer360ProjectSummary } from "@/se
 import { ProjectProgressDisplay } from "@/components/projects/project-progress-display";
 import { projectStatusVariant, projectPriorityVariant } from "@/components/projects/project-status";
 import { customerServiceStatusVariant, SERVICE_CATEGORY_LABELS } from "@/components/services/service-status";
-import type { SeoServicePerformanceInput } from "@/lib/crm/client-success";
+import type { SeoServicePerformanceInput, LocalSeoServicePerformanceInput } from "@/lib/crm/client-success";
 
 export const metadata: Metadata = { title: "Customer 360" };
 
@@ -300,6 +300,7 @@ function ServicesTab({ view }: { view: Customer360ViewModel }) {
                     {item.linkedProjectTitles.length > 0 ? <span>{item.linkedProjectTitles.length} linked project(s)</span> : null}
                   </div>
                   {item.category === "SEO" ? <SeoPerformanceSummaryRow canSee={view.canSeeSeoPerformance} performance={item.seoPerformance} /> : null}
+                  {item.category === "LOCAL_SEO" ? <LocalSeoPerformanceSummaryRow canSee={view.canSeeLocalSeoPerformance} performance={item.localSeoPerformance} /> : null}
                 </CardContent>
               </Card>
             </Link>
@@ -337,6 +338,26 @@ function SeoPerformanceSummaryRow({ canSee, performance }: { canSee: boolean; pe
       <span>{performance.observedKeywordCount} keyword(s) tracked</span>
       <span>{performance.improvingKeywordCount} improving</span>
       <span>{performance.decliningKeywordCount} declining</span>
+      {performance.openCriticalIssueCount > 0 ? <span className="text-destructive">{performance.openCriticalIssueCount} critical issue(s)</span> : null}
+      {performance.openWarningIssueCount > 0 ? <span>{performance.openWarningIssueCount} warning issue(s)</span> : null}
+    </div>
+  );
+}
+
+/** Build 31 — Local SEO's own SEPARATE aggregated performance signal, same rendering/authorization-gate discipline as `SeoPerformanceSummaryRow` immediately above. */
+function LocalSeoPerformanceSummaryRow({ canSee, performance }: { canSee: boolean; performance: LocalSeoServicePerformanceInput | null }) {
+  if (!canSee) return <p className="text-xs text-muted-foreground">Local SEO performance requires the local_seo.read permission.</p>;
+  if (!performance || (performance.observedKeywordCount === 0 && performance.measurableListingCount === 0)) return <p className="text-xs text-muted-foreground">No Local SEO performance data yet.</p>;
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t pt-2 text-xs text-muted-foreground">
+      <span>{performance.observedKeywordCount} local keyword(s) tracked</span>
+      <span>{performance.improvingKeywordCount} improving</span>
+      <span>{performance.decliningKeywordCount} declining</span>
+      {performance.measurableListingCount > 0 ? (
+        <span>
+          {performance.inconsistentListingCount}/{performance.measurableListingCount} listing(s) inconsistent
+        </span>
+      ) : null}
       {performance.openCriticalIssueCount > 0 ? <span className="text-destructive">{performance.openCriticalIssueCount} critical issue(s)</span> : null}
       {performance.openWarningIssueCount > 0 ? <span>{performance.openWarningIssueCount} warning issue(s)</span> : null}
     </div>

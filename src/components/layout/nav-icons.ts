@@ -24,6 +24,7 @@ import {
   Tags,
   Package,
   MessageSquare,
+  MapPin,
   type LucideIcon,
 } from "lucide-react"
 
@@ -61,6 +62,8 @@ export const NAV_ICON_MAP: Record<string, LucideIcon> = {
   // Build 26 — Customer Portal.
   services: Package,
   messages: MessageSquare,
+  // Build 31 — GBP / Local SEO (Roadmap Module 25).
+  mapPin: MapPin,
 }
 
 export function resolveNavIcon(name: string | undefined): LucideIcon | undefined {

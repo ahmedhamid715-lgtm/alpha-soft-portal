@@ -65,6 +65,22 @@ export default async function PortalServicesPage() {
                         <span>{SEO_FRESHNESS_LABELS[item.seoPerformance.freshness]}</span>
                       </div>
                     ) : null}
+                    {item.category === "LOCAL_SEO" && item.localSeoPerformance ? (
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t pt-2 text-xs text-muted-foreground">
+                        <span>{item.localSeoPerformance.activeLocationCount} location(s)</span>
+                        <span>{item.localSeoPerformance.trackedKeywordCount} local keyword(s) tracked</span>
+                        <span>{item.localSeoPerformance.localPackTop3Count} in Local Pack top 3</span>
+                        {item.localSeoPerformance.averagePosition !== null ? <span>Avg. position {item.localSeoPerformance.averagePosition}</span> : null}
+                        {item.localSeoPerformance.listingConsistencyPercent !== null ? <span>{item.localSeoPerformance.listingConsistencyPercent}% listings consistent</span> : null}
+                        {item.localSeoPerformance.reviewCount > 0 ? (
+                          <span>
+                            {item.localSeoPerformance.reviewCount} review(s){item.localSeoPerformance.averageRating !== null ? `, ${item.localSeoPerformance.averageRating}★ avg` : ""}
+                          </span>
+                        ) : null}
+                        {item.localSeoPerformance.openCriticalIssueCount > 0 ? <span className="text-destructive">{item.localSeoPerformance.openCriticalIssueCount} critical issue(s)</span> : null}
+                        <span>{SEO_FRESHNESS_LABELS[item.localSeoPerformance.freshness]}</span>
+                      </div>
+                    ) : null}
                   </CardContent>
                 </Card>
               ))

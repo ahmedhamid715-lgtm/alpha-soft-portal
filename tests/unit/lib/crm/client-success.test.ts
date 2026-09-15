@@ -6,6 +6,8 @@ import {
   evaluateProjectHealth,
   evaluateSupportHealth,
   evaluateServicePerformance,
+  classifySeoServicePerformance,
+  classifyLocalSeoServicePerformance,
   toPaymentHealthComponent,
   evaluateChurnRisk,
   HEALTH_STATUS_SCORE,
@@ -13,6 +15,8 @@ import {
   type ProjectHealthInput,
   type ServicePerformanceInput,
   type SeoServicePerformanceInput,
+  type LocalSeoServicePerformanceInput,
+  type SpecialistServicePerformanceInput,
 } from "@/lib/crm/client-success";
 
 const NOW = new Date("2026-06-15T12:00:00Z");
@@ -119,38 +123,142 @@ describe("client-success", () => {
     });
   });
 
-  describe("evaluateServicePerformance (Build 30 — SEO OS graduation)", () => {
-    function seoInput(overrides: Partial<SeoServicePerformanceInput>): ServicePerformanceInput {
-      return { seo: { observedKeywordCount: 10, improvingKeywordCount: 0, decliningKeywordCount: 0, openCriticalIssueCount: 0, openWarningIssueCount: 0, ...overrides } };
+  describe("classifySeoServicePerformance (Build 30 — SEO OS graduation)", () => {
+    function seoInput(overrides: Partial<SeoServicePerformanceInput>): SeoServicePerformanceInput {
+      return { observedKeywordCount: 10, improvingKeywordCount: 0, decliningKeywordCount: 0, openCriticalIssueCount: 0, openWarningIssueCount: 0, ...overrides };
     }
 
-    it("is NOT_MEASURABLE when input is null, seo is null, or zero keywords have ever been observed — never fabricated", () => {
-      expect(evaluateServicePerformance(null, NOW).status).toBe("NOT_MEASURABLE");
-      expect(evaluateServicePerformance({ seo: null }, NOW).status).toBe("NOT_MEASURABLE");
-      expect(evaluateServicePerformance(seoInput({ observedKeywordCount: 0 }), NOW).status).toBe("NOT_MEASURABLE");
+    it("is NOT_MEASURABLE when input is null, or zero keywords have ever been observed — never fabricated", () => {
+      expect(classifySeoServicePerformance("cs-1", null).status).toBe("NOT_MEASURABLE");
+      expect(classifySeoServicePerformance("cs-1", null).measurable).toBe(false);
+      expect(classifySeoServicePerformance("cs-1", seoInput({ observedKeywordCount: 0 })).status).toBe("NOT_MEASURABLE");
     });
 
     it("is HEALTHY when there are no open critical/warning issues and rankings are stable or improving", () => {
-      const result = evaluateServicePerformance(seoInput({}), NOW);
+      const result = classifySeoServicePerformance("cs-1", seoInput({}));
       expect(result.status).toBe("HEALTHY");
       expect(result.measurable).toBe(true);
-      expect(result.score).toBe(HEALTH_STATUS_SCORE.HEALTHY);
-
-      expect(evaluateServicePerformance(seoInput({ improvingKeywordCount: 3, decliningKeywordCount: 1 }), NOW).status).toBe("HEALTHY");
+      expect(classifySeoServicePerformance("cs-1", seoInput({ improvingKeywordCount: 3, decliningKeywordCount: 1 })).status).toBe("HEALTHY");
     });
 
     it("is WATCH when declines equal gains, or an open warning issue exists", () => {
-      expect(evaluateServicePerformance(seoInput({ improvingKeywordCount: 2, decliningKeywordCount: 2 }), NOW).status).toBe("WATCH");
-      expect(evaluateServicePerformance(seoInput({ openWarningIssueCount: 1 }), NOW).status).toBe("WATCH");
+      expect(classifySeoServicePerformance("cs-1", seoInput({ improvingKeywordCount: 2, decliningKeywordCount: 2 })).status).toBe("WATCH");
+      expect(classifySeoServicePerformance("cs-1", seoInput({ openWarningIssueCount: 1 })).status).toBe("WATCH");
     });
 
     it("is AT_RISK when more keywords declined than improved", () => {
-      expect(evaluateServicePerformance(seoInput({ improvingKeywordCount: 1, decliningKeywordCount: 3 }), NOW).status).toBe("AT_RISK");
+      expect(classifySeoServicePerformance("cs-1", seoInput({ improvingKeywordCount: 1, decliningKeywordCount: 3 })).status).toBe("AT_RISK");
     });
 
     it("is CRITICAL when any critical issue is open — outranks everything else", () => {
-      expect(evaluateServicePerformance(seoInput({ openCriticalIssueCount: 1 }), NOW).status).toBe("CRITICAL");
-      expect(evaluateServicePerformance(seoInput({ openCriticalIssueCount: 1, improvingKeywordCount: 5, decliningKeywordCount: 0 }), NOW).status).toBe("CRITICAL");
+      expect(classifySeoServicePerformance("cs-1", seoInput({ openCriticalIssueCount: 1 })).status).toBe("CRITICAL");
+      expect(classifySeoServicePerformance("cs-1", seoInput({ openCriticalIssueCount: 1, improvingKeywordCount: 5, decliningKeywordCount: 0 })).status).toBe("CRITICAL");
+    });
+  });
+
+  describe("classifyLocalSeoServicePerformance (Build 31 — GBP / Local SEO)", () => {
+    function localSeoInput(overrides: Partial<LocalSeoServicePerformanceInput>): LocalSeoServicePerformanceInput {
+      return { observedKeywordCount: 10, improvingKeywordCount: 0, decliningKeywordCount: 0, openCriticalIssueCount: 0, openWarningIssueCount: 0, inconsistentListingCount: 0, measurableListingCount: 2, ...overrides };
+    }
+
+    it("is NOT_MEASURABLE when input is null, or zero keywords AND zero measurable listings — never fabricated", () => {
+      expect(classifyLocalSeoServicePerformance("cs-1", null).status).toBe("NOT_MEASURABLE");
+      expect(classifyLocalSeoServicePerformance("cs-1", null).measurable).toBe(false);
+      expect(classifyLocalSeoServicePerformance("cs-1", localSeoInput({ observedKeywordCount: 0, measurableListingCount: 0 })).status).toBe("NOT_MEASURABLE");
+    });
+
+    it("is measurable from listings alone even with zero observed keywords", () => {
+      expect(classifyLocalSeoServicePerformance("cs-1", localSeoInput({ observedKeywordCount: 0, measurableListingCount: 3 })).measurable).toBe(true);
+    });
+
+    it("is HEALTHY when no open issues, no inconsistent listings, and rankings are stable or improving", () => {
+      const result = classifyLocalSeoServicePerformance("cs-1", localSeoInput({}));
+      expect(result.status).toBe("HEALTHY");
+      expect(result.measurable).toBe(true);
+    });
+
+    it("is AT_RISK when any listing is NAP-inconsistent, or more keywords declined than improved", () => {
+      expect(classifyLocalSeoServicePerformance("cs-1", localSeoInput({ inconsistentListingCount: 1 })).status).toBe("AT_RISK");
+      expect(classifyLocalSeoServicePerformance("cs-1", localSeoInput({ improvingKeywordCount: 1, decliningKeywordCount: 3 })).status).toBe("AT_RISK");
+    });
+
+    it("is WATCH when declines equal gains, or an open warning issue exists", () => {
+      expect(classifyLocalSeoServicePerformance("cs-1", localSeoInput({ improvingKeywordCount: 2, decliningKeywordCount: 2 })).status).toBe("WATCH");
+      expect(classifyLocalSeoServicePerformance("cs-1", localSeoInput({ openWarningIssueCount: 1 })).status).toBe("WATCH");
+    });
+
+    it("is CRITICAL when any critical issue is open — outranks everything else, including inconsistent listings", () => {
+      expect(classifyLocalSeoServicePerformance("cs-1", localSeoInput({ openCriticalIssueCount: 1, inconsistentListingCount: 1 })).status).toBe("CRITICAL");
+    });
+
+    it("never includes review data in the pass/fail formula (reviews are a separate KPI, not a Service Performance input)", () => {
+      // LocalSeoServicePerformanceInput has no review fields at all — this
+      // test documents the deliberate omission (see the type's own doc
+      // comment) rather than exercising a field that doesn't exist.
+      const input = localSeoInput({});
+      expect(Object.keys(input)).not.toContain("reviewCount");
+      expect(Object.keys(input)).not.toContain("averageRating");
+    });
+  });
+
+  describe("evaluateServicePerformance — multi-specialist aggregation (Build 31)", () => {
+    const seoHealthy: SpecialistServicePerformanceInput = { customerServiceId: "cs-seo", category: "SEO", measurable: true, status: "HEALTHY", reason: "SEO healthy." };
+    const seoCritical: SpecialistServicePerformanceInput = { customerServiceId: "cs-seo", category: "SEO", measurable: true, status: "CRITICAL", reason: "SEO critical." };
+    const seoNotMeasurable: SpecialistServicePerformanceInput = { customerServiceId: "cs-seo", category: "SEO", measurable: false, status: "NOT_MEASURABLE", reason: "SEO not measurable." };
+    const localSeoHealthy: SpecialistServicePerformanceInput = { customerServiceId: "cs-local", category: "LOCAL_SEO", measurable: true, status: "HEALTHY", reason: "Local SEO healthy." };
+    const localSeoAtRisk: SpecialistServicePerformanceInput = { customerServiceId: "cs-local", category: "LOCAL_SEO", measurable: true, status: "AT_RISK", reason: "Local SEO at risk." };
+    const localSeoNotMeasurable: SpecialistServicePerformanceInput = { customerServiceId: "cs-local", category: "LOCAL_SEO", measurable: false, status: "NOT_MEASURABLE", reason: "Local SEO not measurable." };
+
+    function input(specialists: SpecialistServicePerformanceInput[]): ServicePerformanceInput {
+      return { specialists };
+    }
+
+    it("is NOT_MEASURABLE when input is null, or the specialists array is empty — no specialist services at all", () => {
+      expect(evaluateServicePerformance(null, NOW).status).toBe("NOT_MEASURABLE");
+      expect(evaluateServicePerformance(input([]), NOW).status).toBe("NOT_MEASURABLE");
+    });
+
+    it("SEO only, measurable — reflects SEO's own status", () => {
+      expect(evaluateServicePerformance(input([seoHealthy]), NOW).status).toBe("HEALTHY");
+      expect(evaluateServicePerformance(input([seoCritical]), NOW).status).toBe("CRITICAL");
+    });
+
+    it("Local SEO only, measurable — reflects Local SEO's own status", () => {
+      expect(evaluateServicePerformance(input([localSeoHealthy]), NOW).status).toBe("HEALTHY");
+      expect(evaluateServicePerformance(input([localSeoAtRisk]), NOW).status).toBe("AT_RISK");
+    });
+
+    it("SEO + Local SEO both measurable — takes the WORST status among them", () => {
+      expect(evaluateServicePerformance(input([seoHealthy, localSeoAtRisk]), NOW).status).toBe("AT_RISK");
+      expect(evaluateServicePerformance(input([seoCritical, localSeoHealthy]), NOW).status).toBe("CRITICAL");
+    });
+
+    it("SEO measurable, Local SEO NOT_MEASURABLE — the NOT_MEASURABLE specialist is excluded, not counted as failing", () => {
+      const result = evaluateServicePerformance(input([seoHealthy, localSeoNotMeasurable]), NOW);
+      expect(result.status).toBe("HEALTHY");
+      expect(result.measurable).toBe(true);
+      expect(result.reason).not.toContain("not measurable");
+    });
+
+    it("Local SEO measurable, SEO NOT_MEASURABLE — the NOT_MEASURABLE specialist is excluded, not counted as failing", () => {
+      const result = evaluateServicePerformance(input([localSeoAtRisk, seoNotMeasurable]), NOW);
+      expect(result.status).toBe("AT_RISK");
+      expect(result.measurable).toBe(true);
+    });
+
+    it("no specialist measurements at all (both NOT_MEASURABLE) — NOT_MEASURABLE, never a fabricated score", () => {
+      const result = evaluateServicePerformance(input([seoNotMeasurable, localSeoNotMeasurable]), NOW);
+      expect(result.status).toBe("NOT_MEASURABLE");
+      expect(result.measurable).toBe(false);
+      expect(result.score).toBeNull();
+    });
+
+    it("multiple active specialist services — deterministic worst-status-wins regardless of array order", () => {
+      const a = evaluateServicePerformance(input([seoHealthy, localSeoAtRisk, seoCritical]), NOW);
+      const b = evaluateServicePerformance(input([seoCritical, seoHealthy, localSeoAtRisk]), NOW);
+      expect(a.status).toBe("CRITICAL");
+      expect(b.status).toBe("CRITICAL");
+      expect(a.score).toBe(HEALTH_STATUS_SCORE.CRITICAL);
     });
   });
 

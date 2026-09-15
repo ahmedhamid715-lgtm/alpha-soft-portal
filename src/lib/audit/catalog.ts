@@ -381,6 +381,34 @@ export const AUDIT_CATALOG = {
   "seo.issue_ignored": action("CRM", "An SEO issue was marked ignored."),
   "seo.issue_reopened": action("CRM", "A resolved or ignored SEO issue was reopened."),
   "seo.issue_linked_to_task": action("CRM", "An SEO issue was converted into a task."),
+
+  // Build 31 — GBP / Local SEO. Same CRM-category/delivery-domain-family/
+  // batch-level reasoning as `seo.*` immediately above — a SEPARATE
+  // specialist domain, own action namespace. One audit event per manual
+  // entry or per CSV import batch, never one per individual rank
+  // observation/listing/review row.
+  "localseo.engagement_created": action("CRM", "A Local SEO engagement was created for a customer service."),
+  "localseo.location_added": action("CRM", "A business location was added to a Local SEO engagement."),
+  "localseo.location_updated": action("CRM", "A business location's details were updated."),
+  "localseo.location_archived": action("CRM", "A business location was archived."),
+  "localseo.location_reactivated": action("CRM", "An archived business location was reactivated."),
+  "localseo.gbp_profile_recorded": action("CRM", "A Google Business Profile identity was recorded for a location."),
+  "localseo.gbp_profile_updated": action("CRM", "A location's Google Business Profile identity was updated."),
+  "localseo.keyword_added": action("CRM", "A local keyword was added to a location."),
+  "localseo.keyword_archived": action("CRM", "A local keyword was archived."),
+  "localseo.keyword_reactivated": action("CRM", "An archived local keyword was reactivated."),
+  "localseo.rank_observation_recorded": action("CRM", "A manual local rank observation was recorded."),
+  "localseo.rank_observations_imported": action("CRM", "A batch of local rank observations was imported from a file."),
+  "localseo.listing_recorded": action("CRM", "A location's listing on an external directory was recorded or updated."),
+  "localseo.review_recorded": action("CRM", "A local review was recorded."),
+  "localseo.review_response_recorded": action("CRM", "A staff-confirmed response to a local review was recorded."),
+  "localseo.audit_run_recorded": action("CRM", "A local SEO audit run was recorded."),
+  "localseo.issue_created": action("CRM", "A Local SEO issue was recorded."),
+  "localseo.issue_acknowledged": action("CRM", "A Local SEO issue was acknowledged."),
+  "localseo.issue_resolved": action("CRM", "A Local SEO issue was marked resolved."),
+  "localseo.issue_ignored": action("CRM", "A Local SEO issue was marked ignored."),
+  "localseo.issue_reopened": action("CRM", "A resolved or ignored Local SEO issue was reopened."),
+  "localseo.issue_linked_to_task": action("CRM", "A Local SEO issue was converted into a task."),
 } as const satisfies Record<string, AuditActionDefinition>;
 
 export type AuditActionKey = keyof typeof AUDIT_CATALOG;

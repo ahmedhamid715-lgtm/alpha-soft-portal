@@ -139,26 +139,26 @@ async function resolveProjectHealth(company360: Customer360ViewModel, canSeeProj
 }
 
 /**
- * NOT_MEASURABLE gate = no linked organization, OR `company360` itself
- * says the caller can't see SEO performance (`canSeeSeoPerformance`) —
- * the exact same shape `resolveProjectHealth()` establishes above
- * (Build 27), mirrored here for Build 30's own SEO OS graduation of the
- * "service" component. Client Success never escalates its own caller's
- * privileges to read SEO data they couldn't otherwise see.
+ * NOT_MEASURABLE gate = no linked organization — `company360` itself
+ * already gates EACH specialist input on its own permission
+ * (`canSeeSeoPerformance`/`canSeeLocalSeoPerformance`) when composing
+ * `specialistPerformances`, so this function only needs to check for a
+ * linked organization at all. Client Success never escalates its own
+ * caller's privileges to read specialist data they couldn't otherwise
+ * see — that gate already happened inside `getCustomer360()`.
  *
- * Build 30 Codex Performance Engineer finding P3 — this function
- * previously called `getSeoServicePerformanceInputForCustomer360()`
- * AGAIN here, redundantly re-running the full SEO
- * engagement→property→keyword→observation/issue query chain that
- * `getCustomer360()` already ran to populate `company360.services`'
- * own canonical items. Reused directly instead — `company360` is
- * always a complete, freshly (or validly precomputed) resolved view
- * model either way, so the embedded value is never stale relative to
- * a fresh fetch would have been.
+ * Build 30 Codex Performance Engineer finding P3 — this function must
+ * NEVER call a specialist domain's own
+ * `get*ServicePerformanceInputForCustomer360()` AGAIN here, redundantly
+ * re-running the full engagement→…→observation/issue query chain that
+ * `getCustomer360()` already ran. `company360.specialistPerformances`
+ * (Build 31) is the ALREADY-CLASSIFIED multi-specialist array —
+ * `evaluateServicePerformance()` only aggregates it, never re-derives
+ * it. Extends additively for future Modules 26-29 with zero changes
+ * needed here — the whole point of the Build 31 architecture.
  */
 function resolveServicePerformance(company360: Customer360ViewModel, now: Date): HealthComponent {
-  if (!company360.linkedOrganization || !company360.canSeeSeoPerformance) return evaluateServicePerformance(null, now);
-  const seo = company360.services?.source === "canonical" ? (company360.services.items.find((item) => item.seoPerformance !== null)?.seoPerformance ?? null) : null;
-  const input: ServicePerformanceInput = { seo };
+  if (!company360.linkedOrganization) return evaluateServicePerformance(null, now);
+  const input: ServicePerformanceInput = { specialists: company360.specialistPerformances };
   return evaluateServicePerformance(input, now);
 }

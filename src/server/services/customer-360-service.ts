@@ -12,7 +12,8 @@ import { listActivitiesForCompany } from "./crm-activity-service";
 import { getOrganizationBillingForPlatform, type PlatformBillingDetail } from "./billing-platform-service";
 import { listServicesForCustomer360, type Customer360ServiceSummary } from "./customer-service-service";
 import { getSeoServicePerformanceInputForCustomer360 } from "./seo-customer-360-service";
-import type { SeoServicePerformanceInput } from "@/lib/crm/client-success";
+import { getLocalSeoServicePerformanceInputForCustomer360 } from "./local-seo-customer-360-service";
+import { classifySeoServicePerformance, classifyLocalSeoServicePerformance, type SeoServicePerformanceInput, type LocalSeoServicePerformanceInput, type SpecialistServicePerformanceInput } from "@/lib/crm/client-success";
 import { organizationRepository } from "@/server/repositories/organization-repository";
 import { BillingAccountInvalidError } from "@/lib/billing/errors";
 import {
@@ -87,6 +88,8 @@ export interface Customer360ViewModel {
   canSeeServices: boolean;
   /** `false` when the caller lacks `seo.read` — distinguishes "not authorized to see SEO performance" from "genuinely not yet measured" (both leave `seoPerformance: null` on a canonical service item). */
   canSeeSeoPerformance: boolean;
+  /** `false` when the caller lacks `local_seo.read` — same reasoning as `canSeeSeoPerformance` immediately above, for the SEPARATE Local SEO specialist domain (Build 31). */
+  canSeeLocalSeoPerformance: boolean;
   /**
    * Build 29 — real canonical `CustomerService` rows now take
    * precedence, falling back to the exact same sold/onboarding
@@ -98,9 +101,21 @@ export interface Customer360ViewModel {
    * exists for a mere commercial line item).
    */
   services:
-    | { source: "canonical"; items: (Customer360ServiceSummary & { seoPerformance: SeoServicePerformanceInput | null })[] }
+    | { source: "canonical"; items: (Customer360ServiceSummary & { seoPerformance: SeoServicePerformanceInput | null; localSeoPerformance: LocalSeoServicePerformanceInput | null })[] }
     | { source: "onboarding" | "accepted_proposal"; items: { title: string; description: string | null; quantity: number }[] }
     | null;
+  /**
+   * Build 31 — every active specialist `CustomerService`'s own ALREADY-
+   * CLASSIFIED performance verdict (see `classifySeoServicePerformance()`/
+   * `classifyLocalSeoServicePerformance()` in `lib/crm/client-success.ts`),
+   * composed here ONCE so `crm-client-success-health-service.ts`'s own
+   * `evaluateServicePerformance()` never needs to re-fetch or re-classify
+   * — the exact "avoid the Performance-P3 redundant-refetch mistake from
+   * the start" discipline this build's own master prompt calls for.
+   * Future Modules 26-29 extend this same array additively; Client
+   * Success itself never special-cases a `category`.
+   */
+  specialistPerformances: SpecialistServicePerformanceInput[];
 
   canSeeBilling: boolean;
   billing: PlatformBillingDetail | null;
@@ -143,6 +158,7 @@ export async function getCustomer360(rawInput: unknown): Promise<Customer360View
   const canSeeBilling = context.permissions.has("billing.readPlatform");
   const canSeeServices = context.permissions.has("delivery_services.read");
   const canSeeSeoPerformance = context.permissions.has("seo.read");
+  const canSeeLocalSeoPerformance = context.permissions.has("local_seo.read");
 
   // Stage 1 — every one of these depends only on `company` (already
   // resolved), never on each other, so they all start together
@@ -173,7 +189,7 @@ export async function getCustomer360(rawInput: unknown): Promise<Customer360View
   // `currentOnboardingDetail` only on `onboardings`) — same fix as
   // Stage 1, running them concurrently instead of one four-step await
   // chain.
-  const [linkedOrganizationMemberCounts, billing, latestDeal, currentOnboardingDetail, seoPerformance] = await Promise.all([
+  const [linkedOrganizationMemberCounts, billing, latestDeal, currentOnboardingDetail, seoPerformance, localSeoPerformance] = await Promise.all([
     linkedOrganization && canSeeOrganizationDetail ? organizationRepository.membershipStatusCounts(linkedOrganization.id) : Promise.resolve(null),
     canSeeBilling && linkedOrganization
       ? getOrganizationBillingForPlatform({ organizationId: linkedOrganization.id }).catch((error) => {
@@ -190,12 +206,17 @@ export async function getCustomer360(rawInput: unknown): Promise<Customer360View
     // "service" HealthComponent already establishes — not per
     // individual CustomerService row.
     canSeeSeoPerformance && linkedOrganization ? getSeoServicePerformanceInputForCustomer360(linkedOrganization.id) : Promise.resolve(null),
+    // Build 31 — Local SEO's own domain service, SEPARATE specialist
+    // domain, same "aggregated per-category, never a direct Prisma
+    // query here" reasoning as `seoPerformance` immediately above.
+    canSeeLocalSeoPerformance && linkedOrganization ? getLocalSeoServicePerformanceInputForCustomer360(linkedOrganization.id) : Promise.resolve(null),
   ]);
 
   const accountOwner = resolveAccountOwner(currentOnboardingDetail, latestDeal);
   const primaryContact = latestDeal?.primaryContact ?? null;
 
-  const services = await resolveServices(canonicalServices, currentOnboardingDetail, proposals, seoPerformance);
+  const services = await resolveServices(canonicalServices, currentOnboardingDetail, proposals, seoPerformance, localSeoPerformance);
+  const specialistPerformances = resolveSpecialistPerformances(services);
   const documents = resolveDocuments(proposals, contracts, currentOnboardingDetail);
 
   const hasSoldSignal = Boolean((deals && deals.some((d) => d.status === "WON")) || (proposals && proposals.some((p) => p.status === "ACCEPTED")) || (contracts && contracts.some((c) => c.status === "ACTIVE")));
@@ -249,7 +270,9 @@ export async function getCustomer360(rawInput: unknown): Promise<Customer360View
     currentOnboardingDetail,
     canSeeServices,
     canSeeSeoPerformance,
+    canSeeLocalSeoPerformance,
     services,
+    specialistPerformances,
     canSeeBilling,
     billing,
     documents,
@@ -291,15 +314,23 @@ const DOCUMENTS_CAP = 50;
  * signal, not fetched per-item (there is normally exactly one SEO
  * `CustomerService` per customer; see seo-customer-360-service.ts's own
  * doc comment for the rare-multiple-engagements case).
+ *
+ * Build 31 — `localSeoPerformance` is attached the same way onto every
+ * canonical item whose category is LOCAL_SEO — a SEPARATE specialist
+ * domain, own aggregated signal, never merged with `seoPerformance`.
  */
 async function resolveServices(
   canonicalServices: Customer360ServiceSummary[] | null,
   onboardingDetail: OnboardingDetail | null,
   proposals: CrmProposalWithRelations[] | null,
   seoPerformance: SeoServicePerformanceInput | null,
+  localSeoPerformance: LocalSeoServicePerformanceInput | null,
 ): Promise<Customer360ViewModel["services"]> {
   if (canonicalServices && canonicalServices.length > 0) {
-    return { source: "canonical", items: canonicalServices.map((item) => ({ ...item, seoPerformance: item.category === "SEO" ? seoPerformance : null })) };
+    return {
+      source: "canonical",
+      items: canonicalServices.map((item) => ({ ...item, seoPerformance: item.category === "SEO" ? seoPerformance : null, localSeoPerformance: item.category === "LOCAL_SEO" ? localSeoPerformance : null })),
+    };
   }
   if (onboardingDetail && onboardingDetail.serviceItems.length > 0) {
     return { source: "onboarding", items: onboardingDetail.serviceItems.slice(0, SERVICE_ITEMS_CAP).map((i) => ({ title: i.title, description: i.description, quantity: i.quantity })) };
@@ -314,6 +345,28 @@ async function resolveServices(
     }
   }
   return null;
+}
+
+/**
+ * Build 31 — classifies every canonical specialist service item
+ * (`SEO`/`LOCAL_SEO`) into the shared `SpecialistServicePerformanceInput`
+ * shape ONCE, here, so `crm-client-success-health-service.ts` never
+ * re-fetches or re-derives this itself (the exact "avoid the
+ * Performance-P3 redundant-refetch mistake" discipline this build's own
+ * master prompt calls for). Non-canonical `services` sources (onboarding/
+ * accepted-proposal snapshots) never have operational performance data —
+ * always an empty array. Future Modules 26-29 extend this `switch` with
+ * their own `category` case; Client Success itself never special-cases
+ * one.
+ */
+function resolveSpecialistPerformances(services: Customer360ViewModel["services"]): SpecialistServicePerformanceInput[] {
+  if (!services || services.source !== "canonical") return [];
+  const results: SpecialistServicePerformanceInput[] = [];
+  for (const item of services.items) {
+    if (item.category === "SEO") results.push(classifySeoServicePerformance(item.id, item.seoPerformance));
+    else if (item.category === "LOCAL_SEO") results.push(classifyLocalSeoServicePerformance(item.id, item.localSeoPerformance));
+  }
+  return results;
 }
 
 function resolveDocuments(proposals: CrmProposalWithRelations[] | null, contracts: CrmContractWithRelations[] | null, onboardingDetail: OnboardingDetail | null): CustomerDocumentEntry[] {

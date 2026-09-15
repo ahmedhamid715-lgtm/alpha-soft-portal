@@ -921,3 +921,29 @@ events.on<SeoCriticalIssueDetectedPayload>("seo.critical_issue_detected", async 
     templateData: { engagementId, propertyDisplayUrl, issueTitle, companyName },
   });
 });
+
+interface LocalSeoCriticalIssueDetectedPayload {
+  issueId: string;
+  engagementId: string;
+  organizationId: string;
+  ownerUserId: string;
+  locationDisplayName: string;
+  issueTitle: string;
+  companyName: string;
+}
+
+// Build 31 — GBP / Local SEO. Same "no recipient = no notification" rule
+// as `seo.critical_issue_detected` immediately above — a SEPARATE
+// specialist domain, own event/template/category, same discipline.
+events.on<LocalSeoCriticalIssueDetectedPayload>("local_seo.critical_issue_detected", async (event) => {
+  const { issueId, engagementId, organizationId, ownerUserId, locationDisplayName, issueTitle, companyName } = event.payload;
+  await notificationService.notify({
+    templateKey: "local_seo.critical_issue_detected",
+    recipientUserId: ownerUserId,
+    organizationId,
+    sourceEventType: "local_seo.critical_issue_detected",
+    sourceEntityType: "local_seo_issue",
+    sourceEntityId: issueId,
+    templateData: { engagementId, locationDisplayName, issueTitle, companyName },
+  });
+});

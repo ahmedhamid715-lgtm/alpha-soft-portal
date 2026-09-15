@@ -812,6 +812,24 @@ export const PERMISSION_CATALOG = {
   // permission (day-to-day operational triage), not `seo.manage` — see
   // that function file's own top comment for the reasoning.
   "seo.measurements.manage": permission("seo", "manage", "PLATFORM", "Record manual rank observations and technical audits, import rank data, and manage issue lifecycle.", false, "seo.measurements.manage"),
+
+  // --- local_seo (Build 31 — Roadmap Module 25, GBP / Local SEO) —
+  // PLATFORM-scope, same tier as `seo.*`: a SEPARATE specialist domain
+  // (`ServiceCategory.LOCAL_SEO`, never `SEO`) with its own permission
+  // namespace, exactly mirroring `seo.*`'s own three-tier split (read /
+  // structural manage / measurements manage) for the identical
+  // reasoning — see that namespace's own doc comment above. No
+  // `local_seo.*` key existed before this build (checked directly).
+  "local_seo.read": permission("local_seo", "read", "PLATFORM", "View Local SEO engagements, locations, GBP profiles, keywords, rankings, listings, reviews, and issues.", false),
+  "local_seo.manage": permission("local_seo", "manage", "PLATFORM", "Create/archive Local SEO engagements and locations.", false),
+  "local_seo.measurements.manage": permission(
+    "local_seo",
+    "manage",
+    "PLATFORM",
+    "Record manual local rank observations and audits, import rank data, manage listings/reviews, and manage issue lifecycle.",
+    false,
+    "local_seo.measurements.manage",
+  ),
 } as const satisfies Record<string, PermissionDefinition>;
 
 export type PermissionKey = keyof typeof PERMISSION_CATALOG;

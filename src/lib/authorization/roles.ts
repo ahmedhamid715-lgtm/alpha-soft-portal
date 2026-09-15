@@ -130,6 +130,14 @@ const PLATFORM_FULL: PermissionKey[] = [
   // above. `.manage`/`.measurements.manage` stay separate, narrower
   // grants — see each role's own permissions list below.
   "seo.read",
+  // Build 31 — GBP / Local SEO. `local_seo.read` is day-to-day platform
+  // staff visibility into Local SEO engagements/locations/GBP profiles/
+  // keywords/rankings/listings/reviews/issues — a SEPARATE specialist
+  // domain from `seo.read` immediately above (`ServiceCategory.
+  // LOCAL_SEO`, never `SEO`), same tier. `.manage`/`.measurements.manage`
+  // stay separate, narrower grants — see each role's own permissions
+  // list below.
+  "local_seo.read",
 ];
 
 const ORGANIZATION_FULL: PermissionKey[] = [
@@ -290,6 +298,11 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       // Management grants immediately above.
       "seo.manage",
       "seo.measurements.manage",
+      // Build 31 — GBP / Local SEO. Owner/admin administer engagements/
+      // locations/profiles/keywords AND record measurements — a SEPARATE
+      // specialist domain from SEO OS immediately above, same tier.
+      "local_seo.manage",
+      "local_seo.measurements.manage",
     ],
   },
   platform_admin: {
@@ -384,6 +397,10 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       // immediately above.
       "seo.manage",
       "seo.measurements.manage",
+      // Build 31 — same tier/reasoning as `seo.manage` immediately
+      // above — a SEPARATE specialist domain (GBP / Local SEO).
+      "local_seo.manage",
+      "local_seo.measurements.manage",
     ],
   },
   support_admin: {
@@ -456,6 +473,9 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     // Build 30 — `seo.read` ALSO granted, same reasoning (support staff
     // plausibly need to see a customer's own SEO status/issues while
     // helping them); deliberately NOT `.manage`/`.measurements.manage`.
+    // Build 31 — `local_seo.read` ALSO granted, same reasoning — a
+    // SEPARATE specialist domain (GBP / Local SEO); deliberately NOT
+    // `.manage`/`.measurements.manage`.
     permissions: [
       "users.read",
       "organizations.read",
@@ -480,6 +500,7 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "task_management.read",
       "delivery_services.read",
       "seo.read",
+      "local_seo.read",
     ],
   },
   support_agent: {

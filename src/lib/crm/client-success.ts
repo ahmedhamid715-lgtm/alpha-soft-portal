@@ -320,39 +320,156 @@ export interface SeoServicePerformanceInput {
   openWarningIssueCount: number;
 }
 
-export interface ServicePerformanceInput {
-  seo: SeoServicePerformanceInput | null;
+/**
+ * Local SEO / GBP's own specialist performance facts (Build 31 —
+ * Roadmap Module 25). A SEPARATE specialist domain from SEO OS — same
+ * "real facts only, deterministic decision tree" discipline as
+ * `SeoServicePerformanceInput`, but Local SEO's own signals: local
+ * rank movement, listing consistency, and open issues. Review data is
+ * DELIBERATELY EXCLUDED from this pass/fail formula (a missing review
+ * is ambiguous — it could mean "no new reviews this period" just as
+ * easily as "review collection isn't set up" — see the review model's
+ * own doc comment); reviews surface only as their own separate KPI, not
+ * as a Service Performance input. Resolved by
+ * `src/server/services/local-seo-customer-360-service.ts`'s own
+ * `getLocalSeoServicePerformanceInputForCustomer360()` — this file
+ * never queries a database.
+ */
+export interface LocalSeoServicePerformanceInput {
+  /** ACTIVE local keywords with at least one real recorded observation ever. */
+  observedKeywordCount: number;
+  /** Of those, keywords whose latest-vs-previous real observation shows an improved (lower) Local Pack position. */
+  improvingKeywordCount: number;
+  /** Of those, keywords whose latest-vs-previous real observation shows a declined (higher) Local Pack position. */
+  decliningKeywordCount: number;
+  /** OPEN or ACKNOWLEDGED issues with severity CRITICAL. */
+  openCriticalIssueCount: number;
+  /** OPEN or ACKNOWLEDGED issues with severity WARNING. */
+  openWarningIssueCount: number;
+  /** Recorded listings with a computed NAP consistency status of INCONSISTENT (`src/lib/local-seo/nap.ts`). */
+  inconsistentListingCount: number;
+  /** Total recorded listings that were actually comparable (excludes NOT_MEASURABLE) — the denominator `inconsistentListingCount` is measured against. */
+  measurableListingCount: number;
 }
 
 /**
- * Frozen formula (Build 30). `input === null`, or `input.seo === null`,
- * or zero observed keywords, all mean the same thing: no specialist
- * domain has real measurable performance data for this customer yet —
- * `NOT_MEASURABLE`, never a fabricated middle value. Distinct from
- * Customer 360's own "Services" tab (sold/onboarding service snapshots,
+ * One specialist delivery domain's own classified performance verdict —
+ * the common shape every specialist module (SEO, Local SEO, and future
+ * Website/E-Commerce/GHL/Creative modules) produces, so
+ * `evaluateServicePerformance()` below never needs an if/else per
+ * domain. `measurable: false` means this ONE specialist has no real
+ * data yet — it is excluded from aggregation entirely, never counted as
+ * a zero/failing score.
+ */
+export interface SpecialistServicePerformanceInput {
+  customerServiceId: string;
+  category: "SEO" | "LOCAL_SEO";
+  measurable: boolean;
+  status: HealthStatus;
+  reason: string;
+}
+
+/**
+ * Classifies one SEO `CustomerService`'s own performance facts into the
+ * shared `SpecialistServicePerformanceInput` shape — the exact decision
+ * tree Build 30's own `evaluateServicePerformance()` originally
+ * contained, unchanged, just relocated so it can be composed alongside
+ * sibling specialist domains instead of being the only one.
+ */
+export function classifySeoServicePerformance(customerServiceId: string, input: SeoServicePerformanceInput | null): SpecialistServicePerformanceInput {
+  const base = { customerServiceId, category: "SEO" as const };
+  if (!input || input.observedKeywordCount === 0) {
+    return { ...base, measurable: false, status: "NOT_MEASURABLE", reason: "No measurable SEO performance data yet." };
+  }
+  if (input.openCriticalIssueCount > 0) {
+    return { ...base, measurable: true, status: "CRITICAL", reason: `${input.openCriticalIssueCount} critical SEO issue(s) are open.` };
+  }
+  if (input.decliningKeywordCount > input.improvingKeywordCount) {
+    return { ...base, measurable: true, status: "AT_RISK", reason: `${input.decliningKeywordCount} tracked keyword(s) declined in rank vs. ${input.improvingKeywordCount} that improved.` };
+  }
+  if (input.openWarningIssueCount > 0) {
+    return { ...base, measurable: true, status: "WATCH", reason: `${input.openWarningIssueCount} SEO issue(s) need attention.` };
+  }
+  if (input.decliningKeywordCount > 0 && input.decliningKeywordCount === input.improvingKeywordCount) {
+    return { ...base, measurable: true, status: "WATCH", reason: "Keyword rankings are mixed this period — as many declined as improved." };
+  }
+  return { ...base, measurable: true, status: "HEALTHY", reason: "No open critical or warning SEO issues, and rankings are stable or improving." };
+}
+
+/**
+ * Classifies one Local SEO `CustomerService`'s own performance facts —
+ * Build 31's own decision tree, same highest-severity-first discipline,
+ * local-specific signals (local rank movement, NAP/listing consistency,
+ * open issues). Reviews are deliberately NOT an input here (see
+ * `LocalSeoServicePerformanceInput`'s own doc comment).
+ */
+export function classifyLocalSeoServicePerformance(customerServiceId: string, input: LocalSeoServicePerformanceInput | null): SpecialistServicePerformanceInput {
+  const base = { customerServiceId, category: "LOCAL_SEO" as const };
+  if (!input || (input.observedKeywordCount === 0 && input.measurableListingCount === 0)) {
+    return { ...base, measurable: false, status: "NOT_MEASURABLE", reason: "No measurable Local SEO performance data yet." };
+  }
+  if (input.openCriticalIssueCount > 0) {
+    return { ...base, measurable: true, status: "CRITICAL", reason: `${input.openCriticalIssueCount} critical Local SEO issue(s) are open.` };
+  }
+  if (input.measurableListingCount > 0 && input.inconsistentListingCount > 0) {
+    return { ...base, measurable: true, status: "AT_RISK", reason: `${input.inconsistentListingCount} of ${input.measurableListingCount} listing(s) have inconsistent NAP data.` };
+  }
+  if (input.decliningKeywordCount > input.improvingKeywordCount) {
+    return { ...base, measurable: true, status: "AT_RISK", reason: `${input.decliningKeywordCount} tracked local keyword(s) declined in rank vs. ${input.improvingKeywordCount} that improved.` };
+  }
+  if (input.openWarningIssueCount > 0) {
+    return { ...base, measurable: true, status: "WATCH", reason: `${input.openWarningIssueCount} Local SEO issue(s) need attention.` };
+  }
+  if (input.decliningKeywordCount > 0 && input.decliningKeywordCount === input.improvingKeywordCount) {
+    return { ...base, measurable: true, status: "WATCH", reason: "Local keyword rankings are mixed this period — as many declined as improved." };
+  }
+  return { ...base, measurable: true, status: "HEALTHY", reason: "No open critical or warning Local SEO issues, listings are consistent, and rankings are stable or improving." };
+}
+
+export interface ServicePerformanceInput {
+  specialists: SpecialistServicePerformanceInput[];
+}
+
+/**
+ * Frozen formula (Build 31 — extends Build 30's original single-domain
+ * version into a true multi-specialist architecture, one of the build's
+ * own non-negotiable rules: no SEO-vs-Local-SEO if/else). Each active
+ * specialist `CustomerService` is classified independently by its own
+ * domain (`classifySeoServicePerformance()`/
+ * `classifyLocalSeoServicePerformance()`/future modules' own
+ * equivalents) BEFORE reaching this function — this function only
+ * aggregates already-classified inputs. Filters to `measurable` inputs
+ * only (a specialist with no data yet never drags the aggregate down to
+ * a fabricated zero); `NOT_MEASURABLE` only when ZERO specialists are
+ * measurable. Otherwise takes the WORST (highest-severity) status among
+ * the measurable specialists — same highest-severity-first discipline
+ * every other component in this file already uses — and composes a
+ * combined reason string from every specialist that isn't HEALTHY (or,
+ * if all are HEALTHY, a combined confirmation). Distinct from Customer
+ * 360's own "Services" tab (sold/onboarding service snapshots,
  * commercial facts) — this measures whether sold services are
- * PERFORMING well operationally. Checks run highest-severity-first,
- * same discipline every other component in this file already uses.
+ * PERFORMING well operationally.
  */
 export function evaluateServicePerformance(input: ServicePerformanceInput | null, now: Date = new Date()): HealthComponent {
-  const base = { key: "service" as const, label: "Service performance", source: "seo_os_service+future_specialist_modules", lastEvaluatedAt: now };
-  const seo = input?.seo ?? null;
-  if (!seo || seo.observedKeywordCount === 0) {
+  const base = { key: "service" as const, label: "Service performance", source: "specialist_service_modules", lastEvaluatedAt: now };
+  const measurable = (input?.specialists ?? []).filter((s) => s.measurable);
+  if (measurable.length === 0) {
     return { ...base, status: "NOT_MEASURABLE", score: null, measurable: false, reason: "No specialist service domain has measurable performance data for this customer yet." };
   }
-  if (seo.openCriticalIssueCount > 0) {
-    return { ...base, status: "CRITICAL", score: HEALTH_STATUS_SCORE.CRITICAL, measurable: true, reason: `${seo.openCriticalIssueCount} critical SEO issue(s) are open.` };
+
+  const severityOrder: Exclude<HealthStatus, "NOT_MEASURABLE">[] = ["CRITICAL", "AT_RISK", "WATCH", "HEALTHY"];
+  let worstStatus: Exclude<HealthStatus, "NOT_MEASURABLE"> = "HEALTHY";
+  for (const status of severityOrder) {
+    if (measurable.some((s) => s.status === status)) {
+      worstStatus = status;
+      break;
+    }
   }
-  if (seo.decliningKeywordCount > seo.improvingKeywordCount) {
-    return { ...base, status: "AT_RISK", score: HEALTH_STATUS_SCORE.AT_RISK, measurable: true, reason: `${seo.decliningKeywordCount} tracked keyword(s) declined in rank vs. ${seo.improvingKeywordCount} that improved.` };
-  }
-  if (seo.openWarningIssueCount > 0) {
-    return { ...base, status: "WATCH", score: HEALTH_STATUS_SCORE.WATCH, measurable: true, reason: `${seo.openWarningIssueCount} SEO issue(s) need attention.` };
-  }
-  if (seo.decliningKeywordCount > 0 && seo.decliningKeywordCount === seo.improvingKeywordCount) {
-    return { ...base, status: "WATCH", score: HEALTH_STATUS_SCORE.WATCH, measurable: true, reason: "Keyword rankings are mixed this period — as many declined as improved." };
-  }
-  return { ...base, status: "HEALTHY", score: HEALTH_STATUS_SCORE.HEALTHY, measurable: true, reason: "No open critical or warning SEO issues, and rankings are stable or improving." };
+
+  const notHealthy = measurable.filter((s) => s.status !== "HEALTHY");
+  const reason = notHealthy.length > 0 ? notHealthy.map((s) => s.reason).join(" ") : measurable.map((s) => s.reason).join(" ");
+
+  return { ...base, status: worstStatus, score: HEALTH_STATUS_SCORE[worstStatus], measurable: true, reason };
 }
 
 // --- Churn risk (NOT the future Churn & Risk Engine — Roadmap Module 69) ---

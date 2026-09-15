@@ -15,6 +15,7 @@ import {
   cancelCustomerServiceAction,
 } from "../../actions";
 import { createSeoEngagementAction } from "../../../seo/actions";
+import { createLocalSeoEngagementAction } from "../../../local-seo/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,6 +36,9 @@ export function CustomerServiceDetailView({
   canSeeSeo,
   canManageSeo,
   seoEngagementId,
+  canSeeLocalSeo,
+  canManageLocalSeo,
+  localSeoEngagementId,
 }: {
   detail: CustomerServiceDetail;
   canManage: boolean;
@@ -42,6 +46,9 @@ export function CustomerServiceDetailView({
   canSeeSeo: boolean;
   canManageSeo: boolean;
   seoEngagementId: string | null;
+  canSeeLocalSeo: boolean;
+  canManageLocalSeo: boolean;
+  localSeoEngagementId: string | null;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -245,6 +252,36 @@ export function CustomerServiceDetailView({
             </Button>
           ) : (
             <p className="text-sm text-muted-foreground">No SEO workspace set up yet.</p>
+          )}
+        </section>
+      ) : null}
+
+      {detail.category === "LOCAL_SEO" ? (
+        <section className="flex flex-col gap-3">
+          <SectionHeader title="Local SEO workspace" />
+          {!canSeeLocalSeo ? (
+            <p className="text-sm text-muted-foreground">Viewing the Local SEO workspace requires the local_seo.read permission.</p>
+          ) : localSeoEngagementId ? (
+            <Button asChild variant="outline" className="w-fit">
+              <Link href={`/admin/local-seo/${localSeoEngagementId}`}>Open Local SEO workspace</Link>
+            </Button>
+          ) : canManageLocalSeo ? (
+            <Button
+              variant="outline"
+              className="w-fit"
+              disabled={pending}
+              onClick={() =>
+                runAction(async () => {
+                  const result = await createLocalSeoEngagementAction({ customerServiceId: detail.id });
+                  if (!result.error && result.data) router.push(`/admin/local-seo/${result.data.id}`);
+                  return result;
+                })
+              }
+            >
+              Set up Local SEO workspace
+            </Button>
+          ) : (
+            <p className="text-sm text-muted-foreground">No Local SEO workspace set up yet.</p>
           )}
         </section>
       ) : null}

@@ -10,6 +10,7 @@ import { crmProposalLineItemRepository } from "@/server/repositories/crm-proposa
 import { customerServiceRepository } from "@/server/repositories/customer-service-repository";
 import { projectRepository } from "@/server/repositories/project-repository";
 import { getSeoPortalSummaryForCustomerServices, type PortalSeoPerformanceSummary } from "@/server/services/seo-portal-service";
+import { getLocalSeoPortalSummaryForCustomerServices, type PortalLocalSeoPerformanceSummary } from "@/server/services/local-seo-portal-service";
 import type { CrmCompany, CustomerServiceStatus, ServiceCategory } from "@/generated/prisma/client";
 import type { CrmClientOnboardingWithRelations } from "@/server/repositories/crm-client-onboarding-repository";
 import type { TenantTransactionClient } from "@/lib/tenancy/context";
@@ -44,6 +45,8 @@ export interface PortalCanonicalServiceItem {
   linkedProjects: { id: string; title: string }[];
   /** Build 30 — SEO OS's own customer-safe projection, only ever non-null when `category === "SEO"`. Aggregated across every ACTIVE SEO engagement, not fetched per item (see `getSeoPortalSummaryForCustomerServices()`'s own doc comment). */
   seoPerformance: PortalSeoPerformanceSummary | null;
+  /** Build 31 — Local SEO's own SEPARATE customer-safe projection, only ever non-null when `category === "LOCAL_SEO"`. Aggregated across every ACTIVE Local SEO engagement, not fetched per item. */
+  localSeoPerformance: PortalLocalSeoPerformanceSummary | null;
 }
 
 export type PortalServices = { source: "onboarding" | "accepted_proposal" | "none"; items: PortalServiceItem[] } | { source: "canonical"; items: PortalCanonicalServiceItem[] };
@@ -67,10 +70,11 @@ async function resolveCanonicalServices(customerOrganizationId: string, tx: Tena
 
   const definitionIds = [...new Set(customerServices.map((cs) => cs.serviceDefinitionId))];
   const customerServiceIds = customerServices.map((cs) => cs.id);
-  const [definitions, linkedProjects, seoPerformance] = await Promise.all([
+  const [definitions, linkedProjects, seoPerformance, localSeoPerformance] = await Promise.all([
     tx.serviceDefinition.findMany({ where: { id: { in: definitionIds } }, select: { id: true, name: true, description: true, category: true } }),
     projectRepository.listForCustomerServices(customerServiceIds, tx),
     getSeoPortalSummaryForCustomerServices(customerServices, tx),
+    getLocalSeoPortalSummaryForCustomerServices(customerServices, tx),
   ]);
   const definitionById = new Map(definitions.map((d) => [d.id, d]));
   const projectsByServiceId = new Map<string, { id: string; title: string; status: string }[]>();
@@ -97,6 +101,7 @@ async function resolveCanonicalServices(customerOrganizationId: string, tx: Tena
       targetEndDate: cs.targetEndDate,
       linkedProjects: visibleProjects.map((p) => ({ id: p.id, title: p.title })),
       seoPerformance: category === "SEO" ? seoPerformance : null,
+      localSeoPerformance: category === "LOCAL_SEO" ? localSeoPerformance : null,
     };
   });
 }

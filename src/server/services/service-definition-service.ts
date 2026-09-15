@@ -94,7 +94,29 @@ const updateSchema = z.object({
   sortOrder: z.coerce.number().int().optional(),
 });
 
-/** Editable fields only — `code` is immutable once created (the durable reference future modules key off must never drift); renaming display copy is fine, changing the stable key is not. Editing never rewrites any existing `CustomerService`'s own historical facts — see service-management.md "Definition vs. customer engagement." */
+/**
+ * Editable fields only — `code` is immutable once created (the durable
+ * reference future modules key off must never drift); renaming display
+ * copy is fine, changing the stable key is not. Editing never rewrites
+ * any existing `CustomerService`'s own historical facts — see
+ * service-management.md "Definition vs. customer engagement."
+ *
+ * `category` is likewise immutable once ANY `CustomerService` (of any
+ * status — including a specialist engagement built on top of one, e.g.
+ * a Build 30 `SeoEngagement` or Build 31 `LocalSeoEngagement`)
+ * references this definition. Codex Security Engineer finding
+ * LS-SEC-02 (Build 31 security review): every specialist module's own
+ * relationship-integrity trigger only fires on ITS OWN engagement
+ * table, never on this table — changing a referenced definition's
+ * category after the fact silently drifts an already-created
+ * `SeoEngagement`/`LocalSeoEngagement` out of sync with the category
+ * invariant its own trigger enforced only at creation time, and (worse)
+ * can let one `CustomerService` end up eligible for a SECOND specialist
+ * domain's engagement after a category flip. Same "the stable key must
+ * never drift once referenced" reasoning `code`'s own immutability
+ * already establishes on this exact function — extended here to
+ * `category` for the identical reason.
+ */
 export async function updateServiceDefinition(rawInput: unknown): Promise<ServiceDefinition> {
   const input = parseOrThrow(updateSchema, rawInput);
   const { context, tenantScope, organizationId } = await resolveDeliveryServiceScope("delivery_services.catalog_manage");
@@ -102,6 +124,12 @@ export async function updateServiceDefinition(rawInput: unknown): Promise<Servic
   const definition = await withTenantContext(tenantScope, async (tx) => {
     const existing = await serviceDefinitionRepository.findById(input.definitionId, tx);
     if (!existing || existing.organizationId !== organizationId) throw new NotFoundError("Service definition");
+    if (input.category && input.category !== existing.category) {
+      const referencedCount = await tx.customerService.count({ where: { serviceDefinitionId: input.definitionId } });
+      if (referencedCount > 0) {
+        throw new ConflictError(`Cannot change category — this service definition is already referenced by ${referencedCount} customer service(s). Create a new service definition for the new category instead.`);
+      }
+    }
     const { definitionId, ...data } = input;
     return serviceDefinitionRepository.update(definitionId, data as Parameters<typeof serviceDefinitionRepository.update>[1], tx);
   });

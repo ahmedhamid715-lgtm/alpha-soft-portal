@@ -630,6 +630,17 @@ export const NOTIFICATION_TEMPLATES = {
       actionUrl: `/admin/seo/${data.engagementId}`,
     }),
   }),
+  "local_seo.critical_issue_detected": template({
+    version: 1,
+    active: true,
+    category: "LOCAL_SEO_ACTIVITY",
+    severity: "WARNING",
+    render: (data: { engagementId: string; locationDisplayName: string; issueTitle: string; companyName: string }) => ({
+      title: "Critical Local SEO issue detected",
+      body: `"${data.issueTitle}" on ${data.locationDisplayName} (${data.companyName}) needs attention.`,
+      actionUrl: `/admin/local-seo/${data.engagementId}`,
+    }),
+  }),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as const satisfies Record<string, NotificationTemplateDefinition<any>>;
 

@@ -242,6 +242,16 @@ model Organization {
   seoRankObservations                SeoRankObservation[]                    @relation("SeoRankObservationPlatformOwner")
   seoAuditRuns                       SeoAuditRun[]                           @relation("SeoAuditRunPlatformOwner")
   seoIssues                          SeoIssue[]                              @relation("SeoIssuePlatformOwner")
+  localSeoEngagements                LocalSeoEngagement[]                   @relation("LocalSeoEngagementPlatformOwner")
+  localSeoLocations                  LocalSeoLocation[]                     @relation("LocalSeoLocationPlatformOwner")
+  gbpProfiles                        GbpProfile[]                           @relation("GbpProfilePlatformOwner")
+  localSeoKeywords                   LocalSeoKeyword[]                      @relation("LocalSeoKeywordPlatformOwner")
+  localSeoImportBatches              LocalSeoImportBatch[]                  @relation("LocalSeoImportBatchPlatformOwner")
+  localRankObservations              LocalRankObservation[]                 @relation("LocalRankObservationPlatformOwner")
+  localListings                      LocalListing[]                         @relation("LocalListingPlatformOwner")
+  localReviews                       LocalReview[]                          @relation("LocalReviewPlatformOwner")
+  localSeoAuditRuns                  LocalSeoAuditRun[]                     @relation("LocalSeoAuditRunPlatformOwner")
+  localSeoIssues                     LocalSeoIssue[]                        @relation("LocalSeoIssuePlatformOwner")
 
   @@index([status])
   @@index([isPlatform])
@@ -411,6 +421,20 @@ model User {
   seoIssuesAcknowledged                 SeoIssue[]                             @relation("SeoIssueAcknowledgedBy")
   seoIssuesResolved                     SeoIssue[]                             @relation("SeoIssueResolvedBy")
   seoIssuesIgnored                      SeoIssue[]                             @relation("SeoIssueIgnoredBy")
+  localSeoEngagementsCreated           LocalSeoEngagement[]                   @relation("LocalSeoEngagementCreatedBy")
+  localSeoLocationsCreated             LocalSeoLocation[]                     @relation("LocalSeoLocationCreatedBy")
+  gbpProfilesCreated                   GbpProfile[]                           @relation("GbpProfileCreatedBy")
+  localSeoKeywordsCreated              LocalSeoKeyword[]                      @relation("LocalSeoKeywordCreatedBy")
+  localSeoImportBatchesCreated         LocalSeoImportBatch[]                  @relation("LocalSeoImportBatchCreatedBy")
+  localRankObservationsCreated         LocalRankObservation[]                 @relation("LocalRankObservationCreatedBy")
+  localListingsCreated                 LocalListing[]                         @relation("LocalListingCreatedBy")
+  localReviewsCreated                  LocalReview[]                          @relation("LocalReviewCreatedBy")
+  localReviewsResponded                LocalReview[]                          @relation("LocalReviewRespondedBy")
+  localSeoAuditRunsCreated             LocalSeoAuditRun[]                     @relation("LocalSeoAuditRunCreatedBy")
+  localSeoIssuesCreated                LocalSeoIssue[]                        @relation("LocalSeoIssueCreatedBy")
+  localSeoIssuesAcknowledged           LocalSeoIssue[]                        @relation("LocalSeoIssueAcknowledgedBy")
+  localSeoIssuesResolved               LocalSeoIssue[]                        @relation("LocalSeoIssueResolvedBy")
+  localSeoIssuesIgnored                LocalSeoIssue[]                        @relation("LocalSeoIssueIgnoredBy")
 
   @@index([status])
   @@map("users")
@@ -4546,6 +4570,7 @@ model InternalTask {
   cancelledByUser User?        @relation("InternalTaskCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
   createdByUser   User         @relation("InternalTaskCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   seoIssuesLinked SeoIssue[]   @relation("SeoIssueLinkedTask")
+  localSeoIssuesLinked LocalSeoIssue[] @relation("LocalSeoIssueLinkedTask")
 
   // Codex Performance Engineer review (see
   // docs/architecture/task-management.md "Performance"):
@@ -4687,6 +4712,7 @@ model CustomerService {
   createdByUser               User                             @relation("CustomerServiceCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   projects                    Project[]                        @relation("ProjectCustomerService")
   seoEngagement               SeoEngagement?
+  localSeoEngagement          LocalSeoEngagement?
 
   @@index([organizationId, customerOrganizationId, status])
   @@index([organizationId, status, createdAt])
@@ -5047,4 +5073,470 @@ model SeoIssue {
   @@index([organizationId])
   @@index([propertyId, status])
   @@map("seo_issues")
+}
+
+// =============================================================================
+// Build 31 — GBP / Local SEO (Canonical Roadmap Module 25)
+// =============================================================================
+
+enum LocalSeoDataSource {
+  MANUAL
+  IMPORT
+
+  @@map("local_seo_data_source")
+}
+
+enum LocalSeoLocationStatus {
+  ACTIVE
+  ARCHIVED
+
+  @@map("local_seo_location_status")
+}
+
+enum LocalSeoVerificationState {
+  VERIFIED
+  UNVERIFIED
+  NOT_MEASURED
+
+  @@map("local_seo_verification_state")
+}
+
+enum LocalSeoDevice {
+  DESKTOP
+  MOBILE
+
+  @@map("local_seo_device")
+}
+
+enum LocalSeoSearchSurface {
+  LOCAL_PACK
+
+  @@map("local_seo_search_surface")
+}
+
+enum LocalRankStatus {
+  RANKED
+  NOT_FOUND
+  BEYOND_TRACKED_RANGE
+  SOURCE_ERROR
+
+  @@map("local_rank_status")
+}
+
+enum LocalSeoKeywordStatus {
+  ACTIVE
+  ARCHIVED
+
+  @@map("local_seo_keyword_status")
+}
+
+enum LocalSeoReviewResponseStatus {
+  NONE
+  DRAFTED
+  RESPONDED
+
+  @@map("local_seo_review_response_status")
+}
+
+enum LocalSeoAuditRunStatus {
+  COMPLETED
+  FAILED
+
+  @@map("local_seo_audit_run_status")
+}
+
+enum LocalSeoIssueType {
+  NAP_INCONSISTENCY
+  MISSING_LISTING
+  PROFILE_INCOMPLETE
+  UNVERIFIED_PROFILE
+  REVIEW_RESPONSE_BACKLOG
+  OTHER
+
+  @@map("local_seo_issue_type")
+}
+
+enum LocalSeoIssueSeverity {
+  CRITICAL
+  WARNING
+  INFO
+
+  @@map("local_seo_issue_severity")
+}
+
+enum LocalSeoIssueStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+  IGNORED
+
+  @@map("local_seo_issue_status")
+}
+
+/// One per CustomerService, forever (plain UNIQUE, not partial — same
+/// reasoning as SeoEngagement: a cancelled/replaced service gets a NEW
+/// CustomerService and thus a new engagement). No own status field —
+/// its lifecycle IS the linked CustomerService's.
+model LocalSeoEngagement {
+  id                String @id @db.Uuid
+  organizationId    String @map("organization_id") @db.Uuid
+  customerServiceId String @unique @map("customer_service_id") @db.Uuid
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization    Organization          @relation("LocalSeoEngagementPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  customerService CustomerService       @relation(fields: [customerServiceId], references: [id], onDelete: Cascade)
+  createdByUser   User                  @relation("LocalSeoEngagementCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  locations       LocalSeoLocation[]
+  importBatches   LocalSeoImportBatch[]
+
+  @@index([organizationId])
+  @@map("local_seo_engagements")
+}
+
+/// A tracked business location — one engagement may cover one physical
+/// location, several locations, or a Service Area Business (no public
+/// address). Address/city/region/postalCode/country/phone/websiteUrl
+/// are ALL nullable for exactly that reason — never fabricate a public
+/// address for an SAB. Original entered values are preserved verbatim;
+/// normalized comparison forms (phone digits-only, lowercased/trimmed
+/// name+address) are computed by pure functions at comparison time
+/// (src/lib/local-seo/nap.ts) — never stored, never risk drifting out
+/// of sync with the source-of-truth columns here.
+model LocalSeoLocation {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  engagementId   String @map("engagement_id") @db.Uuid
+
+  businessName            String                 @map("business_name")
+  addressLine1            String?                @map("address_line1")
+  addressLine2            String?                @map("address_line2")
+  city                    String?
+  region                  String?
+  postalCode              String?                @map("postal_code")
+  country                 String?                @db.Char(2)
+  phone                   String?
+  websiteUrl              String?                @map("website_url")
+  normalizedWebsiteOrigin String?                @map("normalized_website_origin")
+  serviceAreaBusiness     Boolean                @default(false) @map("service_area_business")
+  status                  LocalSeoLocationStatus @default(ACTIVE)
+  source                  LocalSeoDataSource     @default(MANUAL)
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization  Organization       @relation("LocalSeoLocationPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  engagement    LocalSeoEngagement @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+  createdByUser User               @relation("LocalSeoLocationCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  gbpProfile    GbpProfile?
+  keywords      LocalSeoKeyword[]
+  listings      LocalListing[]
+  reviews       LocalReview[]
+  auditRuns     LocalSeoAuditRun[]
+  issues        LocalSeoIssue[]
+
+  @@index([organizationId])
+  @@index([engagementId, status])
+  @@map("local_seo_locations")
+}
+
+/// The Google Business Profile identity for a location — separate from
+/// the location's own operational data. No OAuth tokens, no API keys,
+/// no credentials of any kind (Integration Hub's future job, not this
+/// table's). `verificationState`/`observedStatus` reflect what staff or
+/// an import OBSERVED, never a live API call — `NOT_MEASURED` is the
+/// honest default, never silently implying unverified means "checked
+/// and failed."
+model GbpProfile {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  locationId     String @unique @map("location_id") @db.Uuid
+
+  externalProfileId   String?                   @map("external_profile_id")
+  profileUrl          String?                   @map("profile_url")
+  primaryCategory     String?                   @map("primary_category")
+  secondaryCategories String[]                  @default([]) @map("secondary_categories")
+  verificationState   LocalSeoVerificationState @default(NOT_MEASURED) @map("verification_state")
+  observedStatus      String?                   @map("observed_status")
+  lastObservedAt      DateTime?                 @map("last_observed_at") @db.Timestamptz(3)
+  source              LocalSeoDataSource        @default(MANUAL)
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization  Organization     @relation("GbpProfilePlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  location      LocalSeoLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  createdByUser User             @relation("GbpProfileCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@map("gbp_profiles")
+}
+
+/// Belongs to exactly one location. `searchSurface` is LOCAL_PACK only
+/// (a closed enum reserving room, mirroring SeoSearchEngine's GOOGLE-
+/// only precedent) — Local Pack ranking is a DIFFERENT search surface
+/// from SEO OS's own organic tracking; never merge positions from the
+/// two. Optional geographic search point (searchLat/searchLng/
+/// searchLabel) — ONE point per keyword, never a geo-grid. Dedup
+/// dimension uses searchLabel (a short human string), never raw
+/// lat/lng floats (floating-point equality in a unique index is
+/// fragile) — two keywords tracked from genuinely different search
+/// points should be given different labels by staff.
+model LocalSeoKeyword {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  locationId     String @map("location_id") @db.Uuid
+
+  phrase           String
+  normalizedPhrase String                @map("normalized_phrase")
+  searchSurface    LocalSeoSearchSurface @default(LOCAL_PACK) @map("search_surface")
+  device           LocalSeoDevice
+  country          String?               @db.Char(2)
+  locale           String?
+  searchLat        Decimal?              @map("search_lat") @db.Decimal(9, 6)
+  searchLng        Decimal?              @map("search_lng") @db.Decimal(9, 6)
+  searchLabel      String?               @map("search_label")
+  tags             String[]              @default([])
+  status           LocalSeoKeywordStatus @default(ACTIVE)
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization  Organization           @relation("LocalSeoKeywordPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  location      LocalSeoLocation       @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  createdByUser User                   @relation("LocalSeoKeywordCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  observations  LocalRankObservation[]
+
+  @@index([organizationId])
+  @@index([locationId, status])
+  @@map("local_seo_keywords")
+}
+
+/// One row per CSV import attempt (even zero-succeeded), for full
+/// provenance.
+model LocalSeoImportBatch {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  engagementId   String @map("engagement_id") @db.Uuid
+
+  fileName      String? @map("file_name")
+  rowCount      Int     @map("row_count")
+  importedCount Int     @map("imported_count")
+  skippedCount  Int     @map("skipped_count")
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization  Organization           @relation("LocalSeoImportBatchPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  engagement    LocalSeoEngagement     @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+  createdByUser User                   @relation("LocalSeoImportBatchCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  observations  LocalRankObservation[]
+
+  @@index([engagementId, createdAt(sort: Desc)])
+  @@map("local_seo_import_batches")
+}
+
+/// Pure append-only fact table — NEVER updated or deleted after insert
+/// (no UPDATE RLS policy, UPDATE additionally revoked at the grant
+/// layer — identical posture to seo_rank_observations). rankStatus
+/// explicitly distinguishes "not found"/"beyond tracked range"/"source
+/// error" from a real numeric position — NEVER coerce any of those
+/// into a fake position. position NOT NULL and > 0 iff rankStatus =
+/// RANKED, enforced by CHECK (raw SQL).
+model LocalRankObservation {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  keywordId      String @map("keyword_id") @db.Uuid
+
+  observedAt        DateTime           @map("observed_at") @db.Timestamptz(3)
+  source            LocalSeoDataSource
+  rankStatus        LocalRankStatus    @map("rank_status")
+  position          Int?
+  rankingProfileUrl String?            @map("ranking_profile_url")
+  notes             String?
+
+  importBatchId String? @map("import_batch_id") @db.Uuid
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization  Organization         @relation("LocalRankObservationPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  keyword       LocalSeoKeyword      @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+  importBatch   LocalSeoImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  createdByUser User                 @relation("LocalRankObservationCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([keywordId, observedAt])
+  @@index([organizationId])
+  @@index([keywordId, observedAt(sort: Desc)])
+  @@map("local_rank_observations")
+}
+
+/// A "current known state" snapshot of one location's listing on one
+/// external directory/source — DELIBERATELY MUTABLE (real UPDATE
+/// grant/policy), the one deliberate exception to this build's
+/// otherwise append-only measurement posture. A listing is more like a
+/// profile than a time-series measurement: what matters operationally
+/// is its CURRENT observed state, re-observed/re-imported in place,
+/// not a growing history of every check. Unique on (locationId,
+/// sourceName) — one row per source per location. `observed*` fields
+/// preserve exactly what was seen; NAP consistency is computed LIVE by
+/// comparing them against the parent LocalSeoLocation's own current
+/// fields (never stored/denormalized — see the location model's own
+/// comment on why).
+model LocalListing {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  locationId     String @map("location_id") @db.Uuid
+
+  sourceName           String  @map("source_name")
+  sourceUrl            String? @map("source_url")
+  observedBusinessName String? @map("observed_business_name")
+  observedAddressLine1 String? @map("observed_address_line1")
+  observedCity         String? @map("observed_city")
+  observedPostalCode   String? @map("observed_postal_code")
+  observedPhone        String? @map("observed_phone")
+  observedWebsiteUrl   String? @map("observed_website_url")
+
+  observedAt DateTime           @map("observed_at") @db.Timestamptz(3)
+  source     LocalSeoDataSource
+
+  importBatchId String? @map("import_batch_id") @db.Uuid
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization  Organization     @relation("LocalListingPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  location      LocalSeoLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  createdByUser User             @relation("LocalListingCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([locationId, sourceName])
+  @@index([organizationId])
+  @@map("local_listings")
+}
+
+/// Individual review records (not aggregate-only) — real count/average/
+/// new-in-period/response-coverage KPIs need per-review dates.
+/// Deliberately MUTABLE for the response fields (staff record their own
+/// draft/confirmed response — never a fake "Reply on Google" action;
+/// `respondedAt` is only set when staff explicitly confirm the reply
+/// actually happened externally). `externalReviewId` is nullable
+/// (manual entries may not know it) — the partial unique index below
+/// dedupes only when it's known. `reviewerDisplayName` is NEVER an
+/// Alpha OS `User` — no FK, plain text, minimal PII by design.
+model LocalReview {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  locationId     String @map("location_id") @db.Uuid
+
+  externalReviewId    String?   @map("external_review_id")
+  rating              Int
+  reviewedAt          DateTime? @map("reviewed_at") @db.Timestamptz(3)
+  reviewerDisplayName String?   @map("reviewer_display_name")
+  text                String?
+
+  responseStatus    LocalSeoReviewResponseStatus @default(NONE) @map("response_status")
+  responseText      String?                      @map("response_text")
+  respondedAt       DateTime?                    @map("responded_at") @db.Timestamptz(3)
+  respondedByUserId String?                      @map("responded_by_user_id") @db.Uuid
+
+  source        LocalSeoDataSource
+  importBatchId String?            @map("import_batch_id") @db.Uuid
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization    Organization     @relation("LocalReviewPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  location        LocalSeoLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  respondedByUser User?            @relation("LocalReviewRespondedBy", fields: [respondedByUserId], references: [id], onDelete: SetNull)
+  createdByUser   User             @relation("LocalReviewCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([locationId, reviewedAt(sort: Desc)])
+  @@map("local_reviews")
+}
+
+/// The OBSERVATION EVENT — separate from LocalSeoIssue (the persistent
+/// CONDITION), same split as SeoAuditRun/SeoIssue. MANUAL only (no
+/// crawler exists).
+model LocalSeoAuditRun {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  locationId     String @map("location_id") @db.Uuid
+
+  source      LocalSeoDataSource
+  status      LocalSeoAuditRunStatus @default(COMPLETED)
+  startedAt   DateTime               @map("started_at") @db.Timestamptz(3)
+  completedAt DateTime?              @map("completed_at") @db.Timestamptz(3)
+  summary     String?
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization   Organization     @relation("LocalSeoAuditRunPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  location       LocalSeoLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  createdByUser  User             @relation("LocalSeoAuditRunCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  issuesDetected LocalSeoIssue[]  @relation("LocalSeoIssueDetectedByAuditRun")
+
+  @@index([organizationId])
+  @@index([locationId, startedAt(sort: Desc)])
+  @@map("local_seo_audit_runs")
+}
+
+/// The persistent CONDITION. Dedup key: (locationId, issueType) — no
+/// page-equivalent needed (Local SEO issues are location-scoped, not
+/// per-page). Lifecycle: OPEN -> ACKNOWLEDGED -> RESOLVED/IGNORED, and
+/// RESOLVED/IGNORED -> OPEN (reopen) is normal — a recurrence REOPENS
+/// this same row (lastDetectedAt updated, firstDetectedAt untouched)
+/// rather than duplicating.
+model LocalSeoIssue {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  locationId     String @map("location_id") @db.Uuid
+
+  issueType   LocalSeoIssueType     @map("issue_type")
+  severity    LocalSeoIssueSeverity
+  title       String
+  description String?
+  status      LocalSeoIssueStatus   @default(OPEN)
+
+  detectedByAuditRunId String?  @map("detected_by_audit_run_id") @db.Uuid
+  firstDetectedAt      DateTime @map("first_detected_at") @db.Timestamptz(3)
+  lastDetectedAt       DateTime @map("last_detected_at") @db.Timestamptz(3)
+
+  acknowledgedAt       DateTime? @map("acknowledged_at") @db.Timestamptz(3)
+  acknowledgedByUserId String?   @map("acknowledged_by_user_id") @db.Uuid
+
+  resolvedAt       DateTime? @map("resolved_at") @db.Timestamptz(3)
+  resolvedByUserId String?   @map("resolved_by_user_id") @db.Uuid
+  resolutionNotes  String?   @map("resolution_notes")
+
+  ignoredAt       DateTime? @map("ignored_at") @db.Timestamptz(3)
+  ignoredByUserId String?   @map("ignored_by_user_id") @db.Uuid
+  ignoredReason   String?   @map("ignored_reason")
+
+  linkedTaskId String? @map("linked_task_id") @db.Uuid
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization       Organization      @relation("LocalSeoIssuePlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  location           LocalSeoLocation  @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  detectedByAuditRun LocalSeoAuditRun? @relation("LocalSeoIssueDetectedByAuditRun", fields: [detectedByAuditRunId], references: [id], onDelete: SetNull)
+  acknowledgedByUser User?             @relation("LocalSeoIssueAcknowledgedBy", fields: [acknowledgedByUserId], references: [id], onDelete: SetNull)
+  resolvedByUser     User?             @relation("LocalSeoIssueResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+  ignoredByUser      User?             @relation("LocalSeoIssueIgnoredBy", fields: [ignoredByUserId], references: [id], onDelete: SetNull)
+  linkedTask         InternalTask?     @relation("LocalSeoIssueLinkedTask", fields: [linkedTaskId], references: [id], onDelete: SetNull)
+  createdByUser      User              @relation("LocalSeoIssueCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([locationId, status])
+  @@map("local_seo_issues")
 }
