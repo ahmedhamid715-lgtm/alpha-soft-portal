@@ -101,6 +101,26 @@ export default async function PortalServicesPage() {
                         <span>{SEO_FRESHNESS_LABELS[item.localSeoPerformance.freshness]}</span>
                       </div>
                     ) : null}
+                    {item.category === "ECOMMERCE" && item.ecommercePerformance ? (
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t pt-2 text-xs text-muted-foreground">
+                        <span>{item.ecommercePerformance.storeName}</span>
+                        {item.ecommercePerformance.requiredProductCount > 0 ? (
+                          <span>
+                            {item.ecommercePerformance.completedRequiredProductCount}/{item.ecommercePerformance.requiredProductCount} required products ready
+                          </span>
+                        ) : null}
+                        {item.ecommercePerformance.launchedAt ? (
+                          <span>Launched {formatInTimeZone(item.ecommercePerformance.launchedAt, "UTC", { hour: undefined, minute: undefined })}</span>
+                        ) : item.ecommercePerformance.launchTargetDate ? (
+                          <span>Launch target: {formatInTimeZone(item.ecommercePerformance.launchTargetDate, "UTC", { hour: undefined, minute: undefined })}</span>
+                        ) : null}
+                        {item.ecommercePerformance.publicStorefrontUrl ? (
+                          <a href={item.ecommercePerformance.publicStorefrontUrl} target="_blank" rel="noopener noreferrer" className="underline">
+                            Visit store
+                          </a>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </CardContent>
                 </Card>
               ))

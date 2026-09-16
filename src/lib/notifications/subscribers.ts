@@ -996,3 +996,29 @@ events.on<WebsiteDeploymentFailedPayload>("websitedev.deployment_failed", async 
     templateData: { engagementId, siteName, environmentLabel, companyName },
   });
 });
+
+interface EcommerceLaunchRecordedPayload {
+  storeId: string;
+  engagementId: string;
+  organizationId: string;
+  ownerUserId: string;
+  storeName: string;
+  companyName: string;
+}
+
+// Build 33 — E-Commerce Development. Same "no recipient = no
+// notification" rule every specialist domain's own critical-event
+// subscriber already establishes — the service layer only emits this
+// when the engagement's CustomerService has an owner.
+events.on<EcommerceLaunchRecordedPayload>("ecommerce.launch_recorded", async (event) => {
+  const { storeId, engagementId, organizationId, ownerUserId, storeName, companyName } = event.payload;
+  await notificationService.notify({
+    templateKey: "ecommerce.launch_recorded",
+    recipientUserId: ownerUserId,
+    organizationId,
+    sourceEventType: "ecommerce.launch_recorded",
+    sourceEntityType: "ecommerce_store",
+    sourceEntityId: storeId,
+    templateData: { engagementId, storeName, companyName },
+  });
+});

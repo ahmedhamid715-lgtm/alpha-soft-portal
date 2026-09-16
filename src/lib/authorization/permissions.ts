@@ -855,6 +855,31 @@ export const PERMISSION_CATALOG = {
     false,
     "website_development.deploy",
   ),
+
+  // --- ecommerce_development (Build 33 — Roadmap Module 27, E-Commerce
+  // Development) — PLATFORM-scope, same tier as `website_development.*`:
+  // the FOURTH specialist domain (`ServiceCategory.ECOMMERCE`, never
+  // `SEO`/`LOCAL_SEO`/`WEB_DEVELOPMENT`), own permission namespace. A
+  // two-tier split (not the four keys evaluated in the master prompt) —
+  // catalog CRUD (products/variants/collections/import) lives under
+  // `.manage`, the same way Website Dev's own page/environment CRUD has
+  // no separate tier; QA is reused directly through Project QA's own
+  // `delivery_projects.qa` permission, so no `.qa` key is needed here
+  // either. `.launch` is the narrower, higher-stakes tier — recording a
+  // store live is a customer-facing, effectively irreversible act, the
+  // same reasoning `website_development.deploy` already establishes for
+  // its own domain. No `ecommerce_development.*` key existed before
+  // this build (checked directly).
+  "ecommerce_development.read": permission("ecommerce_development", "read", "PLATFORM", "View E-Commerce Development engagements, stores, catalog, and configuration state.", false),
+  "ecommerce_development.manage": permission("ecommerce_development", "manage", "PLATFORM", "Create/archive E-Commerce Development engagements and stores; manage catalog (products/variants/collections) and configuration state; import a catalog CSV.", false),
+  "ecommerce_development.launch": permission(
+    "ecommerce_development",
+    "manage",
+    "PLATFORM",
+    "Record a store as live/launched, including a launch-readiness override.",
+    false,
+    "ecommerce_development.launch",
+  ),
 } as const satisfies Record<string, PermissionDefinition>;
 
 export type PermissionKey = keyof typeof PERMISSION_CATALOG;

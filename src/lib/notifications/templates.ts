@@ -663,6 +663,17 @@ export const NOTIFICATION_TEMPLATES = {
       actionUrl: `/admin/websites/${data.engagementId}`,
     }),
   }),
+  "ecommerce.launch_recorded": template({
+    version: 1,
+    active: true,
+    category: "ECOMMERCE_DEVELOPMENT_ACTIVITY",
+    severity: "INFO",
+    render: (data: { engagementId: string; storeName: string; companyName: string }) => ({
+      title: "Store launched",
+      body: `"${data.storeName}" for ${data.companyName} was recorded as live.`,
+      actionUrl: `/admin/ecommerce/${data.engagementId}`,
+    }),
+  }),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as const satisfies Record<string, NotificationTemplateDefinition<any>>;
 

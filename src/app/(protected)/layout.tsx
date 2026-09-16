@@ -133,6 +133,13 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     // reachable via `/admin/websites`'s own links, not a sidebar
     // sub-menu.
     { key: "admin-websites", label: "Website Development", href: "/admin/websites", icon: "globe", permission: "website_development.read" as const },
+    // Build 33 — E-Commerce Development OS (Roadmap Module 27). A
+    // FOURTH, SEPARATE specialist domain from SEO OS/Local SEO/Website
+    // Development immediately above — same flat, single-link shape; a
+    // store's own workspace (tabs for overview/catalog/configuration/
+    // qa/import) stays reachable via `/admin/ecommerce`'s own links,
+    // not a sidebar sub-menu.
+    { key: "admin-ecommerce", label: "E-Commerce Development", href: "/admin/ecommerce", icon: "shoppingCart", permission: "ecommerce_development.read" as const },
   ].filter((item) => platformContext.permissions.has(item.permission));
 
   if (platformItems.length > 0) {

@@ -17,6 +17,7 @@ import {
 import { createSeoEngagementAction } from "../../../seo/actions";
 import { createLocalSeoEngagementAction } from "../../../local-seo/actions";
 import { createWebsiteEngagementAction } from "../../../websites/actions";
+import { createEcommerceEngagementAction } from "../../../ecommerce/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,6 +44,9 @@ export function CustomerServiceDetailView({
   canSeeWebsiteDev,
   canManageWebsiteDev,
   websiteEngagementId,
+  canSeeEcommerce,
+  canManageEcommerce,
+  ecommerceEngagementId,
 }: {
   detail: CustomerServiceDetail;
   canManage: boolean;
@@ -56,6 +60,9 @@ export function CustomerServiceDetailView({
   canSeeWebsiteDev: boolean;
   canManageWebsiteDev: boolean;
   websiteEngagementId: string | null;
+  canSeeEcommerce: boolean;
+  canManageEcommerce: boolean;
+  ecommerceEngagementId: string | null;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -319,6 +326,36 @@ export function CustomerServiceDetailView({
             </Button>
           ) : (
             <p className="text-sm text-muted-foreground">No Website workspace set up yet.</p>
+          )}
+        </section>
+      ) : null}
+
+      {detail.category === "ECOMMERCE" ? (
+        <section className="flex flex-col gap-3">
+          <SectionHeader title="E-Commerce Development workspace" />
+          {!canSeeEcommerce ? (
+            <p className="text-sm text-muted-foreground">Viewing the E-Commerce Development workspace requires the ecommerce_development.read permission.</p>
+          ) : ecommerceEngagementId ? (
+            <Button asChild variant="outline" className="w-fit">
+              <Link href={`/admin/ecommerce/${ecommerceEngagementId}`}>Open E-Commerce workspace</Link>
+            </Button>
+          ) : canManageEcommerce ? (
+            <Button
+              variant="outline"
+              className="w-fit"
+              disabled={pending}
+              onClick={() =>
+                runAction(async () => {
+                  const result = await createEcommerceEngagementAction({ customerServiceId: detail.id });
+                  if (!result.error && result.data) router.push(`/admin/ecommerce/${result.data.id}`);
+                  return result;
+                })
+              }
+            >
+              Set up E-Commerce workspace
+            </Button>
+          ) : (
+            <p className="text-sm text-muted-foreground">No E-Commerce workspace set up yet.</p>
           )}
         </section>
       ) : null}

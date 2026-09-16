@@ -12,6 +12,7 @@ import { projectRepository } from "@/server/repositories/project-repository";
 import { getSeoPortalSummaryForCustomerServices, type PortalSeoPerformanceSummary } from "@/server/services/seo-portal-service";
 import { getLocalSeoPortalSummaryForCustomerServices, type PortalLocalSeoPerformanceSummary } from "@/server/services/local-seo-portal-service";
 import { getWebsitePortalSummaryForCustomerServices, type PortalWebsiteDevelopmentSummary } from "@/server/services/website-portal-service";
+import { getEcommercePortalSummaryForCustomerServices, type PortalEcommerceDevelopmentSummary } from "@/server/services/ecommerce-portal-service";
 import type { CrmCompany, CustomerServiceStatus, ServiceCategory } from "@/generated/prisma/client";
 import type { CrmClientOnboardingWithRelations } from "@/server/repositories/crm-client-onboarding-repository";
 import type { TenantTransactionClient } from "@/lib/tenancy/context";
@@ -50,6 +51,8 @@ export interface PortalCanonicalServiceItem {
   localSeoPerformance: PortalLocalSeoPerformanceSummary | null;
   /** Build 32 — Website Development's own SEPARATE customer-safe projection, only ever non-null when `category === "WEB_DEVELOPMENT"`. Aggregated across every ACTIVE Website Development engagement, not fetched per item. */
   websiteDevPerformance: PortalWebsiteDevelopmentSummary | null;
+  /** Build 33 — E-Commerce Development's own SEPARATE customer-safe projection, only ever non-null when `category === "ECOMMERCE"`. Aggregated across every ACTIVE E-Commerce Development engagement, not fetched per item. */
+  ecommercePerformance: PortalEcommerceDevelopmentSummary | null;
 }
 
 export type PortalServices = { source: "onboarding" | "accepted_proposal" | "none"; items: PortalServiceItem[] } | { source: "canonical"; items: PortalCanonicalServiceItem[] };
@@ -73,12 +76,13 @@ async function resolveCanonicalServices(customerOrganizationId: string, tx: Tena
 
   const definitionIds = [...new Set(customerServices.map((cs) => cs.serviceDefinitionId))];
   const customerServiceIds = customerServices.map((cs) => cs.id);
-  const [definitions, linkedProjects, seoPerformance, localSeoPerformance, websiteDevPerformance] = await Promise.all([
+  const [definitions, linkedProjects, seoPerformance, localSeoPerformance, websiteDevPerformance, ecommercePerformance] = await Promise.all([
     tx.serviceDefinition.findMany({ where: { id: { in: definitionIds } }, select: { id: true, name: true, description: true, category: true } }),
     projectRepository.listForCustomerServices(customerServiceIds, tx),
     getSeoPortalSummaryForCustomerServices(customerServices, tx),
     getLocalSeoPortalSummaryForCustomerServices(customerServices, tx),
     getWebsitePortalSummaryForCustomerServices(customerServices, tx),
+    getEcommercePortalSummaryForCustomerServices(customerServices, tx),
   ]);
   const definitionById = new Map(definitions.map((d) => [d.id, d]));
   const projectsByServiceId = new Map<string, { id: string; title: string; status: string }[]>();
@@ -107,6 +111,7 @@ async function resolveCanonicalServices(customerOrganizationId: string, tx: Tena
       seoPerformance: category === "SEO" ? seoPerformance : null,
       localSeoPerformance: category === "LOCAL_SEO" ? localSeoPerformance : null,
       websiteDevPerformance: category === "WEB_DEVELOPMENT" ? websiteDevPerformance : null,
+      ecommercePerformance: category === "ECOMMERCE" ? ecommercePerformance : null,
     };
   });
 }

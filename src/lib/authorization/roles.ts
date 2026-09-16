@@ -145,6 +145,13 @@ const PLATFORM_FULL: PermissionKey[] = [
   // tier. `.manage`/`.deploy` stay separate, narrower grants — see
   // each role's own permissions list below.
   "website_development.read",
+  // Build 33 — E-Commerce Development. `ecommerce_development.read` is
+  // day-to-day platform staff visibility into E-Commerce engagements/
+  // stores/catalog/configuration — the FOURTH specialist domain
+  // (`ServiceCategory.ECOMMERCE`), same tier. `.manage`/`.launch` stay
+  // separate, narrower grants — see each role's own permissions list
+  // below.
+  "ecommerce_development.read",
 ];
 
 const ORGANIZATION_FULL: PermissionKey[] = [
@@ -315,6 +322,11 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       // launches — a THIRD SEPARATE specialist domain, same tier.
       "website_development.manage",
       "website_development.deploy",
+      // Build 33 — E-Commerce Development. Owner/admin administer
+      // engagements/stores/catalog/configuration AND record store
+      // launches — a FOURTH SEPARATE specialist domain, same tier.
+      "ecommerce_development.manage",
+      "ecommerce_development.launch",
     ],
   },
   platform_admin: {
@@ -417,6 +429,10 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       // above — a THIRD SEPARATE specialist domain (Website Development).
       "website_development.manage",
       "website_development.deploy",
+      // Build 33 — same tier/reasoning immediately above — a FOURTH
+      // SEPARATE specialist domain (E-Commerce Development).
+      "ecommerce_development.manage",
+      "ecommerce_development.launch",
     ],
   },
   support_admin: {
@@ -495,6 +511,9 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     // Build 32 — `website_development.read` ALSO granted, same
     // reasoning — a THIRD SEPARATE specialist domain (Website
     // Development); deliberately NOT `.manage`/`.deploy`.
+    // Build 33 — `ecommerce_development.read` ALSO granted, same
+    // reasoning — a FOURTH SEPARATE specialist domain (E-Commerce
+    // Development); deliberately NOT `.manage`/`.launch`.
     permissions: [
       "users.read",
       "organizations.read",
@@ -521,6 +540,7 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "seo.read",
       "local_seo.read",
       "website_development.read",
+      "ecommerce_development.read",
     ],
   },
   support_agent: {

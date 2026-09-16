@@ -26,6 +26,7 @@ import {
   MessageSquare,
   MapPin,
   Globe,
+  ShoppingCart,
   type LucideIcon,
 } from "lucide-react"
 
@@ -67,6 +68,8 @@ export const NAV_ICON_MAP: Record<string, LucideIcon> = {
   mapPin: MapPin,
   // Build 32 — Website Development OS (Roadmap Module 26).
   globe: Globe,
+  // Build 33 — E-Commerce Development OS (Roadmap Module 27).
+  shoppingCart: ShoppingCart,
 }
 
 export function resolveNavIcon(name: string | undefined): LucideIcon | undefined {

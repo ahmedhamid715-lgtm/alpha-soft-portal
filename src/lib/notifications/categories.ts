@@ -210,6 +210,20 @@ export const NOTIFICATION_CATEGORIES = {
     mandatoryChannels: ["IN_APP"],
     defaultEnabled: { IN_APP: true, EMAIL: true },
   }),
+  /// Build 33 — E-Commerce Development. A FOURTH SEPARATE specialist
+  /// domain, own category. Deliberately narrower than Website Dev's own
+  /// two-event precedent — there is no commerce-domain equivalent of a
+  /// "deployment failed" fact to report, so this build freezes exactly
+  /// ONE high-signal event rather than inventing a second one without a
+  /// real underlying fact behind it.
+  ECOMMERCE_DEVELOPMENT_ACTIVITY: category({
+    label: "E-Commerce Development activity",
+    description: "When a store launch is recorded on a service you own.",
+    group: "Platform",
+    supportedChannels: ["IN_APP", "EMAIL"],
+    mandatoryChannels: ["IN_APP"],
+    defaultEnabled: { IN_APP: true, EMAIL: true },
+  }),
 } as const satisfies Record<string, NotificationCategoryDefinition>;
 
 export type NotificationCategoryKey = keyof typeof NOTIFICATION_CATEGORIES;

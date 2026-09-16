@@ -29,7 +29,7 @@ import { listProjectsForCustomer360, type Customer360ProjectSummary } from "@/se
 import { ProjectProgressDisplay } from "@/components/projects/project-progress-display";
 import { projectStatusVariant, projectPriorityVariant } from "@/components/projects/project-status";
 import { customerServiceStatusVariant, SERVICE_CATEGORY_LABELS } from "@/components/services/service-status";
-import type { SeoServicePerformanceInput, LocalSeoServicePerformanceInput, WebsiteServicePerformanceInput } from "@/lib/crm/client-success";
+import type { SeoServicePerformanceInput, LocalSeoServicePerformanceInput, WebsiteServicePerformanceInput, EcommerceServicePerformanceInput } from "@/lib/crm/client-success";
 
 export const metadata: Metadata = { title: "Customer 360" };
 
@@ -302,6 +302,7 @@ function ServicesTab({ view }: { view: Customer360ViewModel }) {
                   {item.category === "SEO" ? <SeoPerformanceSummaryRow canSee={view.canSeeSeoPerformance} performance={item.seoPerformance} /> : null}
                   {item.category === "LOCAL_SEO" ? <LocalSeoPerformanceSummaryRow canSee={view.canSeeLocalSeoPerformance} performance={item.localSeoPerformance} /> : null}
                   {item.category === "WEB_DEVELOPMENT" ? <WebsiteDevPerformanceSummaryRow canSee={view.canSeeWebsiteDevPerformance} performance={item.websiteDevPerformance} /> : null}
+                  {item.category === "ECOMMERCE" ? <EcommercePerformanceSummaryRow canSee={view.canSeeEcommercePerformance} performance={item.ecommercePerformance} /> : null}
                 </CardContent>
               </Card>
             </Link>
@@ -375,6 +376,24 @@ function WebsiteDevPerformanceSummaryRow({ canSee, performance }: { canSee: bool
         {performance.activeSiteCount} active site{performance.activeSiteCount === 1 ? "" : "s"}
       </span>
       {performance.anyOverdueUnlaunchedSite ? <span className="text-destructive">Launch overdue</span> : null}
+      {performance.requiredQaFailedCount > 0 ? <span className="text-destructive">{performance.requiredQaFailedCount} required QA failed</span> : null}
+      {performance.requiredQaPendingCount > 0 ? <span>{performance.requiredQaPendingCount} required QA pending</span> : null}
+      {performance.anyReadinessNotReady ? <span>Not launch-ready</span> : null}
+      {performance.nearestUpcomingLaunchTargetDate ? <span>Next launch target: {fmtDate(performance.nearestUpcomingLaunchTargetDate)}</span> : null}
+    </div>
+  );
+}
+
+/** Build 33 — E-Commerce Development's own SEPARATE aggregated delivery-performance signal (never merchant business performance — revenue/conversion/AOV/ROAS — none of which exist as real data here; see docs/architecture/ecommerce-development-os.md), same rendering/authorization-gate discipline as `SeoPerformanceSummaryRow`/`LocalSeoPerformanceSummaryRow`/`WebsiteDevPerformanceSummaryRow` above. */
+function EcommercePerformanceSummaryRow({ canSee, performance }: { canSee: boolean; performance: EcommerceServicePerformanceInput | null }) {
+  if (!canSee) return <p className="text-xs text-muted-foreground">E-Commerce Development performance requires the ecommerce_development.read permission.</p>;
+  if (!performance || performance.activeStoreCount === 0) return <p className="text-xs text-muted-foreground">No E-Commerce Development performance data yet.</p>;
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t pt-2 text-xs text-muted-foreground">
+      <span>
+        {performance.activeStoreCount} active store{performance.activeStoreCount === 1 ? "" : "s"}
+      </span>
+      {performance.anyOverdueUnlaunchedStore ? <span className="text-destructive">Launch overdue</span> : null}
       {performance.requiredQaFailedCount > 0 ? <span className="text-destructive">{performance.requiredQaFailedCount} required QA failed</span> : null}
       {performance.requiredQaPendingCount > 0 ? <span>{performance.requiredQaPendingCount} required QA pending</span> : null}
       {performance.anyReadinessNotReady ? <span>Not launch-ready</span> : null}

@@ -257,6 +257,13 @@ model Organization {
   websiteEnvironments                WebsiteEnvironment[]                   @relation("WebsiteEnvironmentPlatformOwner")
   websitePages                       WebsitePage[]                          @relation("WebsitePagePlatformOwner")
   websiteDeployments                 WebsiteDeployment[]                    @relation("WebsiteDeploymentPlatformOwner")
+  ecommerceEngagements               EcommerceEngagement[]                  @relation("EcommerceEngagementPlatformOwner")
+  ecommerceStores                    EcommerceStore[]                       @relation("EcommerceStorePlatformOwner")
+  ecommerceProducts                  EcommerceProduct[]                     @relation("EcommerceProductPlatformOwner")
+  ecommerceVariants                  EcommerceVariant[]                     @relation("EcommerceVariantPlatformOwner")
+  ecommerceCollections               EcommerceCollection[]                  @relation("EcommerceCollectionPlatformOwner")
+  ecommerceCollectionProducts        EcommerceCollectionProduct[]           @relation("EcommerceCollectionProductPlatformOwner")
+  ecommerceImportBatches             EcommerceImportBatch[]                 @relation("EcommerceImportBatchPlatformOwner")
 
   @@index([status])
   @@index([isPlatform])
@@ -445,6 +452,12 @@ model User {
   websiteEnvironmentsCreated           WebsiteEnvironment[]                   @relation("WebsiteEnvironmentCreatedBy")
   websitePagesCreated                  WebsitePage[]                          @relation("WebsitePageCreatedBy")
   websiteDeploymentsCreated            WebsiteDeployment[]                    @relation("WebsiteDeploymentCreatedBy")
+  ecommerceEngagementsCreated          EcommerceEngagement[]                  @relation("EcommerceEngagementCreatedBy")
+  ecommerceStoresCreated               EcommerceStore[]                       @relation("EcommerceStoreCreatedBy")
+  ecommerceProductsCreated             EcommerceProduct[]                     @relation("EcommerceProductCreatedBy")
+  ecommerceVariantsCreated             EcommerceVariant[]                     @relation("EcommerceVariantCreatedBy")
+  ecommerceCollectionsCreated          EcommerceCollection[]                  @relation("EcommerceCollectionCreatedBy")
+  ecommerceImportBatchesImported       EcommerceImportBatch[]                 @relation("EcommerceImportBatchImportedBy")
 
   @@index([status])
   @@map("users")
@@ -4165,6 +4178,7 @@ model Project {
   approvals             ProjectApproval[]
   qaChecks              ProjectQaCheck[]
   websiteEngagements    WebsiteEngagement[]             @relation("WebsiteEngagementProject")
+  ecommerceEngagements  EcommerceEngagement[]           @relation("EcommerceEngagementProject")
 
   @@index([organizationId, status, createdAt])
   // Supports the unfiltered newest-first tenant list; the status-leading index
@@ -4726,6 +4740,7 @@ model CustomerService {
   seoEngagement               SeoEngagement?
   localSeoEngagement          LocalSeoEngagement?
   websiteEngagement           WebsiteEngagement?
+  ecommerceEngagement         EcommerceEngagement?
 
   @@index([organizationId, customerOrganizationId, status])
   @@index([organizationId, status, createdAt])
@@ -5708,6 +5723,7 @@ model WebsiteSite {
   environments     WebsiteEnvironment[]
   pages            WebsitePage[]
   deployments      WebsiteDeployment[]  @relation("WebsiteDeploymentSite")
+  ecommerceStore   EcommerceStore?
 
   @@index([organizationId])
   @@index([engagementId, status])
@@ -5821,4 +5837,252 @@ model WebsiteDeployment {
   @@index([siteId, deployedAt(sort: Desc)])
   @@index([environmentId, deployedAt(sort: Desc)])
   @@map("website_deployments")
+}
+
+// =============================================================================
+// Build 33 — E-Commerce Development (Canonical Roadmap Module 27)
+// =============================================================================
+
+enum EcommerceStorePlatform {
+  SHOPIFY
+  WOOCOMMERCE
+  CUSTOM
+  OTHER
+
+  @@map("ecommerce_store_platform")
+}
+
+enum EcommerceStoreStatus {
+  PLANNING
+  IN_DEVELOPMENT
+  LIVE
+  MAINTENANCE
+  ARCHIVED
+
+  @@map("ecommerce_store_status")
+}
+
+enum EcommerceProductStatus {
+  PLANNED
+  IN_PROGRESS
+  QA
+  READY_FOR_LAUNCH
+  LIVE
+  ARCHIVED
+
+  @@map("ecommerce_product_status")
+}
+
+enum EcommerceProductSource {
+  MANUAL
+  IMPORT
+
+  @@map("ecommerce_product_source")
+}
+
+/// The specialist root — one per eligible CustomerService, forever.
+/// Its lifecycle is the linked CustomerService's lifecycle; `projectId`
+/// optionally links delivery work owned by Project Management.
+model EcommerceEngagement {
+  id                String  @id @db.Uuid
+  organizationId    String  @map("organization_id") @db.Uuid
+  customerServiceId String  @unique @map("customer_service_id") @db.Uuid
+  projectId         String? @map("project_id") @db.Uuid
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization    Organization     @relation("EcommerceEngagementPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  customerService CustomerService  @relation(fields: [customerServiceId], references: [id], onDelete: Cascade)
+  project         Project?         @relation("EcommerceEngagementProject", fields: [projectId], references: [id], onDelete: SetNull)
+  createdByUser   User             @relation("EcommerceEngagementCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  stores          EcommerceStore[]
+
+  @@index([organizationId])
+  @@map("ecommerce_engagements")
+}
+
+/// A commerce engagement may deliver one or more stores. External store
+/// identifiers and provider labels are metadata only and never authorize access.
+model EcommerceStore {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  engagementId   String @map("engagement_id") @db.Uuid
+
+  name                    String
+  platform                EcommerceStorePlatform    @default(OTHER)
+  externalStoreIdentifier String?                   @map("external_store_identifier")
+  websiteSiteId           String?                   @map("website_site_id") @db.Uuid
+  storeUrl                String?                   @map("store_url")
+  currency                String?
+  status                  EcommerceStoreStatus      @default(PLANNING)
+  launchTargetDate        DateTime?                 @map("launch_target_date") @db.Date
+  launchedAt              DateTime?                 @map("launched_at") @db.Timestamptz(3)
+  checkoutConfigured      WebsiteConfigurationState @default(UNKNOWN) @map("checkout_configured")
+  paymentConfigured       WebsiteConfigurationState @default(UNKNOWN) @map("payment_configured")
+  paymentProviderLabel    String?                   @map("payment_provider_label")
+  shippingConfigured      WebsiteConfigurationState @default(UNKNOWN) @map("shipping_configured")
+  taxConfigured           WebsiteConfigurationState @default(UNKNOWN) @map("tax_configured")
+  discountsConfigured     WebsiteConfigurationState @default(UNKNOWN) @map("discounts_configured")
+  inventoryConfigured     WebsiteConfigurationState @default(UNKNOWN) @map("inventory_configured")
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization      Organization           @relation("EcommerceStorePlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  engagement        EcommerceEngagement    @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+  websiteSite       WebsiteSite?           @relation(fields: [websiteSiteId], references: [id], onDelete: SetNull)
+  createdByUser     User                   @relation("EcommerceStoreCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  products          EcommerceProduct[]
+  collections       EcommerceCollection[]
+  importBatches     EcommerceImportBatch[]
+  variants          EcommerceVariant[]
+
+  @@unique([websiteSiteId])
+  @@unique([engagementId, externalStoreIdentifier])
+  @@index([organizationId])
+  @@index([engagementId, status])
+  @@map("ecommerce_stores")
+}
+
+/// Catalog implementation record. Currency is inherited from the parent store;
+/// import provenance is optional and must reference a batch from the same store.
+model EcommerceProduct {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  storeId        String @map("store_id") @db.Uuid
+
+  title             String
+  handle            String?
+  externalProductId String?                @map("external_product_id")
+  status            EcommerceProductStatus @default(PLANNED)
+  productType       String?                @map("product_type")
+  vendor            String?
+  source            EcommerceProductSource @default(MANUAL)
+  requiredForLaunch Boolean                @default(true) @map("required_for_launch")
+  sortOrder         Int                    @default(0) @map("sort_order")
+  primaryImageUrl   String?                @map("primary_image_url")
+  importBatchId     String?                @map("import_batch_id") @db.Uuid
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization          Organization                 @relation("EcommerceProductPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  store                 EcommerceStore               @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  importBatch           EcommerceImportBatch?        @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  createdByUser         User                         @relation("EcommerceProductCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  variants              EcommerceVariant[]
+  collectionMemberships EcommerceCollectionProduct[]
+
+  @@unique([storeId, externalProductId])
+  @@unique([storeId, handle])
+  @@index([organizationId])
+  @@index([storeId, status])
+  @@index([storeId, sortOrder, createdAt])
+  @@map("ecommerce_products")
+}
+
+/// Store-denormalized product variant. `storeId` permits a real per-store SKU
+/// constraint and is kept equal to the parent product's store by a DB trigger.
+model EcommerceVariant {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  productId      String @map("product_id") @db.Uuid
+  storeId        String @map("store_id") @db.Uuid
+
+  title                    String
+  externalVariantId        String?                @map("external_variant_id")
+  sku                      String?
+  option1Name              String?                @map("option1_name")
+  option1Value             String?                @map("option1_value")
+  option2Name              String?                @map("option2_name")
+  option2Value             String?                @map("option2_value")
+  option3Name              String?                @map("option3_name")
+  option3Value             String?                @map("option3_value")
+  priceMinorUnits          Int?                   @map("price_minor_units")
+  compareAtPriceMinorUnits Int?                   @map("compare_at_price_minor_units")
+  status                   EcommerceProductStatus @default(PLANNED)
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization  Organization     @relation("EcommerceVariantPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  product       EcommerceProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store         EcommerceStore   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  createdByUser User             @relation("EcommerceVariantCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([storeId, sku])
+  @@index([organizationId])
+  @@index([productId])
+  @@map("ecommerce_variants")
+}
+
+/// A merchant-defined grouping of products within one store.
+model EcommerceCollection {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  storeId        String @map("store_id") @db.Uuid
+
+  title  String
+  handle String?
+  status EcommerceProductStatus @default(PLANNED)
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization  Organization                 @relation("EcommerceCollectionPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  store         EcommerceStore               @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  createdByUser User                         @relation("EcommerceCollectionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  products      EcommerceCollectionProduct[]
+
+  @@unique([storeId, handle])
+  @@index([organizationId])
+  @@index([storeId])
+  @@map("ecommerce_collections")
+}
+
+/// Ordered many-to-many membership between collections and products.
+model EcommerceCollectionProduct {
+  id             String   @id @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  collectionId   String   @map("collection_id") @db.Uuid
+  productId      String   @map("product_id") @db.Uuid
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization Organization        @relation("EcommerceCollectionProductPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  collection   EcommerceCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  product      EcommerceProduct    @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([collectionId, productId])
+  @@index([organizationId])
+  @@index([productId])
+  @@map("ecommerce_collection_products")
+}
+
+/// Append-only evidence of a catalog CSV import. Rows are never mutated after
+/// creation; products may retain optional provenance through `importBatchId`.
+model EcommerceImportBatch {
+  id               String   @id @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  storeId          String   @map("store_id") @db.Uuid
+  importedByUserId String   @map("imported_by_user_id") @db.Uuid
+  totalRowCount    Int      @map("total_row_count")
+  importedRowCount Int      @map("imported_row_count")
+  skippedRowCount  Int      @map("skipped_row_count")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization   Organization       @relation("EcommerceImportBatchPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  store          EcommerceStore     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  importedByUser User               @relation("EcommerceImportBatchImportedBy", fields: [importedByUserId], references: [id], onDelete: Restrict)
+  products       EcommerceProduct[]
+
+  @@index([organizationId])
+  @@index([storeId, createdAt])
+  @@map("ecommerce_import_batches")
 }

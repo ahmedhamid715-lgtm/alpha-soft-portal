@@ -9,6 +9,7 @@ import { listAssignableUsers } from "@/server/services/crm-shared";
 import { getSeoEngagementByCustomerService } from "@/server/services/seo-engagement-service";
 import { getLocalSeoEngagementByCustomerService } from "@/server/services/local-seo-engagement-service";
 import { getWebsiteEngagementByCustomerService } from "@/server/services/website-engagement-service";
+import { getEcommerceEngagementByCustomerService } from "@/server/services/ecommerce-engagement-service";
 import { NotFoundError } from "@/lib/errors/app-error";
 import { CustomerServiceDetailView } from "./customer-service-detail-view";
 
@@ -64,6 +65,15 @@ export default async function CustomerServiceDetailPage({ params }: { params: Pr
   const canManageWebsiteDev = context.permissions.has("website_development.manage");
   const websiteEngagement = detail.category === "WEB_DEVELOPMENT" && canSeeWebsiteDev ? await getWebsiteEngagementByCustomerService({ customerServiceId: id }) : null;
 
+  // Build 33 — E-Commerce Development OS. Same "attach to the
+  // appropriate CustomerService, provisioned from Service Management"
+  // reasoning as SEO OS/Local SEO/Website Dev immediately above — a
+  // FOURTH, separate specialist domain, own eligibility category
+  // (ECOMMERCE, never SEO/LOCAL_SEO/WEB_DEVELOPMENT).
+  const canSeeEcommerce = context.permissions.has("ecommerce_development.read");
+  const canManageEcommerce = context.permissions.has("ecommerce_development.manage");
+  const ecommerceEngagement = detail.category === "ECOMMERCE" && canSeeEcommerce ? await getEcommerceEngagementByCustomerService({ customerServiceId: id }) : null;
+
   return (
     <div className="flex flex-col gap-8">
       <PageHeader title={detail.serviceName} breadcrumbs={[{ label: "Services", href: "/admin/services" }, { label: detail.companyName, href: "/admin/services?tab=customers" }, { label: detail.serviceName }]} />
@@ -80,6 +90,9 @@ export default async function CustomerServiceDetailPage({ params }: { params: Pr
         canSeeWebsiteDev={canSeeWebsiteDev}
         canManageWebsiteDev={canManageWebsiteDev}
         websiteEngagementId={websiteEngagement?.id ?? null}
+        canSeeEcommerce={canSeeEcommerce}
+        canManageEcommerce={canManageEcommerce}
+        ecommerceEngagementId={ecommerceEngagement?.id ?? null}
       />
     </div>
   );

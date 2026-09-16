@@ -14,7 +14,7 @@ import { projectQaCheckRepository } from "@/server/repositories/project-qa-check
 import { createProject } from "./project-service";
 import { normalizeWebsiteUrl, InvalidWebsiteUrlError, isHttpUrl } from "@/lib/website-dev/url";
 import { normalizeWebsitePagePath, InvalidWebsitePagePathError } from "@/lib/website-dev/page-path";
-import { assertNoSecretLikeContent, SuspectedSecretContentError } from "@/lib/website-dev/secret-guard";
+import { assertNoSecretLikeContent, SuspectedSecretContentError } from "@/lib/security/secret-guard";
 import { canTransitionWebsitePage } from "@/lib/website-dev/page-lifecycle";
 import { evaluateLaunchReadiness, type LaunchReadinessResult } from "@/lib/website-dev/launch-readiness";
 import { audit } from "@/lib/audit/service";

@@ -430,6 +430,30 @@ export const AUDIT_CATALOG = {
   "websitedev.launch_recorded": action("CRM", "A website launch was recorded."),
   "websitedev.launch_override_recorded": action("CRM", "A website launch was recorded bypassing launch-readiness, with an explicit reason."),
   "websitedev.project_linked": action("CRM", "A Website Development engagement was linked to a delivery project."),
+
+  // Build 33 — E-Commerce Development. Same CRM-category/delivery-
+  // domain-family reasoning as `websitedev.*` immediately above — a
+  // FOURTH SEPARATE specialist domain, own action namespace. Action
+  // keys use `ecommerce.*` — the permission-key prefix
+  // `ecommerce_development` and the audit-key prefix `ecommerce` are
+  // deliberately different strings, same naming-regex-workaround
+  // reasoning `websitedev`/`website_development` already established
+  // (no underscore collision here since "ecommerce" itself has none,
+  // but kept consistent with the established pattern regardless). High-
+  // level events only — never one audit event per field save.
+  "ecommerce.engagement_created": action("CRM", "An E-Commerce Development engagement was created for a customer service."),
+  "ecommerce.store_created": action("CRM", "A store was added to an E-Commerce Development engagement."),
+  "ecommerce.store_archived": action("CRM", "A store was archived."),
+  "ecommerce.store_reactivated": action("CRM", "An archived store was reactivated."),
+  "ecommerce.store_configuration_updated": action("CRM", "A store's commerce configuration state (checkout/payment/shipping/tax/discounts/inventory) was updated."),
+  "ecommerce.product_created": action("CRM", "A catalog product was added to a store."),
+  "ecommerce.product_status_changed": action("CRM", "A catalog product's implementation status changed."),
+  "ecommerce.variant_created": action("CRM", "A product variant was added to the catalog."),
+  "ecommerce.collection_created": action("CRM", "A collection was added to a store."),
+  "ecommerce.catalog_import_recorded": action("CRM", "A catalog CSV import batch was recorded."),
+  "ecommerce.launch_recorded": action("CRM", "A store was recorded as live/launched."),
+  "ecommerce.launch_override_recorded": action("CRM", "A store was recorded as live/launched bypassing launch-readiness, with an explicit reason."),
+  "ecommerce.project_linked": action("CRM", "An E-Commerce Development engagement was linked to a delivery project."),
 } as const satisfies Record<string, AuditActionDefinition>;
 
 export type AuditActionKey = keyof typeof AUDIT_CATALOG;

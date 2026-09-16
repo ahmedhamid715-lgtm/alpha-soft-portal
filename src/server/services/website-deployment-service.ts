@@ -12,7 +12,7 @@ import { websitePageRepository } from "@/server/repositories/website-page-reposi
 import { projectQaCheckRepository } from "@/server/repositories/project-qa-check-repository";
 import { loadWebsiteSiteChecked } from "./website-engagement-service";
 import { evaluateLaunchReadiness } from "@/lib/website-dev/launch-readiness";
-import { assertNoSecretLikeContent, SuspectedSecretContentError } from "@/lib/website-dev/secret-guard";
+import { assertNoSecretLikeContent, SuspectedSecretContentError } from "@/lib/security/secret-guard";
 import { events } from "@/lib/platform/events";
 import { audit } from "@/lib/audit/service";
 import { NotFoundError, ValidationError, ConflictError } from "@/lib/errors/app-error";

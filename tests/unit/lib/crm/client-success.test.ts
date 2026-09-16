@@ -9,6 +9,7 @@ import {
   classifySeoServicePerformance,
   classifyLocalSeoServicePerformance,
   classifyWebsiteServicePerformance,
+  classifyEcommerceServicePerformance,
   toPaymentHealthComponent,
   evaluateChurnRisk,
   HEALTH_STATUS_SCORE,
@@ -18,6 +19,7 @@ import {
   type SeoServicePerformanceInput,
   type LocalSeoServicePerformanceInput,
   type WebsiteServicePerformanceInput,
+  type EcommerceServicePerformanceInput,
   type SpecialistServicePerformanceInput,
 } from "@/lib/crm/client-success";
 
@@ -256,7 +258,60 @@ describe("client-success", () => {
     });
   });
 
-  describe("evaluateServicePerformance — multi-specialist aggregation (Build 31, extended Build 32)", () => {
+  describe("classifyEcommerceServicePerformance (Build 33 — E-Commerce Development)", () => {
+    function ecommerceInput(overrides: Partial<EcommerceServicePerformanceInput>): EcommerceServicePerformanceInput {
+      return { activeStoreCount: 1, anyReadinessNotReady: false, anyOverdueUnlaunchedStore: false, nearestUpcomingLaunchTargetDate: null, linkedProjectStatus: null, requiredQaFailedCount: 0, requiredQaPendingCount: 0, ...overrides };
+    }
+
+    it("is NOT_MEASURABLE when input is null, or zero active stores — never fabricated", () => {
+      expect(classifyEcommerceServicePerformance("cs-1", null).status).toBe("NOT_MEASURABLE");
+      expect(classifyEcommerceServicePerformance("cs-1", null).measurable).toBe(false);
+      expect(classifyEcommerceServicePerformance("cs-1", ecommerceInput({ activeStoreCount: 0 })).status).toBe("NOT_MEASURABLE");
+    });
+
+    it("is HEALTHY when there are no overdue/at-risk stores and no failed/pending required QA", () => {
+      const result = classifyEcommerceServicePerformance("cs-1", ecommerceInput({}));
+      expect(result.status).toBe("HEALTHY");
+      expect(result.measurable).toBe(true);
+    });
+
+    it("is CRITICAL when any required QA check has failed — outranks everything else", () => {
+      expect(classifyEcommerceServicePerformance("cs-1", ecommerceInput({ requiredQaFailedCount: 1 })).status).toBe("CRITICAL");
+      expect(classifyEcommerceServicePerformance("cs-1", ecommerceInput({ requiredQaFailedCount: 1, anyOverdueUnlaunchedStore: true })).status).toBe("CRITICAL");
+    });
+
+    it("is CRITICAL when a store's launch target date has passed without a recorded launch", () => {
+      expect(classifyEcommerceServicePerformance("cs-1", ecommerceInput({ anyOverdueUnlaunchedStore: true })).status).toBe("CRITICAL");
+    });
+
+    it("is AT_RISK when the linked project is CANCELLED or ON_HOLD", () => {
+      expect(classifyEcommerceServicePerformance("cs-1", ecommerceInput({ linkedProjectStatus: "CANCELLED" })).status).toBe("AT_RISK");
+      expect(classifyEcommerceServicePerformance("cs-1", ecommerceInput({ linkedProjectStatus: "ON_HOLD" })).status).toBe("AT_RISK");
+    });
+
+    it("is AT_RISK when not launch-ready and the nearest launch target is within the 14-day warning window", () => {
+      const soon = new Date(NOW.getTime() + 5 * 24 * 60 * 60 * 1000);
+      const result = classifyEcommerceServicePerformance("cs-1", ecommerceInput({ anyReadinessNotReady: true, nearestUpcomingLaunchTargetDate: soon }), NOW);
+      expect(result.status).toBe("AT_RISK");
+    });
+
+    it("is WATCH when not launch-ready but the launch target is far away (or unset)", () => {
+      const far = new Date(NOW.getTime() + 60 * 24 * 60 * 60 * 1000);
+      expect(classifyEcommerceServicePerformance("cs-1", ecommerceInput({ anyReadinessNotReady: true, nearestUpcomingLaunchTargetDate: far }), NOW).status).toBe("WATCH");
+      expect(classifyEcommerceServicePerformance("cs-1", ecommerceInput({ anyReadinessNotReady: true, nearestUpcomingLaunchTargetDate: null })).status).toBe("WATCH");
+    });
+
+    it("is WATCH when required QA is still pending", () => {
+      expect(classifyEcommerceServicePerformance("cs-1", ecommerceInput({ requiredQaPendingCount: 2 })).status).toBe("WATCH");
+    });
+
+    it("never counts missing/zero QA data as a failure — zero required QA checks is not penalized", () => {
+      const result = classifyEcommerceServicePerformance("cs-1", ecommerceInput({ requiredQaFailedCount: 0, requiredQaPendingCount: 0 }));
+      expect(result.status).toBe("HEALTHY");
+    });
+  });
+
+  describe("evaluateServicePerformance — multi-specialist aggregation (Build 31, extended Build 32/33)", () => {
     const seoHealthy: SpecialistServicePerformanceInput = { customerServiceId: "cs-seo", category: "SEO", measurable: true, status: "HEALTHY", reason: "SEO healthy." };
     const seoCritical: SpecialistServicePerformanceInput = { customerServiceId: "cs-seo", category: "SEO", measurable: true, status: "CRITICAL", reason: "SEO critical." };
     const seoNotMeasurable: SpecialistServicePerformanceInput = { customerServiceId: "cs-seo", category: "SEO", measurable: false, status: "NOT_MEASURABLE", reason: "SEO not measurable." };
@@ -266,6 +321,9 @@ describe("client-success", () => {
     const websiteHealthy: SpecialistServicePerformanceInput = { customerServiceId: "cs-website", category: "WEB_DEVELOPMENT", measurable: true, status: "HEALTHY", reason: "Website Development healthy." };
     const websiteCritical: SpecialistServicePerformanceInput = { customerServiceId: "cs-website", category: "WEB_DEVELOPMENT", measurable: true, status: "CRITICAL", reason: "Website Development critical." };
     const websiteNotMeasurable: SpecialistServicePerformanceInput = { customerServiceId: "cs-website", category: "WEB_DEVELOPMENT", measurable: false, status: "NOT_MEASURABLE", reason: "Website Development not measurable." };
+    const ecommerceHealthy: SpecialistServicePerformanceInput = { customerServiceId: "cs-ecommerce", category: "ECOMMERCE", measurable: true, status: "HEALTHY", reason: "E-Commerce Development healthy." };
+    const ecommerceCritical: SpecialistServicePerformanceInput = { customerServiceId: "cs-ecommerce", category: "ECOMMERCE", measurable: true, status: "CRITICAL", reason: "E-Commerce Development critical." };
+    const ecommerceNotMeasurable: SpecialistServicePerformanceInput = { customerServiceId: "cs-ecommerce", category: "ECOMMERCE", measurable: false, status: "NOT_MEASURABLE", reason: "E-Commerce Development not measurable." };
 
     function input(specialists: SpecialistServicePerformanceInput[]): ServicePerformanceInput {
       return { specialists };
@@ -349,6 +407,46 @@ describe("client-success", () => {
 
     it("none measurable across all three specialists — NOT_MEASURABLE, never a fabricated score", () => {
       const result = evaluateServicePerformance(input([seoNotMeasurable, localSeoNotMeasurable, websiteNotMeasurable]), NOW);
+      expect(result.status).toBe("NOT_MEASURABLE");
+      expect(result.measurable).toBe(false);
+      expect(result.score).toBeNull();
+    });
+
+    it("E-Commerce Development only, measurable — reflects E-Commerce's own status (Build 33 regression)", () => {
+      expect(evaluateServicePerformance(input([ecommerceHealthy]), NOW).status).toBe("HEALTHY");
+      expect(evaluateServicePerformance(input([ecommerceCritical]), NOW).status).toBe("CRITICAL");
+    });
+
+    it("Website Development + E-Commerce Development both measurable — takes the WORST status among them", () => {
+      expect(evaluateServicePerformance(input([websiteHealthy, ecommerceCritical]), NOW).status).toBe("CRITICAL");
+      expect(evaluateServicePerformance(input([websiteCritical, ecommerceHealthy]), NOW).status).toBe("CRITICAL");
+    });
+
+    it("SEO + E-Commerce Development both measurable — takes the WORST status among them", () => {
+      expect(evaluateServicePerformance(input([seoHealthy, ecommerceCritical]), NOW).status).toBe("CRITICAL");
+      expect(evaluateServicePerformance(input([seoCritical, ecommerceHealthy]), NOW).status).toBe("CRITICAL");
+    });
+
+    it("Local SEO + E-Commerce Development both measurable — takes the WORST status among them", () => {
+      expect(evaluateServicePerformance(input([localSeoAtRisk, ecommerceHealthy]), NOW).status).toBe("AT_RISK");
+      expect(evaluateServicePerformance(input([localSeoHealthy, ecommerceCritical]), NOW).status).toBe("CRITICAL");
+    });
+
+    it("all four current specialist types together — worst status wins regardless of order", () => {
+      const a = evaluateServicePerformance(input([seoHealthy, localSeoHealthy, websiteHealthy, ecommerceCritical]), NOW);
+      const b = evaluateServicePerformance(input([ecommerceCritical, websiteHealthy, seoHealthy, localSeoHealthy]), NOW);
+      expect(a.status).toBe("CRITICAL");
+      expect(b.status).toBe("CRITICAL");
+    });
+
+    it("one measurable (E-Commerce Development), others NOT_MEASURABLE — reflects the one measurable specialist only", () => {
+      const result = evaluateServicePerformance(input([ecommerceHealthy, seoNotMeasurable, localSeoNotMeasurable, websiteNotMeasurable]), NOW);
+      expect(result.status).toBe("HEALTHY");
+      expect(result.measurable).toBe(true);
+    });
+
+    it("nothing measurable across all four specialists — NOT_MEASURABLE, never a fabricated score", () => {
+      const result = evaluateServicePerformance(input([seoNotMeasurable, localSeoNotMeasurable, websiteNotMeasurable, ecommerceNotMeasurable]), NOW);
       expect(result.status).toBe("NOT_MEASURABLE");
       expect(result.measurable).toBe(false);
       expect(result.score).toBeNull();
