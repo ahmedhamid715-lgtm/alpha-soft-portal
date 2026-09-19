@@ -10,6 +10,7 @@ import { getSeoEngagementByCustomerService } from "@/server/services/seo-engagem
 import { getLocalSeoEngagementByCustomerService } from "@/server/services/local-seo-engagement-service";
 import { getWebsiteEngagementByCustomerService } from "@/server/services/website-engagement-service";
 import { getEcommerceEngagementByCustomerService } from "@/server/services/ecommerce-engagement-service";
+import { getGhlEngagementByCustomerService } from "@/server/services/ghl-engagement-service";
 import { NotFoundError } from "@/lib/errors/app-error";
 import { CustomerServiceDetailView } from "./customer-service-detail-view";
 
@@ -74,6 +75,15 @@ export default async function CustomerServiceDetailPage({ params }: { params: Pr
   const canManageEcommerce = context.permissions.has("ecommerce_development.manage");
   const ecommerceEngagement = detail.category === "ECOMMERCE" && canSeeEcommerce ? await getEcommerceEngagementByCustomerService({ customerServiceId: id }) : null;
 
+  // Build 34 — GHL Automation OS. Same "attach to the appropriate
+  // CustomerService, provisioned from Service Management" reasoning as
+  // SEO OS/Local SEO/Website Dev/E-Commerce immediately above — a
+  // FIFTH, separate specialist domain, own eligibility category
+  // (GHL_AUTOMATION, never SEO/LOCAL_SEO/WEB_DEVELOPMENT/ECOMMERCE).
+  const canSeeGhl = context.permissions.has("ghl_automation.read");
+  const canManageGhl = context.permissions.has("ghl_automation.manage");
+  const ghlEngagement = detail.category === "GHL_AUTOMATION" && canSeeGhl ? await getGhlEngagementByCustomerService({ customerServiceId: id }) : null;
+
   return (
     <div className="flex flex-col gap-8">
       <PageHeader title={detail.serviceName} breadcrumbs={[{ label: "Services", href: "/admin/services" }, { label: detail.companyName, href: "/admin/services?tab=customers" }, { label: detail.serviceName }]} />
@@ -93,6 +103,9 @@ export default async function CustomerServiceDetailPage({ params }: { params: Pr
         canSeeEcommerce={canSeeEcommerce}
         canManageEcommerce={canManageEcommerce}
         ecommerceEngagementId={ecommerceEngagement?.id ?? null}
+        canSeeGhl={canSeeGhl}
+        canManageGhl={canManageGhl}
+        ghlEngagementId={ghlEngagement?.id ?? null}
       />
     </div>
   );

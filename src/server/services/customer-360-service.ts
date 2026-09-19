@@ -15,15 +15,18 @@ import { getSeoServicePerformanceInputForCustomer360 } from "./seo-customer-360-
 import { getLocalSeoServicePerformanceInputForCustomer360 } from "./local-seo-customer-360-service";
 import { getWebsiteServicePerformanceInputForCustomer360 } from "./website-customer-360-service";
 import { getEcommerceServicePerformanceInputForCustomer360 } from "./ecommerce-customer-360-service";
+import { getGhlServicePerformanceInputForCustomer360 } from "./ghl-customer-360-service";
 import {
   classifySeoServicePerformance,
   classifyLocalSeoServicePerformance,
   classifyWebsiteServicePerformance,
   classifyEcommerceServicePerformance,
+  classifyGhlServicePerformance,
   type SeoServicePerformanceInput,
   type LocalSeoServicePerformanceInput,
   type WebsiteServicePerformanceInput,
   type EcommerceServicePerformanceInput,
+  type GhlServicePerformanceInput,
   type SpecialistServicePerformanceInput,
 } from "@/lib/crm/client-success";
 import { organizationRepository } from "@/server/repositories/organization-repository";
@@ -106,6 +109,8 @@ export interface Customer360ViewModel {
   canSeeWebsiteDevPerformance: boolean;
   /** `false` when the caller lacks `ecommerce_development.read` — same reasoning, for the FOURTH SEPARATE E-Commerce Development specialist domain (Build 33). */
   canSeeEcommercePerformance: boolean;
+  /** `false` when the caller lacks `ghl_automation.read` — same reasoning, for the FIFTH SEPARATE GHL Automation specialist domain (Build 34). */
+  canSeeGhlPerformance: boolean;
   /**
    * Build 29 — real canonical `CustomerService` rows now take
    * precedence, falling back to the exact same sold/onboarding
@@ -124,6 +129,7 @@ export interface Customer360ViewModel {
           localSeoPerformance: LocalSeoServicePerformanceInput | null;
           websiteDevPerformance: WebsiteServicePerformanceInput | null;
           ecommercePerformance: EcommerceServicePerformanceInput | null;
+          ghlPerformance: GhlServicePerformanceInput | null;
         })[];
       }
     | { source: "onboarding" | "accepted_proposal"; items: { title: string; description: string | null; quantity: number }[] }
@@ -185,6 +191,7 @@ export async function getCustomer360(rawInput: unknown): Promise<Customer360View
   const canSeeLocalSeoPerformance = context.permissions.has("local_seo.read");
   const canSeeWebsiteDevPerformance = context.permissions.has("website_development.read");
   const canSeeEcommercePerformance = context.permissions.has("ecommerce_development.read");
+  const canSeeGhlPerformance = context.permissions.has("ghl_automation.read");
 
   // Stage 1 — every one of these depends only on `company` (already
   // resolved), never on each other, so they all start together
@@ -215,7 +222,7 @@ export async function getCustomer360(rawInput: unknown): Promise<Customer360View
   // `currentOnboardingDetail` only on `onboardings`) — same fix as
   // Stage 1, running them concurrently instead of one four-step await
   // chain.
-  const [linkedOrganizationMemberCounts, billing, latestDeal, currentOnboardingDetail, seoPerformance, localSeoPerformance, websiteDevPerformance, ecommercePerformance] = await Promise.all([
+  const [linkedOrganizationMemberCounts, billing, latestDeal, currentOnboardingDetail, seoPerformance, localSeoPerformance, websiteDevPerformance, ecommercePerformance, ghlPerformance] = await Promise.all([
     linkedOrganization && canSeeOrganizationDetail ? organizationRepository.membershipStatusCounts(linkedOrganization.id) : Promise.resolve(null),
     canSeeBilling && linkedOrganization
       ? getOrganizationBillingForPlatform({ organizationId: linkedOrganization.id }).catch((error) => {
@@ -244,12 +251,17 @@ export async function getCustomer360(rawInput: unknown): Promise<Customer360View
     // SEPARATE specialist domain, same reasoning as `seoPerformance`/
     // `localSeoPerformance`/`websiteDevPerformance` immediately above.
     canSeeEcommercePerformance && linkedOrganization ? getEcommerceServicePerformanceInputForCustomer360(linkedOrganization.id) : Promise.resolve(null),
+    // Build 34 — GHL Automation's own domain service, FIFTH SEPARATE
+    // specialist domain, same reasoning as `seoPerformance`/
+    // `localSeoPerformance`/`websiteDevPerformance`/`ecommercePerformance`
+    // immediately above.
+    canSeeGhlPerformance && linkedOrganization ? getGhlServicePerformanceInputForCustomer360(linkedOrganization.id) : Promise.resolve(null),
   ]);
 
   const accountOwner = resolveAccountOwner(currentOnboardingDetail, latestDeal);
   const primaryContact = latestDeal?.primaryContact ?? null;
 
-  const services = await resolveServices(canonicalServices, currentOnboardingDetail, proposals, seoPerformance, localSeoPerformance, websiteDevPerformance, ecommercePerformance);
+  const services = await resolveServices(canonicalServices, currentOnboardingDetail, proposals, seoPerformance, localSeoPerformance, websiteDevPerformance, ecommercePerformance, ghlPerformance);
   const specialistPerformances = resolveSpecialistPerformances(services);
   const documents = resolveDocuments(proposals, contracts, currentOnboardingDetail);
 
@@ -307,6 +319,7 @@ export async function getCustomer360(rawInput: unknown): Promise<Customer360View
     canSeeLocalSeoPerformance,
     canSeeWebsiteDevPerformance,
     canSeeEcommercePerformance,
+    canSeeGhlPerformance,
     services,
     specialistPerformances,
     canSeeBilling,
@@ -362,6 +375,10 @@ const DOCUMENTS_CAP = 50;
  * Build 33 — `ecommercePerformance` is attached the same way onto every
  * canonical item whose category is ECOMMERCE — a FOURTH, separate
  * specialist domain, own aggregated signal.
+ *
+ * Build 34 — `ghlPerformance` is attached the same way onto every
+ * canonical item whose category is GHL_AUTOMATION — a FIFTH, separate
+ * specialist domain, own aggregated signal.
  */
 async function resolveServices(
   canonicalServices: Customer360ServiceSummary[] | null,
@@ -371,6 +388,7 @@ async function resolveServices(
   localSeoPerformance: LocalSeoServicePerformanceInput | null,
   websiteDevPerformance: WebsiteServicePerformanceInput | null,
   ecommercePerformance: EcommerceServicePerformanceInput | null,
+  ghlPerformance: GhlServicePerformanceInput | null,
 ): Promise<Customer360ViewModel["services"]> {
   if (canonicalServices && canonicalServices.length > 0) {
     return {
@@ -381,6 +399,7 @@ async function resolveServices(
         localSeoPerformance: item.category === "LOCAL_SEO" ? localSeoPerformance : null,
         websiteDevPerformance: item.category === "WEB_DEVELOPMENT" ? websiteDevPerformance : null,
         ecommercePerformance: item.category === "ECOMMERCE" ? ecommercePerformance : null,
+        ghlPerformance: item.category === "GHL_AUTOMATION" ? ghlPerformance : null,
       })),
     };
   }
@@ -419,6 +438,7 @@ function resolveSpecialistPerformances(services: Customer360ViewModel["services"
     else if (item.category === "LOCAL_SEO") results.push(classifyLocalSeoServicePerformance(item.id, item.localSeoPerformance));
     else if (item.category === "WEB_DEVELOPMENT") results.push(classifyWebsiteServicePerformance(item.id, item.websiteDevPerformance));
     else if (item.category === "ECOMMERCE") results.push(classifyEcommerceServicePerformance(item.id, item.ecommercePerformance));
+    else if (item.category === "GHL_AUTOMATION") results.push(classifyGhlServicePerformance(item.id, item.ghlPerformance));
   }
   return results;
 }

@@ -46,6 +46,29 @@ describe("assertNoSecretLikeContent (WDEV-SEC-01 remediation, shared cross-domai
     expect(() => assertNoSecretLikeContent(value, "notes")).toThrow(SuspectedSecretContentError);
   });
 
+  it.each([
+    // Build 34 Codex Security Engineer finding GHL-SEC-01 — a glued
+    // label this domain specifically needs, plus unlabeled provider
+    // credential shapes that no label-based check alone can catch.
+    "pitToken=abc12345",
+    "pit_token: abc12345",
+    "sk_live_51ExampleSecretKey12345",
+    "sk_test_51ExampleSecretKey12345",
+    "rk_live_51ExampleRestrictedKey1",
+    "whsec_abcdefgh12345678",
+    "ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "key-1234567890abcdef1234567890abcdef",
+    "https://example.invalid/?pitToken=abc12345",
+    "Notes: paste the key here sk_live_51ExampleSecretKey12345 for reference",
+  ])("rejects a GHL-SEC-01 provider-secret form: %s", (value) => {
+    expect(() => assertNoSecretLikeContent(value, "notes")).toThrow(SuspectedSecretContentError);
+  });
+
+  it("still allows ordinary prose that merely resembles but does not match a provider-secret shape", () => {
+    expect(() => assertNoSecretLikeContent("The account SID starts with AC and the workspace ID is separate.", "notes")).not.toThrow();
+    expect(() => assertNoSecretLikeContent("Client's GoHighLevel location key is stored in their own vault, not here.", "notes")).not.toThrow();
+  });
+
   it("includes the field label in the thrown error so the caller can report which field was rejected", () => {
     try {
       assertNoSecretLikeContent("password: secret", "Deployment notes");

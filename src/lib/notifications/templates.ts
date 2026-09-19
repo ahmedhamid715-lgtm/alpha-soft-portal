@@ -674,6 +674,28 @@ export const NOTIFICATION_TEMPLATES = {
       actionUrl: `/admin/ecommerce/${data.engagementId}`,
     }),
   }),
+  "ghl.go_live_recorded": template({
+    version: 1,
+    active: true,
+    category: "GHL_AUTOMATION_ACTIVITY",
+    severity: "INFO",
+    render: (data: { engagementId: string; workspaceName: string; companyName: string }) => ({
+      title: "GHL workspace go-live recorded",
+      body: `"${data.workspaceName}" for ${data.companyName} was recorded as go-live.`,
+      actionUrl: `/admin/ghl/${data.engagementId}`,
+    }),
+  }),
+  "ghl.handoff_recorded": template({
+    version: 1,
+    active: true,
+    category: "GHL_AUTOMATION_ACTIVITY",
+    severity: "INFO",
+    render: (data: { engagementId: string; workspaceName: string; companyName: string }) => ({
+      title: "GHL workspace handoff recorded",
+      body: `"${data.workspaceName}" for ${data.companyName} was recorded as handed off.`,
+      actionUrl: `/admin/ghl/${data.engagementId}`,
+    }),
+  }),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as const satisfies Record<string, NotificationTemplateDefinition<any>>;
 

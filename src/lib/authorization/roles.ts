@@ -152,6 +152,13 @@ const PLATFORM_FULL: PermissionKey[] = [
   // separate, narrower grants — see each role's own permissions list
   // below.
   "ecommerce_development.read",
+  // Build 34 — GHL Automation OS. `ghl_automation.read` is day-to-day
+  // platform staff visibility into GHL Automation engagements/
+  // workspaces/assets/integration requirements — the FIFTH specialist
+  // domain (`ServiceCategory.GHL_AUTOMATION`), same tier. `.manage`/
+  // `.launch` stay separate, narrower grants — see each role's own
+  // permissions list below.
+  "ghl_automation.read",
 ];
 
 const ORGANIZATION_FULL: PermissionKey[] = [
@@ -327,6 +334,11 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       // launches — a FOURTH SEPARATE specialist domain, same tier.
       "ecommerce_development.manage",
       "ecommerce_development.launch",
+      // Build 34 — GHL Automation OS. Owner/admin administer engagements/
+      // workspaces/assets/integration requirements AND record go-live/
+      // handoff — a FIFTH SEPARATE specialist domain, same tier.
+      "ghl_automation.manage",
+      "ghl_automation.launch",
     ],
   },
   platform_admin: {
@@ -433,6 +445,10 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       // SEPARATE specialist domain (E-Commerce Development).
       "ecommerce_development.manage",
       "ecommerce_development.launch",
+      // Build 34 — same tier/reasoning immediately above — a FIFTH
+      // SEPARATE specialist domain (GHL Automation OS).
+      "ghl_automation.manage",
+      "ghl_automation.launch",
     ],
   },
   support_admin: {
@@ -514,6 +530,9 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
     // Build 33 — `ecommerce_development.read` ALSO granted, same
     // reasoning — a FOURTH SEPARATE specialist domain (E-Commerce
     // Development); deliberately NOT `.manage`/`.launch`.
+    // Build 34 — `ghl_automation.read` ALSO granted, same reasoning — a
+    // FIFTH SEPARATE specialist domain (GHL Automation OS); deliberately
+    // NOT `.manage`/`.launch`.
     permissions: [
       "users.read",
       "organizations.read",
@@ -541,6 +560,7 @@ export const SYSTEM_ROLES: Record<SystemRoleKey, SystemRoleDefinition> = {
       "local_seo.read",
       "website_development.read",
       "ecommerce_development.read",
+      "ghl_automation.read",
     ],
   },
   support_agent: {

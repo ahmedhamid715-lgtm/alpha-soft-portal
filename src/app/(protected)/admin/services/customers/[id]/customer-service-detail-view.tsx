@@ -18,6 +18,7 @@ import { createSeoEngagementAction } from "../../../seo/actions";
 import { createLocalSeoEngagementAction } from "../../../local-seo/actions";
 import { createWebsiteEngagementAction } from "../../../websites/actions";
 import { createEcommerceEngagementAction } from "../../../ecommerce/actions";
+import { createGhlEngagementAction } from "../../../ghl/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,6 +48,9 @@ export function CustomerServiceDetailView({
   canSeeEcommerce,
   canManageEcommerce,
   ecommerceEngagementId,
+  canSeeGhl,
+  canManageGhl,
+  ghlEngagementId,
 }: {
   detail: CustomerServiceDetail;
   canManage: boolean;
@@ -63,6 +67,9 @@ export function CustomerServiceDetailView({
   canSeeEcommerce: boolean;
   canManageEcommerce: boolean;
   ecommerceEngagementId: string | null;
+  canSeeGhl: boolean;
+  canManageGhl: boolean;
+  ghlEngagementId: string | null;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -356,6 +363,36 @@ export function CustomerServiceDetailView({
             </Button>
           ) : (
             <p className="text-sm text-muted-foreground">No E-Commerce workspace set up yet.</p>
+          )}
+        </section>
+      ) : null}
+
+      {detail.category === "GHL_AUTOMATION" ? (
+        <section className="flex flex-col gap-3">
+          <SectionHeader title="GHL Automation workspace" />
+          {!canSeeGhl ? (
+            <p className="text-sm text-muted-foreground">Viewing the GHL Automation workspace requires the ghl_automation.read permission.</p>
+          ) : ghlEngagementId ? (
+            <Button asChild variant="outline" className="w-fit">
+              <Link href={`/admin/ghl/${ghlEngagementId}`}>Open GHL Automation workspace</Link>
+            </Button>
+          ) : canManageGhl ? (
+            <Button
+              variant="outline"
+              className="w-fit"
+              disabled={pending}
+              onClick={() =>
+                runAction(async () => {
+                  const result = await createGhlEngagementAction({ customerServiceId: detail.id });
+                  if (!result.error && result.data) router.push(`/admin/ghl/${result.data.id}`);
+                  return result;
+                })
+              }
+            >
+              Set up GHL Automation workspace
+            </Button>
+          ) : (
+            <p className="text-sm text-muted-foreground">No GHL Automation workspace set up yet.</p>
           )}
         </section>
       ) : null}

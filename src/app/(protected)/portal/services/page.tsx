@@ -121,6 +121,22 @@ export default async function PortalServicesPage() {
                         ) : null}
                       </div>
                     ) : null}
+                    {item.category === "GHL_AUTOMATION" && item.ghlPerformance ? (
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t pt-2 text-xs text-muted-foreground">
+                        <span>{item.ghlPerformance.workspaceName}</span>
+                        {item.ghlPerformance.requiredAssetCount > 0 ? (
+                          <span>
+                            {item.ghlPerformance.completedRequiredAssetCount}/{item.ghlPerformance.requiredAssetCount} required assets ready
+                          </span>
+                        ) : null}
+                        {item.ghlPerformance.goLiveRecordedAt ? (
+                          <span>Go-live {formatInTimeZone(item.ghlPerformance.goLiveRecordedAt, "UTC", { hour: undefined, minute: undefined })}</span>
+                        ) : item.ghlPerformance.goLiveTargetDate ? (
+                          <span>Go-live target: {formatInTimeZone(item.ghlPerformance.goLiveTargetDate, "UTC", { hour: undefined, minute: undefined })}</span>
+                        ) : null}
+                        <span>Handoff: {item.ghlPerformance.handoffStatus.replace("_", " ")}</span>
+                      </div>
+                    ) : null}
                   </CardContent>
                 </Card>
               ))

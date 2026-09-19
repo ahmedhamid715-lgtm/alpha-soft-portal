@@ -264,6 +264,11 @@ model Organization {
   ecommerceCollections               EcommerceCollection[]                  @relation("EcommerceCollectionPlatformOwner")
   ecommerceCollectionProducts        EcommerceCollectionProduct[]           @relation("EcommerceCollectionProductPlatformOwner")
   ecommerceImportBatches             EcommerceImportBatch[]                 @relation("EcommerceImportBatchPlatformOwner")
+  ghlAutomationEngagements           GhlAutomationEngagement[]              @relation("GhlAutomationEngagementPlatformOwner")
+  ghlWorkspaces                      GhlWorkspace[]                          @relation("GhlWorkspacePlatformOwner")
+  ghlAssets                          GhlAsset[]                              @relation("GhlAssetPlatformOwner")
+  ghlIntegrationRequirements         GhlIntegrationRequirement[]             @relation("GhlIntegrationRequirementPlatformOwner")
+  ghlImportBatches                    GhlImportBatch[]                        @relation("GhlImportBatchPlatformOwner")
 
   @@index([status])
   @@index([isPlatform])
@@ -458,6 +463,11 @@ model User {
   ecommerceVariantsCreated             EcommerceVariant[]                     @relation("EcommerceVariantCreatedBy")
   ecommerceCollectionsCreated          EcommerceCollection[]                  @relation("EcommerceCollectionCreatedBy")
   ecommerceImportBatchesImported       EcommerceImportBatch[]                 @relation("EcommerceImportBatchImportedBy")
+  ghlAutomationEngagementsCreated      GhlAutomationEngagement[]              @relation("GhlAutomationEngagementCreatedBy")
+  ghlWorkspacesCreated                 GhlWorkspace[]                          @relation("GhlWorkspaceCreatedBy")
+  ghlAssetsCreated                     GhlAsset[]                              @relation("GhlAssetCreatedBy")
+  ghlIntegrationRequirementsCreated    GhlIntegrationRequirement[]             @relation("GhlIntegrationRequirementCreatedBy")
+  ghlImportBatchesImported             GhlImportBatch[]                        @relation("GhlImportBatchImportedBy")
 
   @@index([status])
   @@map("users")
@@ -4179,6 +4189,7 @@ model Project {
   qaChecks              ProjectQaCheck[]
   websiteEngagements    WebsiteEngagement[]             @relation("WebsiteEngagementProject")
   ecommerceEngagements  EcommerceEngagement[]           @relation("EcommerceEngagementProject")
+  ghlAutomationEngagements GhlAutomationEngagement[]    @relation("GhlAutomationEngagementProject")
 
   @@index([organizationId, status, createdAt])
   // Supports the unfiltered newest-first tenant list; the status-leading index
@@ -4741,6 +4752,7 @@ model CustomerService {
   localSeoEngagement          LocalSeoEngagement?
   websiteEngagement           WebsiteEngagement?
   ecommerceEngagement         EcommerceEngagement?
+  ghlAutomationEngagement     GhlAutomationEngagement?
 
   @@index([organizationId, customerOrganizationId, status])
   @@index([organizationId, status, createdAt])
@@ -6085,4 +6097,216 @@ model EcommerceImportBatch {
   @@index([organizationId])
   @@index([storeId, createdAt])
   @@map("ecommerce_import_batches")
+}
+
+// =============================================================================
+// Build 34 — GHL Automation OS (Canonical Roadmap Module 28)
+// =============================================================================
+
+enum GhlWorkspaceStatus {
+  PLANNING
+  IN_DEVELOPMENT
+  LIVE
+  MAINTENANCE
+  ARCHIVED
+
+  @@map("ghl_workspace_status")
+}
+
+enum GhlHandoffStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+
+  @@map("ghl_handoff_status")
+}
+
+enum GhlAssetType {
+  FUNNEL
+  FORM
+  SURVEY
+  CALENDAR
+  PIPELINE
+  WORKFLOW
+  TRIGGER
+  CUSTOM_FIELD
+  EMAIL_TEMPLATE
+  SMS_TEMPLATE
+  SNAPSHOT
+  OTHER
+
+  @@map("ghl_asset_type")
+}
+
+enum GhlAssetImplementationStatus {
+  PLANNED
+  IN_PROGRESS
+  READY_FOR_QA
+  QA_FAILED
+  READY
+  LIVE
+  ARCHIVED
+
+  @@map("ghl_asset_implementation_status")
+}
+
+enum GhlAssetSource {
+  MANUAL
+  IMPORT
+
+  @@map("ghl_asset_source")
+}
+
+enum GhlIntegrationRequirementStatus {
+  NOT_CONFIGURED
+  CONFIGURED
+  CONFIRMED
+
+  @@map("ghl_integration_requirement_status")
+}
+
+/// The specialist root for delivery of an eligible GoHighLevel automation
+/// service. It records implementation work; it is not a CRM or workflow engine.
+model GhlAutomationEngagement {
+  id                String  @id @db.Uuid
+  organizationId    String  @map("organization_id") @db.Uuid
+  customerServiceId String  @unique @map("customer_service_id") @db.Uuid
+  projectId         String? @map("project_id") @db.Uuid
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization    Organization    @relation("GhlAutomationEngagementPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  customerService CustomerService @relation(fields: [customerServiceId], references: [id], onDelete: Cascade)
+  project         Project?        @relation("GhlAutomationEngagementProject", fields: [projectId], references: [id], onDelete: SetNull)
+  createdByUser   User            @relation("GhlAutomationEngagementCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  workspaces      GhlWorkspace[]
+
+  @@index([organizationId, createdAt])
+  @@map("ghl_automation_engagements")
+}
+
+/// A customer GoHighLevel location whose implementation is delivered by an
+/// engagement. Provider identifiers and URLs are metadata, never tenant keys.
+model GhlWorkspace {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  engagementId   String @map("engagement_id") @db.Uuid
+
+  name               String
+  externalLocationId String?            @map("external_location_id") @db.VarChar(200)
+  locationUrl        String?            @map("location_url") @db.VarChar(2048)
+  status             GhlWorkspaceStatus @default(PLANNING)
+  goLiveTargetDate   DateTime?          @map("go_live_target_date") @db.Date
+  goLiveRecordedAt   DateTime?          @map("go_live_recorded_at") @db.Timestamptz(3)
+  handoffStatus      GhlHandoffStatus   @default(NOT_STARTED) @map("handoff_status")
+  handoffRecordedAt  DateTime?          @map("handoff_recorded_at") @db.Timestamptz(3)
+  handoffNotes       String?            @map("handoff_notes") @db.VarChar(5000)
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization            Organization                @relation("GhlWorkspacePlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  engagement              GhlAutomationEngagement     @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+  createdByUser           User                        @relation("GhlWorkspaceCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  assets                  GhlAsset[]
+  integrationRequirements GhlIntegrationRequirement[]
+  importBatches           GhlImportBatch[]
+
+  @@unique([engagementId, externalLocationId])
+  @@index([engagementId, status])
+  @@index([engagementId, createdAt])
+  @@map("ghl_workspaces")
+}
+
+/// A deliverable configured inside a workspace. Import provenance, when set,
+/// is constrained by the database to a batch from this same workspace.
+model GhlAsset {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  workspaceId    String @map("workspace_id") @db.Uuid
+
+  assetType            GhlAssetType                 @map("asset_type")
+  name                 String
+  externalAssetId      String?                      @map("external_asset_id") @db.VarChar(200)
+  implementationStatus GhlAssetImplementationStatus @default(PLANNED) @map("implementation_status")
+  source               GhlAssetSource               @default(MANUAL)
+  requiredForLaunch    Boolean                      @default(true) @map("required_for_launch")
+  customerVisible      Boolean                      @default(false) @map("customer_visible")
+  sortOrder            Int                          @default(0) @map("sort_order")
+  notes                String?                      @db.VarChar(5000)
+  importBatchId        String?                      @map("import_batch_id") @db.Uuid
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization  Organization        @relation("GhlAssetPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace     GhlWorkspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  importBatch   GhlImportBatch?     @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  createdByUser User                @relation("GhlAssetCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId, externalAssetId])
+  @@index([workspaceId, assetType])
+  @@index([workspaceId, implementationStatus])
+  @@index([workspaceId, requiredForLaunch, implementationStatus], map: "ghl_assets_workspace_id_required_for_launch_implementation_stat")
+  @@index([workspaceId, sortOrder, createdAt])
+  @@index([workspaceId, assetType, sortOrder, createdAt])
+  // Codex Performance Engineer finding PERF-GHL-01 — status-only and
+  // type+status-filtered, sort-ordered `listForWorkspace()` reads each
+  // need their own filter+order composite index (see migration
+  // 20260920130000_ghl_assets_ordering_indexes).
+  @@index([workspaceId, implementationStatus, sortOrder, createdAt], map: "ghl_assets_workspace_id_implementation_status_sort_order_create")
+  @@index([workspaceId, assetType, implementationStatus, sortOrder, createdAt], map: "ghl_assets_workspace_id_asset_type_implementation_status_sort_o")
+  @@map("ghl_assets")
+}
+
+/// An external dependency that must be configured and confirmed as part of
+/// implementation readiness, without representing the external system itself.
+model GhlIntegrationRequirement {
+  id             String @id @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  workspaceId    String @map("workspace_id") @db.Uuid
+
+  name                String
+  required            Boolean                         @default(true)
+  status              GhlIntegrationRequirementStatus @default(NOT_CONFIGURED)
+  externalSystemLabel String?                         @map("external_system_label") @db.VarChar(200)
+  customerVisible     Boolean                         @default(false) @map("customer_visible")
+  notes               String?                         @db.VarChar(2000)
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization  Organization @relation("GhlIntegrationRequirementPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace     GhlWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdByUser User         @relation("GhlIntegrationRequirementCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([workspaceId, required, status])
+  @@index([workspaceId, createdAt])
+  @@map("ghl_integration_requirements")
+}
+
+/// Append-only evidence of an asset import. Counts are validated by a database
+/// CHECK and the application role receives neither UPDATE nor DELETE rights.
+model GhlImportBatch {
+  id               String   @id @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  workspaceId      String   @map("workspace_id") @db.Uuid
+  importedByUserId String   @map("imported_by_user_id") @db.Uuid
+  totalRowCount    Int      @map("total_row_count")
+  importedRowCount Int      @map("imported_row_count")
+  skippedRowCount  Int      @map("skipped_row_count")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization   Organization @relation("GhlImportBatchPlatformOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace      GhlWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  importedByUser User         @relation("GhlImportBatchImportedBy", fields: [importedByUserId], references: [id], onDelete: Restrict)
+  assets         GhlAsset[]
+
+  @@index([workspaceId, createdAt])
+  @@map("ghl_import_batches")
 }

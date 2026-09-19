@@ -454,6 +454,26 @@ export const AUDIT_CATALOG = {
   "ecommerce.launch_recorded": action("CRM", "A store was recorded as live/launched."),
   "ecommerce.launch_override_recorded": action("CRM", "A store was recorded as live/launched bypassing launch-readiness, with an explicit reason."),
   "ecommerce.project_linked": action("CRM", "An E-Commerce Development engagement was linked to a delivery project."),
+
+  // Build 34 — Roadmap Module 28, GHL Automation OS. Namespace `ghl.*`
+  // (deliberately no underscore in the first segment, matching the
+  // `ecommerce`/`ecommerce_development` naming-regex-workaround
+  // precedent — the permission-key prefix `ghl_automation` and the
+  // audit-key prefix `ghl` are intentionally different strings). High-
+  // level events only — no event per trivial field edit.
+  "ghl.engagement_created": action("CRM", "A GHL Automation engagement was created for a customer service."),
+  "ghl.workspace_created": action("CRM", "A workspace was added to a GHL Automation engagement."),
+  "ghl.workspace_archived": action("CRM", "A workspace was archived."),
+  "ghl.workspace_reactivated": action("CRM", "An archived workspace was reactivated."),
+  "ghl.asset_created": action("CRM", "An implementation asset was added to a workspace."),
+  "ghl.asset_status_changed": action("CRM", "An implementation asset's status changed."),
+  "ghl.integration_requirement_created": action("CRM", "An integration requirement was added to a workspace."),
+  "ghl.integration_requirement_status_changed": action("CRM", "An integration requirement's status changed."),
+  "ghl.import_recorded": action("CRM", "An asset CSV import batch was recorded."),
+  "ghl.go_live_recorded": action("CRM", "A workspace was recorded as go-live."),
+  "ghl.go_live_override_recorded": action("CRM", "A workspace was recorded as go-live bypassing readiness, with an explicit reason."),
+  "ghl.handoff_recorded": action("CRM", "A workspace was recorded as handed off to the customer."),
+  "ghl.project_linked": action("CRM", "A GHL Automation engagement was linked to a delivery project."),
 } as const satisfies Record<string, AuditActionDefinition>;
 
 export type AuditActionKey = keyof typeof AUDIT_CATALOG;

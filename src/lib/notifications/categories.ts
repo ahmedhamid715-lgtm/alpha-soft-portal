@@ -224,6 +224,18 @@ export const NOTIFICATION_CATEGORIES = {
     mandatoryChannels: ["IN_APP"],
     defaultEnabled: { IN_APP: true, EMAIL: true },
   }),
+  /// Build 34 — GHL Automation OS. A FIFTH SEPARATE specialist domain,
+  /// own category. Two real events this time (go-live and handoff are
+  /// two genuinely distinct, honest milestones in this domain — unlike
+  /// E-Commerce, which only had one).
+  GHL_AUTOMATION_ACTIVITY: category({
+    label: "GHL Automation activity",
+    description: "When a go-live or handoff is recorded on a service you own.",
+    group: "Platform",
+    supportedChannels: ["IN_APP", "EMAIL"],
+    mandatoryChannels: ["IN_APP"],
+    defaultEnabled: { IN_APP: true, EMAIL: true },
+  }),
 } as const satisfies Record<string, NotificationCategoryDefinition>;
 
 export type NotificationCategoryKey = keyof typeof NOTIFICATION_CATEGORIES;

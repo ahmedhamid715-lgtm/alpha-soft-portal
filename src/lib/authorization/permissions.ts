@@ -880,6 +880,31 @@ export const PERMISSION_CATALOG = {
     false,
     "ecommerce_development.launch",
   ),
+
+  // --- ghl_automation (Build 34 — Roadmap Module 28, GHL Automation OS)
+  // — PLATFORM-scope, same tier as `ecommerce_development.*`: the FIFTH
+  // specialist domain (`ServiceCategory.GHL_AUTOMATION`, never `SEO`/
+  // `LOCAL_SEO`/`WEB_DEVELOPMENT`/`ECOMMERCE`), own permission namespace.
+  // A three-tier split, same shape as every prior specialist domain:
+  // asset/workspace/integration-requirement CRUD lives under `.manage`
+  // (no separate tier per asset type); QA is reused directly through
+  // Project QA's own `delivery_projects.qa` permission, so no `.qa` key
+  // is needed here either. `.launch` is the narrower, higher-stakes
+  // tier — recording a workspace go-live or handoff is a customer-
+  // facing, effectively irreversible act, the same reasoning
+  // `ecommerce_development.launch`/`website_development.deploy` already
+  // establish for their own domains. No `ghl_automation.*` key existed
+  // before this build (checked directly).
+  "ghl_automation.read": permission("ghl_automation", "read", "PLATFORM", "View GHL Automation engagements, workspaces, assets, and integration requirements.", false),
+  "ghl_automation.manage": permission("ghl_automation", "manage", "PLATFORM", "Create/archive GHL Automation engagements and workspaces; manage assets and integration requirements; import an asset CSV.", false),
+  "ghl_automation.launch": permission(
+    "ghl_automation",
+    "manage",
+    "PLATFORM",
+    "Record a workspace as go-live/handed-off, including a readiness override.",
+    false,
+    "ghl_automation.launch",
+  ),
 } as const satisfies Record<string, PermissionDefinition>;
 
 export type PermissionKey = keyof typeof PERMISSION_CATALOG;

@@ -140,6 +140,13 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     // qa/import) stays reachable via `/admin/ecommerce`'s own links,
     // not a sidebar sub-menu.
     { key: "admin-ecommerce", label: "E-Commerce Development", href: "/admin/ecommerce", icon: "shoppingCart", permission: "ecommerce_development.read" as const },
+    // Build 34 — GHL Automation OS (Roadmap Module 28). A FIFTH,
+    // SEPARATE specialist domain from SEO OS/Local SEO/Website
+    // Development/E-Commerce Development immediately above — same flat,
+    // single-link shape; a workspace's own workspace (tabs for overview/
+    // assets/integrations/qa/import) stays reachable via `/admin/ghl`'s
+    // own links, not a sidebar sub-menu.
+    { key: "admin-ghl", label: "GHL Automation", href: "/admin/ghl", icon: "zap", permission: "ghl_automation.read" as const },
   ].filter((item) => platformContext.permissions.has(item.permission));
 
   if (platformItems.length > 0) {

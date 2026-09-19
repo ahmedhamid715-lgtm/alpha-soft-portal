@@ -32,8 +32,33 @@
  * (`accessToken:`) where `\b` cannot find a boundary between "access"
  * and "Token" — the bare-word alternative alone would miss that case.
  */
+/**
+ * Build 34 Codex Security Engineer finding (GHL-SEC-01) — the label-only
+ * pattern above requires a recognizable label immediately before `:`/`=`,
+ * so it still passed two real classes of pasted credential:
+ *   1. A glued label this domain specifically needs (`pitToken=...` — a
+ *      GoHighLevel Private Integration Token) that wasn't in the label
+ *      list at all. Fixed by adding `pit[\s_-]?token`, matching the same
+ *      camelCase-glue-tolerant compound style as `access[\s_-]?token`.
+ *   2. An UNLABELED value in one of a handful of real, high-specificity
+ *      provider credential formats (a bare `sk_live_...` with no
+ *      "key:"/"secret:" prefix at all, a Twilio Account SID, a Mailgun
+ *      API key, a bare `whsec_...` webhook signing secret). No label
+ *      requirement can catch these — the value's own shape IS the
+ *      signal, which is also why these specific formats have a low
+ *      false-positive rate (they don't collide with ordinary prose the
+ *      way a bare word like "token" would). Checked as a SEPARATE
+ *      pattern from the label pattern, matched anywhere in the string —
+ *      this also means an unlabeled secret pasted into a URL query
+ *      string (e.g. `?pitToken=` already caught by the label pattern
+ *      above, or `...&stripe_key=sk_live_...`) is still caught even
+ *      though the guard has no URL-aware parsing of its own.
+ */
 const SECRET_LABEL_PATTERN =
-  /\b(password|passwd|pwd|secret|credential|token|api[\s_-]?key|access[\s_-]?key|access[\s_-]?token|refresh[\s_-]?token|shopify[\s_-]?token|woocommerce[\s_-]?secret|private[\s_-]?key|ssh[\s_-]?key|ssh[\s_-]?password|ftp[\s_-]?password|db(?:atabase)?[\s_-]?password|consumer[\s_-]?secret|webhook[\s_-]?secret|auth[\s_-]?token|bearer)\s*[:=]/i;
+  /\b(password|passwd|pwd|secret|credential|token|api[\s_-]?key|access[\s_-]?key|access[\s_-]?token|refresh[\s_-]?token|shopify[\s_-]?token|woocommerce[\s_-]?secret|pit[\s_-]?token|private[\s_-]?key|ssh[\s_-]?key|ssh[\s_-]?password|ftp[\s_-]?password|db(?:atabase)?[\s_-]?password|consumer[\s_-]?secret|webhook[\s_-]?secret|auth[\s_-]?token|bearer)\s*[:=]/i;
+
+const SECRET_SIGNATURE_PATTERN =
+  /\b(sk|rk)_(live|test)_[A-Za-z0-9]{8,}\b|\bwhsec_[A-Za-z0-9]{8,}\b|\bAC[a-f0-9]{32}\b|\bkey-[a-f0-9]{32}\b/i;
 
 export class SuspectedSecretContentError extends Error {
   constructor(public readonly fieldLabel: string) {
@@ -42,8 +67,15 @@ export class SuspectedSecretContentError extends Error {
   }
 }
 
-/** Throws `SuspectedSecretContentError` if `value` contains a "label: value"/"label=value" pattern matching a known credential label. No-op for null/undefined/empty. */
+/**
+ * Throws `SuspectedSecretContentError` if `value` contains either (a) a
+ * "label: value"/"label=value" pattern matching a known credential
+ * label, or (b) an unlabeled value matching a known high-specificity
+ * provider credential SHAPE (Stripe secret/restricted key, Twilio
+ * Account SID, Mailgun API key, webhook signing secret). No-op for
+ * null/undefined/empty.
+ */
 export function assertNoSecretLikeContent(value: string | null | undefined, fieldLabel: string): void {
   if (!value) return;
-  if (SECRET_LABEL_PATTERN.test(value)) throw new SuspectedSecretContentError(fieldLabel);
+  if (SECRET_LABEL_PATTERN.test(value) || SECRET_SIGNATURE_PATTERN.test(value)) throw new SuspectedSecretContentError(fieldLabel);
 }

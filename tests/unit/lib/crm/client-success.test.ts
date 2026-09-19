@@ -10,6 +10,7 @@ import {
   classifyLocalSeoServicePerformance,
   classifyWebsiteServicePerformance,
   classifyEcommerceServicePerformance,
+  classifyGhlServicePerformance,
   toPaymentHealthComponent,
   evaluateChurnRisk,
   HEALTH_STATUS_SCORE,
@@ -20,6 +21,7 @@ import {
   type LocalSeoServicePerformanceInput,
   type WebsiteServicePerformanceInput,
   type EcommerceServicePerformanceInput,
+  type GhlServicePerformanceInput,
   type SpecialistServicePerformanceInput,
 } from "@/lib/crm/client-success";
 
@@ -311,7 +313,60 @@ describe("client-success", () => {
     });
   });
 
-  describe("evaluateServicePerformance — multi-specialist aggregation (Build 31, extended Build 32/33)", () => {
+  describe("classifyGhlServicePerformance (Build 34 — GHL Automation)", () => {
+    function ghlInput(overrides: Partial<GhlServicePerformanceInput>): GhlServicePerformanceInput {
+      return { activeWorkspaceCount: 1, anyReadinessNotReady: false, anyOverdueUnlaunchedWorkspace: false, nearestUpcomingGoLiveTargetDate: null, linkedProjectStatus: null, requiredQaFailedCount: 0, requiredQaPendingCount: 0, ...overrides };
+    }
+
+    it("is NOT_MEASURABLE when input is null, or zero active workspaces — never fabricated", () => {
+      expect(classifyGhlServicePerformance("cs-1", null).status).toBe("NOT_MEASURABLE");
+      expect(classifyGhlServicePerformance("cs-1", null).measurable).toBe(false);
+      expect(classifyGhlServicePerformance("cs-1", ghlInput({ activeWorkspaceCount: 0 })).status).toBe("NOT_MEASURABLE");
+    });
+
+    it("is HEALTHY when there are no overdue/at-risk workspaces and no failed/pending required QA", () => {
+      const result = classifyGhlServicePerformance("cs-1", ghlInput({}));
+      expect(result.status).toBe("HEALTHY");
+      expect(result.measurable).toBe(true);
+    });
+
+    it("is CRITICAL when any required QA check has failed — outranks everything else", () => {
+      expect(classifyGhlServicePerformance("cs-1", ghlInput({ requiredQaFailedCount: 1 })).status).toBe("CRITICAL");
+      expect(classifyGhlServicePerformance("cs-1", ghlInput({ requiredQaFailedCount: 1, anyOverdueUnlaunchedWorkspace: true })).status).toBe("CRITICAL");
+    });
+
+    it("is CRITICAL when a workspace's go-live target date has passed without a recorded go-live", () => {
+      expect(classifyGhlServicePerformance("cs-1", ghlInput({ anyOverdueUnlaunchedWorkspace: true })).status).toBe("CRITICAL");
+    });
+
+    it("is AT_RISK when the linked project is CANCELLED or ON_HOLD", () => {
+      expect(classifyGhlServicePerformance("cs-1", ghlInput({ linkedProjectStatus: "CANCELLED" })).status).toBe("AT_RISK");
+      expect(classifyGhlServicePerformance("cs-1", ghlInput({ linkedProjectStatus: "ON_HOLD" })).status).toBe("AT_RISK");
+    });
+
+    it("is AT_RISK when not go-live-ready and the nearest go-live target is within the 14-day warning window", () => {
+      const soon = new Date(NOW.getTime() + 5 * 24 * 60 * 60 * 1000);
+      const result = classifyGhlServicePerformance("cs-1", ghlInput({ anyReadinessNotReady: true, nearestUpcomingGoLiveTargetDate: soon }), NOW);
+      expect(result.status).toBe("AT_RISK");
+    });
+
+    it("is WATCH when not go-live-ready but the target is far away (or unset)", () => {
+      const far = new Date(NOW.getTime() + 60 * 24 * 60 * 60 * 1000);
+      expect(classifyGhlServicePerformance("cs-1", ghlInput({ anyReadinessNotReady: true, nearestUpcomingGoLiveTargetDate: far }), NOW).status).toBe("WATCH");
+      expect(classifyGhlServicePerformance("cs-1", ghlInput({ anyReadinessNotReady: true, nearestUpcomingGoLiveTargetDate: null })).status).toBe("WATCH");
+    });
+
+    it("is WATCH when required QA is still pending", () => {
+      expect(classifyGhlServicePerformance("cs-1", ghlInput({ requiredQaPendingCount: 2 })).status).toBe("WATCH");
+    });
+
+    it("never counts missing/zero QA data as a failure — zero required QA checks is not penalized", () => {
+      const result = classifyGhlServicePerformance("cs-1", ghlInput({ requiredQaFailedCount: 0, requiredQaPendingCount: 0 }));
+      expect(result.status).toBe("HEALTHY");
+    });
+  });
+
+  describe("evaluateServicePerformance — multi-specialist aggregation (Build 31, extended Build 32/33/34)", () => {
     const seoHealthy: SpecialistServicePerformanceInput = { customerServiceId: "cs-seo", category: "SEO", measurable: true, status: "HEALTHY", reason: "SEO healthy." };
     const seoCritical: SpecialistServicePerformanceInput = { customerServiceId: "cs-seo", category: "SEO", measurable: true, status: "CRITICAL", reason: "SEO critical." };
     const seoNotMeasurable: SpecialistServicePerformanceInput = { customerServiceId: "cs-seo", category: "SEO", measurable: false, status: "NOT_MEASURABLE", reason: "SEO not measurable." };
@@ -324,6 +379,9 @@ describe("client-success", () => {
     const ecommerceHealthy: SpecialistServicePerformanceInput = { customerServiceId: "cs-ecommerce", category: "ECOMMERCE", measurable: true, status: "HEALTHY", reason: "E-Commerce Development healthy." };
     const ecommerceCritical: SpecialistServicePerformanceInput = { customerServiceId: "cs-ecommerce", category: "ECOMMERCE", measurable: true, status: "CRITICAL", reason: "E-Commerce Development critical." };
     const ecommerceNotMeasurable: SpecialistServicePerformanceInput = { customerServiceId: "cs-ecommerce", category: "ECOMMERCE", measurable: false, status: "NOT_MEASURABLE", reason: "E-Commerce Development not measurable." };
+    const ghlHealthy: SpecialistServicePerformanceInput = { customerServiceId: "cs-ghl", category: "GHL_AUTOMATION", measurable: true, status: "HEALTHY", reason: "GHL Automation healthy." };
+    const ghlCritical: SpecialistServicePerformanceInput = { customerServiceId: "cs-ghl", category: "GHL_AUTOMATION", measurable: true, status: "CRITICAL", reason: "GHL Automation critical." };
+    const ghlNotMeasurable: SpecialistServicePerformanceInput = { customerServiceId: "cs-ghl", category: "GHL_AUTOMATION", measurable: false, status: "NOT_MEASURABLE", reason: "GHL Automation not measurable." };
 
     function input(specialists: SpecialistServicePerformanceInput[]): ServicePerformanceInput {
       return { specialists };
@@ -447,6 +505,50 @@ describe("client-success", () => {
 
     it("nothing measurable across all four specialists — NOT_MEASURABLE, never a fabricated score", () => {
       const result = evaluateServicePerformance(input([seoNotMeasurable, localSeoNotMeasurable, websiteNotMeasurable, ecommerceNotMeasurable]), NOW);
+      expect(result.status).toBe("NOT_MEASURABLE");
+      expect(result.measurable).toBe(false);
+      expect(result.score).toBeNull();
+    });
+
+    it("GHL Automation only, measurable — reflects GHL Automation's own status (Build 34 regression)", () => {
+      expect(evaluateServicePerformance(input([ghlHealthy]), NOW).status).toBe("HEALTHY");
+      expect(evaluateServicePerformance(input([ghlCritical]), NOW).status).toBe("CRITICAL");
+    });
+
+    it("GHL Automation measurable + SEO NOT_MEASURABLE — the NOT_MEASURABLE specialist is excluded, not counted as failing", () => {
+      const result = evaluateServicePerformance(input([ghlHealthy, seoNotMeasurable]), NOW);
+      expect(result.status).toBe("HEALTHY");
+      expect(result.measurable).toBe(true);
+    });
+
+    it("SEO measurable + GHL Automation NOT_MEASURABLE — the NOT_MEASURABLE specialist is excluded, not counted as failing", () => {
+      const result = evaluateServicePerformance(input([seoCritical, ghlNotMeasurable]), NOW);
+      expect(result.status).toBe("CRITICAL");
+      expect(result.measurable).toBe(true);
+    });
+
+    it("Website Development + E-Commerce Development + GHL Automation together — worst status wins regardless of order", () => {
+      const a = evaluateServicePerformance(input([websiteHealthy, ecommerceHealthy, ghlCritical]), NOW);
+      const b = evaluateServicePerformance(input([ghlCritical, ecommerceHealthy, websiteHealthy]), NOW);
+      expect(a.status).toBe("CRITICAL");
+      expect(b.status).toBe("CRITICAL");
+    });
+
+    it("all five current specialist types together — worst status wins regardless of order", () => {
+      const a = evaluateServicePerformance(input([seoHealthy, localSeoHealthy, websiteHealthy, ecommerceHealthy, ghlCritical]), NOW);
+      const b = evaluateServicePerformance(input([ghlCritical, ecommerceHealthy, websiteHealthy, localSeoHealthy, seoHealthy]), NOW);
+      expect(a.status).toBe("CRITICAL");
+      expect(b.status).toBe("CRITICAL");
+    });
+
+    it("one measurable (GHL Automation), all four others NOT_MEASURABLE — reflects the one measurable specialist only", () => {
+      const result = evaluateServicePerformance(input([ghlHealthy, seoNotMeasurable, localSeoNotMeasurable, websiteNotMeasurable, ecommerceNotMeasurable]), NOW);
+      expect(result.status).toBe("HEALTHY");
+      expect(result.measurable).toBe(true);
+    });
+
+    it("nothing measurable across all five specialists — NOT_MEASURABLE, never a fabricated score", () => {
+      const result = evaluateServicePerformance(input([seoNotMeasurable, localSeoNotMeasurable, websiteNotMeasurable, ecommerceNotMeasurable, ghlNotMeasurable]), NOW);
       expect(result.status).toBe("NOT_MEASURABLE");
       expect(result.measurable).toBe(false);
       expect(result.score).toBeNull();

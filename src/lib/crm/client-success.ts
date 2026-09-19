@@ -363,7 +363,7 @@ export interface LocalSeoServicePerformanceInput {
  */
 export interface SpecialistServicePerformanceInput {
   customerServiceId: string;
-  category: "SEO" | "LOCAL_SEO" | "WEB_DEVELOPMENT" | "ECOMMERCE";
+  category: "SEO" | "LOCAL_SEO" | "WEB_DEVELOPMENT" | "ECOMMERCE" | "GHL_AUTOMATION";
   measurable: boolean;
   status: HealthStatus;
   reason: string;
@@ -565,6 +565,80 @@ export function classifyEcommerceServicePerformance(customerServiceId: string, i
     return { ...base, measurable: true, status: "WATCH", reason: `${input.requiredQaPendingCount} required QA check(s) are still pending.` };
   }
   return { ...base, measurable: true, status: "HEALTHY", reason: "No overdue or at-risk stores, and no failed required QA checks." };
+}
+
+/**
+ * GHL Automation's own specialist delivery-performance facts (Build 34
+ * — Roadmap Module 28). A FIFTH SEPARATE specialist domain — this
+ * measures GHL AUTOMATION DELIVERY PERFORMANCE (is the implementation
+ * on track, is it QA-clean, is it going live on schedule), never
+ * merchant/marketing runtime performance (lead volume, appointment
+ * rate, pipeline conversion, email open rate, SMS response rate) — no
+ * such data exists here (no live GoHighLevel API integration was
+ * built), and none is fabricated. `activeWorkspaceCount` excludes
+ * ARCHIVED workspaces. Required QA is reused DIRECTLY from Project QA
+ * via the engagement's own linked Project (never a second QA engine) —
+ * engagement-scoped, not per-workspace, since one Project may deliver
+ * several workspaces at once. Resolved by `src/server/services/
+ * ghl-customer-360-service.ts`'s own
+ * `getGhlServicePerformanceInputForCustomer360()` — this file never
+ * queries a database. Deliberately mirrors
+ * `EcommerceServicePerformanceInput`/`classifyEcommerceServicePerformance()`
+ * immediately above in shape and severity-ordering, but is its own
+ * SEPARATE type/function — never shared, matching every prior
+ * specialist domain's own discipline.
+ */
+export interface GhlServicePerformanceInput {
+  /** Workspaces with `status !== ARCHIVED`. */
+  activeWorkspaceCount: number;
+  /** `true` when at least one active workspace's own go-live-readiness formula (`src/lib/ghl/readiness.ts`) evaluated to `NOT_READY`. */
+  anyReadinessNotReady: boolean;
+  /** `true` when at least one active, not-yet-live workspace's `goLiveTargetDate` is already in the past. */
+  anyOverdueUnlaunchedWorkspace: boolean;
+  /** The nearest upcoming `goLiveTargetDate` among active, not-yet-live workspaces, if any. */
+  nearestUpcomingGoLiveTargetDate: Date | null;
+  /** The linked Project's own `status`, if a Project is linked — `null` when no Project is linked yet (never treated as a failure on its own). */
+  linkedProjectStatus: "DRAFT" | "PLANNED" | "ACTIVE" | "ON_HOLD" | "COMPLETED" | "CANCELLED" | "ARCHIVED" | null;
+  /** Required `ProjectQaCheck` rows (on the linked Project) with `status = FAILED`. */
+  requiredQaFailedCount: number;
+  /** Required `ProjectQaCheck` rows (on the linked Project) still `PENDING`. */
+  requiredQaPendingCount: number;
+}
+
+const GHL_GO_LIVE_TARGET_WARNING_WINDOW_DAYS = 14;
+
+/**
+ * Classifies one GHL Automation `CustomerService`'s own performance
+ * facts — same highest-severity-first discipline every other specialist
+ * classifier in this file already uses.
+ */
+export function classifyGhlServicePerformance(customerServiceId: string, input: GhlServicePerformanceInput | null, now: Date = new Date()): SpecialistServicePerformanceInput {
+  const base = { customerServiceId, category: "GHL_AUTOMATION" as const };
+  if (!input || input.activeWorkspaceCount === 0) {
+    return { ...base, measurable: false, status: "NOT_MEASURABLE", reason: "No measurable GHL Automation performance data yet." };
+  }
+  if (input.requiredQaFailedCount > 0) {
+    return { ...base, measurable: true, status: "CRITICAL", reason: `${input.requiredQaFailedCount} required QA check(s) failed.` };
+  }
+  if (input.anyOverdueUnlaunchedWorkspace) {
+    return { ...base, measurable: true, status: "CRITICAL", reason: "A workspace's go-live target date has passed without a recorded go-live." };
+  }
+  if (input.linkedProjectStatus === "CANCELLED" || input.linkedProjectStatus === "ON_HOLD") {
+    return { ...base, measurable: true, status: "AT_RISK", reason: `The linked delivery project is ${input.linkedProjectStatus}.` };
+  }
+  if (input.anyReadinessNotReady && input.nearestUpcomingGoLiveTargetDate) {
+    const daysUntilTarget = Math.ceil((input.nearestUpcomingGoLiveTargetDate.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
+    if (daysUntilTarget <= GHL_GO_LIVE_TARGET_WARNING_WINDOW_DAYS) {
+      return { ...base, measurable: true, status: "AT_RISK", reason: `A workspace is not go-live-ready with its target date ${daysUntilTarget} day(s) away.` };
+    }
+  }
+  if (input.anyReadinessNotReady) {
+    return { ...base, measurable: true, status: "WATCH", reason: "A workspace is not yet go-live-ready." };
+  }
+  if (input.requiredQaPendingCount > 0) {
+    return { ...base, measurable: true, status: "WATCH", reason: `${input.requiredQaPendingCount} required QA check(s) are still pending.` };
+  }
+  return { ...base, measurable: true, status: "HEALTHY", reason: "No overdue or at-risk workspaces, and no failed required QA checks." };
 }
 
 export interface ServicePerformanceInput {

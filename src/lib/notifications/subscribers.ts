@@ -1022,3 +1022,51 @@ events.on<EcommerceLaunchRecordedPayload>("ecommerce.launch_recorded", async (ev
     templateData: { engagementId, storeName, companyName },
   });
 });
+
+interface GhlGoLiveRecordedPayload {
+  workspaceId: string;
+  engagementId: string;
+  organizationId: string;
+  ownerUserId: string;
+  workspaceName: string;
+  companyName: string;
+}
+
+interface GhlHandoffRecordedPayload {
+  workspaceId: string;
+  engagementId: string;
+  organizationId: string;
+  ownerUserId: string;
+  workspaceName: string;
+  companyName: string;
+}
+
+// Build 34 — GHL Automation OS. Same "no recipient = no notification"
+// rule every specialist domain's own critical-event subscriber already
+// establishes — the service layer only emits this when the engagement's
+// CustomerService has an owner.
+events.on<GhlGoLiveRecordedPayload>("ghl.go_live_recorded", async (event) => {
+  const { workspaceId, engagementId, organizationId, ownerUserId, workspaceName, companyName } = event.payload;
+  await notificationService.notify({
+    templateKey: "ghl.go_live_recorded",
+    recipientUserId: ownerUserId,
+    organizationId,
+    sourceEventType: "ghl.go_live_recorded",
+    sourceEntityType: "ghl_workspace",
+    sourceEntityId: workspaceId,
+    templateData: { engagementId, workspaceName, companyName },
+  });
+});
+
+events.on<GhlHandoffRecordedPayload>("ghl.handoff_recorded", async (event) => {
+  const { workspaceId, engagementId, organizationId, ownerUserId, workspaceName, companyName } = event.payload;
+  await notificationService.notify({
+    templateKey: "ghl.handoff_recorded",
+    recipientUserId: ownerUserId,
+    organizationId,
+    sourceEventType: "ghl.handoff_recorded",
+    sourceEntityType: "ghl_workspace",
+    sourceEntityId: workspaceId,
+    templateData: { engagementId, workspaceName, companyName },
+  });
+});
