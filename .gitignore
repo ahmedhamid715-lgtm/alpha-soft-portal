@@ -55,3 +55,9 @@ next-env.d.ts
 # prisma — generated client (regenerated via `npm run db:generate`,
 # also runs automatically on `npm install` via the postinstall script)
 /src/generated/
+
+# Local AI-tool session state / internal task logs (not project code)
+.agents/
+.claude/
+.codex-tasks/
+skills-lock.json
